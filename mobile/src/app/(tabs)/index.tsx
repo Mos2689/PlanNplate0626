@@ -762,8 +762,13 @@ export default function HomeScreen() {
         router.push('/grocery');
       }
       // "Get Inspired" → opens the curated recipe catalog (was "Explore meals").
-      // No signup gate here: this is a browse-only catalog, always free.
+      // Free to use, but once an anonymous guest has spent their free plan +
+      // grocery build, any further action (this included) routes to signup.
       else if (t.includes('get inspired') || t.includes('explore')) {
+        if (shouldGateSignup) {
+          router.push('/signup');
+          return;
+        }
         router.push('/curated-meal-plan');
       }
       // "Plan My Meals" → opens the AI multi-day plan setup flow.

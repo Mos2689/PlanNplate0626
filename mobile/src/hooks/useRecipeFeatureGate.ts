@@ -48,6 +48,15 @@ export function useRecipeFeatureGate(
   const recordMonthlyFeatureUse = useMealPlanStore((s) => s.recordMonthlyFeatureUse);
   const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
 
+  // ── AUTH-LAST signup gate ──
+  // Once an anonymous guest has spent BOTH their free plan build and free
+  // grocery build, every subsequent gated action (this feature included)
+  // routes them to signup before anything else.
+  const freePlanBuildsUsed = useMealPlanStore((s) => s.preferences.freePlanBuildsUsed ?? 0);
+  const freeGroceryBuildsUsed = useMealPlanStore((s) => s.preferences.freeGroceryBuildsUsed ?? 0);
+  const shouldGateSignup =
+    isAnonymous && freePlanBuildsUsed >= 1 && freeGroceryBuildsUsed >= 1;
+
   const feature = monthlyKey(kind);
   const limit = MONTHLY_FEATURE_LIMITS[feature];
 
@@ -57,13 +66,24 @@ export function useRecipeFeatureGate(
   const mountCount = useMealPlanStore.getState().getMonthlyFeatureCount(feature);
 
   const markedRef = useRef(false);
-  const [blocked, setBlocked] = useState(false);
+  const [blocked, setBlocked] = useState(shouldGateSignup);
   const [accessGranted, setAccessGranted] = useState(
-    hasPremiumAccess || mountCount < limit,
+    !shouldGateSignup && (hasPremiumAccess || mountCount < limit),
   );
 
   useEffect(() => {
     if (!storeHydrated) return;
+
+    // Signup gate takes precedence — an anonymous guest who's used their free
+    // plan + grocery build is sent to signup on any further gated action.
+    if (shouldGateSignup) {
+      setAccessGranted(false);
+      setBlocked(true);
+      router.back();
+      router.push('/signup');
+      return;
+    }
+
     // Don't decide while subscription state is still resolving — the
     // `hasPremiumAccess=false` default during cold start would otherwise
     // boot a paying user back to home.
@@ -93,7 +113,7 @@ export function useRecipeFeatureGate(
       // Allowance remaining — let them in (counted only on success).
       setAccessGranted(true);
     }
-  }, [storeHydrated, subscriptionLoading, hasPremiumAccess, isAnonymous, feature, limit, trigger, openPaywallSheet, router]);
+  }, [storeHydrated, subscriptionLoading, hasPremiumAccess, isAnonymous, shouldGateSignup, feature, limit, trigger, openPaywallSheet, router]);
 
   // Spend one monthly use — called by the screen when the feature SUCCEEDS.
   // No-op for premium users and idempotent within a session.
