@@ -23,7 +23,6 @@ import {
   Pressable,
   Modal,
   ScrollView,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   Dimensions,
@@ -37,11 +36,7 @@ import {
   RotateCcw,
   Apple,
   ChefHat,
-  Microwave,
   Compass,
-  Wallet,
-  Home,
-  Pencil,
   // Brand rule (per the plan-meals header comment): "No Sparkles." The
   // commit CTA uses Check — the same affirmation icon the screen
   // already uses on meal-type pills, so the visual language is
@@ -49,19 +44,14 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { designTokens } from '@/lib/design-tokens';
-import type { UserPreferences, Household, WeeknightMinutes } from '@/lib/store';
+import type { UserPreferences } from '@/lib/store';
 import {
   DIETARY_OPTIONS,
   CUISINE_OPTIONS,
   ALLERGY_OPTIONS,
   SKILL_LEVELS,
   PREP_TIME_OPTIONS,
-  HOUSEHOLD_OPTIONS,
-  EQUIPMENT_OPTIONS,
-  MEAL_HABIT_OPTIONS,
   ADVENTURE_LEVELS,
-  GOAL_OPTIONS,
-  WEEKNIGHT_MINUTE_OPTIONS,
 } from '@/lib/preference-options';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -395,38 +385,6 @@ export function PlanTuneSheet({
     const diff = diffOverrides(draft, basePreferences);
     onChange(diff, noteDraft);
     onClose();
-  };
-
-  // Pantry staples — split chips by separator, allow free-text add.
-  const [pantryInput, setPantryInput] = useState('');
-  const addPantryStaple = () => {
-    const raw = pantryInput.trim();
-    if (!raw) return;
-    const current = draft.pantryStaples ?? [];
-    if (current.includes(raw)) {
-      setPantryInput('');
-      return;
-    }
-    setDraftField('pantryStaples', [...current, raw] as any);
-    setPantryInput('');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-  const removePantryStaple = (item: string) => {
-    const current = draft.pantryStaples ?? [];
-    setDraftField('pantryStaples', current.filter((x) => x !== item) as any);
-    Haptics.selectionAsync();
-  };
-
-  // Weekly budget — string-buffered for natural numeric typing.
-  const [budgetInput, setBudgetInput] = useState<string>(
-    draft.weeklyBudget != null ? String(draft.weeklyBudget) : '',
-  );
-  useEffect(() => {
-    setBudgetInput(draft.weeklyBudget != null ? String(draft.weeklyBudget) : '');
-  }, [visible]); // re-seed on each open
-  const commitBudget = () => {
-    const n = parseFloat(budgetInput.replace(/[^0-9.]/g, ''));
-    setDraftField('weeklyBudget', isFinite(n) && n > 0 ? n : null);
   };
 
   return (
@@ -772,272 +730,6 @@ export function PlanTuneSheet({
                               : 'Curious'}
                   </Text>
                 </View>
-              </SectionCard>
-
-              {/* ── HOUSEHOLD ─────────────────────────────────────────── */}
-              <SectionCard
-                title="Household"
-                hint="Who's at the table"
-                Icon={Home}
-                isDark={isDark}
-              >
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginBottom: 8 }}>
-                  Cooking for
-                </Text>
-                <PillRow
-                  options={HOUSEHOLD_OPTIONS.map((h) => ({ key: h.id, label: h.label }))}
-                  value={draft.household}
-                  onChange={(v) => setDraftField('household', v as Household)}
-                  isDark={isDark}
-                />
-
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginTop: 14, marginBottom: 6 }}>
-                  Meal habits
-                </Text>
-                {(['breakfast', 'lunch', 'dinner'] as const).map((mealType, idx) => {
-                  const currentHabits = draft.mealHabits ?? {
-                    breakfast: 'cook',
-                    lunch: 'leftovers',
-                    dinner: 'cook',
-                  };
-                  return (
-                    <View
-                      key={mealType}
-                      style={{
-                        paddingTop: idx === 0 ? 6 : 10,
-                        paddingBottom: 10,
-                        borderTopWidth: idx === 0 ? 0 : 1,
-                        borderTopColor: s.hair2,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontFamily: designTokens.font.medium,
-                          fontSize: 11,
-                          letterSpacing: 0.5,
-                          textTransform: 'uppercase',
-                          color: s.ink3,
-                          marginBottom: 6,
-                        }}
-                      >
-                        {mealType}
-                      </Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                        {MEAL_HABIT_OPTIONS[mealType].map((opt) => {
-                          const active = (currentHabits as any)[mealType] === opt.id;
-                          return (
-                            <Chip
-                              key={opt.id}
-                              label={opt.label}
-                              selected={active}
-                              onPress={() => {
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                setDraftField('mealHabits', {
-                                  ...currentHabits,
-                                  [mealType]: opt.id,
-                                } as any);
-                              }}
-                              isDark={isDark}
-                            />
-                          );
-                        })}
-                      </View>
-                    </View>
-                  );
-                })}
-              </SectionCard>
-
-              {/* ── KITCHEN ──────────────────────────────────────────── */}
-              <SectionCard
-                title="Kitchen"
-                hint="Equipment + what's already in the pantry"
-                Icon={Microwave}
-                isDark={isDark}
-              >
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginBottom: 8 }}>
-                  Equipment
-                </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {EQUIPMENT_OPTIONS.map((opt) => (
-                    <Chip
-                      key={opt.id}
-                      label={opt.label}
-                      selected={(draft.equipment ?? []).includes(opt.id)}
-                      onPress={() => toggleStringInList('equipment', opt.id)}
-                      isDark={isDark}
-                    />
-                  ))}
-                </View>
-
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginTop: 14, marginBottom: 8 }}>
-                  Pantry staples
-                </Text>
-                {(draft.pantryStaples ?? []).length > 0 && (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                    {(draft.pantryStaples ?? []).map((item) => (
-                      <Pressable key={item} onPress={() => removePantryStaple(item)}>
-                        <View
-                          style={{
-                            paddingLeft: 10,
-                            paddingRight: 8,
-                            paddingVertical: 6,
-                            borderRadius: 999,
-                            backgroundColor: designTokens.colors.brand,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 6,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontFamily: designTokens.font.medium,
-                              fontSize: 12.5,
-                              color: designTokens.colors.cream,
-                            }}
-                          >
-                            {item}
-                          </Text>
-                          <X size={12} color={designTokens.colors.cream} strokeWidth={2.2} />
-                        </View>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    gap: 8,
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: s.cardBorder,
-                    borderRadius: 12,
-                    paddingHorizontal: 12,
-                    paddingVertical: 4,
-                  }}
-                >
-                  <TextInput
-                    value={pantryInput}
-                    onChangeText={setPantryInput}
-                    onSubmitEditing={addPantryStaple}
-                    placeholder="Add an item — e.g. brown rice"
-                    placeholderTextColor={s.ink3}
-                    returnKeyType="done"
-                    style={{
-                      flex: 1,
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 13,
-                      color: s.ink,
-                      paddingVertical: 8,
-                    }}
-                  />
-                  {pantryInput.trim().length > 0 && (
-                    <Pressable onPress={addPantryStaple} hitSlop={8}>
-                      <CirclePlus
-                        size={22}
-                        color={designTokens.colors.brand}
-                        strokeWidth={1.8}
-                      />
-                    </Pressable>
-                  )}
-                </View>
-              </SectionCard>
-
-              {/* ── GOALS & BUDGET ───────────────────────────────────── */}
-              <SectionCard
-                title="Goals & budget"
-                hint="What this plan should optimize for"
-                Icon={Wallet}
-                isDark={isDark}
-              >
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginBottom: 8 }}>
-                  Goals
-                </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {GOAL_OPTIONS.map((g) => (
-                    <Chip
-                      key={g.id}
-                      label={g.label}
-                      selected={(draft.goals ?? []).includes(g.id)}
-                      onPress={() => toggleStringInList('goals', g.id)}
-                      isDark={isDark}
-                    />
-                  ))}
-                </View>
-
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginTop: 14, marginBottom: 8 }}>
-                  Weeknight time per meal
-                </Text>
-                <PillRow<WeeknightMinutes>
-                  options={WEEKNIGHT_MINUTE_OPTIONS.map((m) => ({ key: m, label: `${m} min` }))}
-                  value={draft.weeknightMinutes}
-                  onChange={(v) => setDraftField('weeknightMinutes', v)}
-                  isDark={isDark}
-                />
-
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginTop: 14, marginBottom: 8 }}>
-                  Weekly grocery budget
-                </Text>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    borderWidth: 1,
-                    borderColor: s.cardBorder,
-                    borderRadius: 12,
-                    paddingHorizontal: 12,
-                  }}
-                >
-                  <Text style={{ fontFamily: designTokens.font.semibold, fontSize: 14, color: s.ink3 }}>$</Text>
-                  <TextInput
-                    value={budgetInput}
-                    onChangeText={setBudgetInput}
-                    onBlur={commitBudget}
-                    keyboardType="decimal-pad"
-                    placeholder="No limit"
-                    placeholderTextColor={s.ink3}
-                    style={{
-                      flex: 1,
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 14,
-                      color: s.ink,
-                      paddingVertical: 10,
-                    }}
-                  />
-                  <Text style={{ fontFamily: designTokens.font.regular, fontSize: 12, color: s.ink3 }}>/ week</Text>
-                </View>
-              </SectionCard>
-
-              {/* ── ONE-TIME NOTE ────────────────────────────────────── */}
-              <SectionCard
-                title="One-time note"
-                hint="Anything else just for this plan"
-                Icon={Pencil}
-                iconTone="olive"
-                isDark={isDark}
-              >
-                <TextInput
-                  value={noteDraft}
-                  onChangeText={setNoteDraft}
-                  placeholder="e.g. cooking for a guest with mild peanut allergy, lean toward warming dishes"
-                  placeholderTextColor={s.ink3}
-                  multiline
-                  numberOfLines={3}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: s.cardBorder,
-                    borderRadius: 14,
-                    paddingHorizontal: 12,
-                    paddingTop: 10,
-                    paddingBottom: 12,
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 13.5,
-                    lineHeight: 19,
-                    color: s.ink,
-                    minHeight: 76,
-                    textAlignVertical: 'top',
-                  }}
-                />
               </SectionCard>
 
               <View style={{ height: 12 }} />

@@ -1,33 +1,52 @@
-// Curated Meal Plans — list modal.
+// Explore Meals — recipe catalog.
 //
-// Architecture: modal route ('presentation: modal' in _layout.tsx).
-// Selecting a plan navigates to /curated-plan-detail?id=xxx (a card stack
-// pushed on top of this modal), replacing the previous stacked-Modal-over-
-// Modal confirmation + recipe-slider pattern. The detail page hosts the
-// apply / conflict / success flow now.
+// Instead of listing the 5 curated plans as cards, this screen surfaces ALL
+// recipes that live inside those plans. A browser at the top switches between
+// the 5 plans; below it, the selected plan's recipes are grouped into separate
+// sections by meal type (Breakfast / Lunch / Dinner / Snack). Tapping a recipe
+// opens its read-only detail (curated-recipe-detail).
 //
-// Visual language matches the redesigned plan-meals screen + QuickActions
-// hero — olive eyebrow caps, italic on exactly ONE word per screen
-// ("crafted"), sage CTA vocabulary, scale-on-press, designTokens everywhere
-// (no more Nativewind divergence).
-import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+// Visual language matches the rest of the curated flow — olive eyebrow caps,
+// italic on exactly one word ("recipes"), sage selection, scale-on-press.
+import React, { useMemo, useState } from 'react';
+import { View, Text, Pressable, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DishImage } from '@/components/DishImage';
 import { useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Flame,
+  Coffee,
+  Sun,
+  Moon,
+  Apple,
+  type LucideIcon,
+} from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/lib/useColorScheme';
-import { CURATED_MEAL_PLANS, type CuratedMealPlan } from '@/lib/curated-meal-plans';
+import {
+  CURATED_MEAL_PLANS,
+  getCuratedPlanRecipes,
+  type CuratedRecipeEntry,
+} from '@/lib/curated-meal-plans';
 import { designTokens, elevation } from '@/lib/design-tokens';
-import { useMealPlanStore } from '@/lib/store';
-import { deriveLivePlanStats, pickPersonalFit } from '@/lib/plan-stats';
-import { SocialProofRow } from '@/components/PnPSpecials';
 import {
   StickyScreenHeader,
   useStickyHeaderScroll,
 } from '@/components/StickyScreenHeader';
+
+// Section order + per-meal identity (icon). Snack only renders when a plan
+// actually has snacks.
+type MealTypeId = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+const MEAL_TYPE_ORDER: { id: MealTypeId; label: string; Icon: LucideIcon }[] = [
+  { id: 'breakfast', label: 'Breakfast', Icon: Coffee },
+  { id: 'lunch', label: 'Lunch', Icon: Sun },
+  { id: 'dinner', label: 'Dinner', Icon: Moon },
+  { id: 'snack', label: 'Snack', Icon: Apple },
+];
 
 // ───────────────────────────────────────────────────────────────────────────────
 // SCREEN
@@ -38,15 +57,31 @@ export default function CuratedMealPlanScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  // Store reads for the social-proof + personal-fit signals on each
-  // card. Same data the home-tab section uses — kept in sync via the
-  // shared deriveLivePlanStats / pickPersonalFit helpers.
-  const mealPlanRatings = useMealPlanStore((s) => s.mealPlanRatings) || [];
-  const cookingLogs = useMealPlanStore((s) => s.cookingLogs) || [];
-  const mealSlots = useMealPlanStore((s) => s.mealSlots) || [];
-  const preferences = useMealPlanStore((s) => s.preferences);
+  const plans = CURATED_MEAL_PLANS;
+  const [selectedPlanId, setSelectedPlanId] = useState<string>(plans[0]?.id ?? '');
 
-  const visiblePlans = CURATED_MEAL_PLANS;
+  const selectedPlan = useMemo(
+    () => plans.find((p) => p.id === selectedPlanId) ?? plans[0],
+    [plans, selectedPlanId],
+  );
+
+  // Recipes for the active plan, grouped into meal-type sections (deduped by
+  // name slug inside getCuratedPlanRecipes).
+  const sections = useMemo(() => {
+    if (!selectedPlan) return [];
+    const recipes = getCuratedPlanRecipes(selectedPlan);
+    return MEAL_TYPE_ORDER.map(({ id, label, Icon }) => ({
+      id,
+      label,
+      Icon,
+      items: recipes.filter((r) => r.mealType === id),
+    })).filter((s) => s.items.length > 0);
+  }, [selectedPlan]);
+
+  const totalRecipes = useMemo(
+    () => sections.reduce((sum, s) => sum + s.items.length, 0),
+    [sections],
+  );
 
   // ── Token-driven style helpers ──
   const surfaceBg = isDark ? '#1a1a1a' : '#FFFFFF';
@@ -56,384 +91,330 @@ export default function CuratedMealPlanScreen() {
   const inkSecondary = isDark ? '#888' : designTokens.colors.ink2;
   const inkTertiary = isDark ? '#666' : designTokens.colors.ink3;
 
-  const goToDetail = (plan: CuratedMealPlan) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push(`/curated-plan-detail?id=${plan.id}` as any);
-  };
-
-  // Sticky compact header — fades in once the user scrolls past the
-  // editorial title block at the top.
   const { scrollY, scrollHandler } = useStickyHeaderScroll();
 
-  // Split out the featured (first) plan from the rest so we can render
-  // it with hero treatment. If the filter has zero results we render the
-  // empty state instead.
-  const featured = visiblePlans[0];
-  const rest = visiblePlans.slice(1);
+  const openRecipe = (entry: CuratedRecipeEntry) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(
+      `/curated-recipe-detail?planId=${entry.planId}&recipe=${entry.key}` as any,
+    );
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: surfaceBg }}>
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <Animated.ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 36 }}
-          showsVerticalScrollIndicator={false}
-          onScroll={scrollHandler}
-          scrollEventThrottle={16}
+        {/* ─── Back button ─── */}
+        <Animated.View
+          entering={FadeInDown.springify()}
+          style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}
         >
-          {/* ─── Index 0: Back button + editorial header ─── */}
-          <View>
-            <Animated.View
-              entering={FadeInDown.springify()}
-              style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}
-            >
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.back();
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.back();
+            }}
+            hitSlop={10}
+            style={{ width: 40, height: 40 }}
+          >
+            {({ pressed }) => (
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: cardBg,
+                  borderWidth: 1,
+                  borderColor: cardBorder,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transform: [{ scale: pressed ? 0.94 : 1 }],
                 }}
-                hitSlop={10}
-                style={{ width: 40, height: 40 }}
               >
-                {({ pressed }) => (
-                  <View
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 20,
-                      backgroundColor: cardBg,
-                      borderWidth: 1,
-                      borderColor: cardBorder,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transform: [{ scale: pressed ? 0.94 : 1 }],
-                    }}
-                  >
-                    <ChevronLeft size={22} color={inkPrimary} strokeWidth={1.9} />
-                  </View>
-                )}
-              </Pressable>
-            </Animated.View>
+                <ChevronLeft size={22} color={inkPrimary} strokeWidth={1.9} />
+              </View>
+            )}
+          </Pressable>
+        </Animated.View>
 
-            <Animated.View
-              entering={FadeInDown.delay(80).springify()}
-              style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 18 }}
+        {/* ─── Editorial header ─── */}
+        <Animated.View
+          entering={FadeInDown.delay(80).springify()}
+          style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 14 }}
+        >
+          <Text
+            style={{
+              fontFamily: designTokens.font.semibold,
+              fontSize: 11,
+              letterSpacing: 1.3,
+              textTransform: 'uppercase',
+              color: designTokens.colors.olive,
+              marginBottom: 10,
+            }}
+          >
+            EXPLORE · {plans.length} PLANS
+          </Text>
+          <Text
+            style={{
+              fontFamily: designTokens.font.medium,
+              fontSize: 28,
+              color: inkPrimary,
+              letterSpacing: -0.56,
+            }}
+          >
+            Get{' '}
+            <Text
+              style={{
+                fontFamily: designTokens.font.serifItalic,
+                fontStyle: 'italic',
+                fontSize: 32,
+                letterSpacing: -0.32,
+              }}
             >
-              <Text
-                style={{
-                  fontFamily: designTokens.font.semibold,
-                  fontSize: 11,
-                  letterSpacing: 1.3,
-                  textTransform: 'uppercase',
-                  color: designTokens.colors.olive,
-                  marginBottom: 10,
-                }}
-              >
-                CURATED · {CURATED_MEAL_PLANS.length} PLANS
-              </Text>
-              <Text
-                style={{
-                  fontFamily: designTokens.font.medium,
-                  fontSize: 28,
-                  color: inkPrimary,
-                  letterSpacing: -0.56,
-                }}
-              >
-                Plans we've{' '}
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.serifItalic,
-                    fontStyle: 'italic',
-                    fontSize: 32,
-                    letterSpacing: -0.32,
-                  }}
-                >
-                  crafted
-                </Text>
-              </Text>
-              <Text
-                style={{
-                  fontFamily: designTokens.font.regular,
-                  fontSize: 14.5,
-                  lineHeight: 22,
-                  color: inkSecondary,
-                  marginTop: 10,
-                }}
-              >
-                Recipe-tested by our team, shaped to what you've already shared.
-              </Text>
-            </Animated.View>
-          </View>
+              Inspired
+            </Text>
+          </Text>
+        </Animated.View>
 
-          {/* ─── Cards ─── */}
-          <View style={{ paddingTop: 18 }}>
-            {/* Featured hero card (first plan, 4:3 image, EDITOR'S PICK eyebrow) */}
-            {featured && (
-              <Animated.View
-                key={`featured-${featured.id}`}
-                entering={FadeInDown.delay(60).springify()}
-                style={{ paddingHorizontal: 16, marginBottom: 16 }}
-              >
+        {/* ─── Plan browser (horizontal tabs) ─── */}
+        <View style={{ paddingBottom: 6 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+            style={{ flexGrow: 0 }}
+          >
+            {plans.map((plan) => {
+              const selected = plan.id === selectedPlan?.id;
+              return (
                 <Pressable
-                  onPress={() => goToDetail(featured)}
-                  style={{ width: '100%' }}
+                  key={plan.id}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelectedPlanId(plan.id);
+                  }}
                 >
                   {({ pressed }) => (
                     <View
                       style={{
-                        borderRadius: 24,
-                        borderWidth: 1,
+                        paddingHorizontal: 16,
+                        paddingVertical: 10,
+                        borderRadius: 999,
+                        borderWidth: selected ? 0 : 1,
                         borderColor: cardBorder,
-                        backgroundColor: cardBg,
-                        overflow: 'hidden',
-                        ...elevation.card,
-                        transform: [{ scale: pressed ? 0.985 : 1 }],
+                        backgroundColor: selected ? designTokens.colors.brand : cardBg,
+                        transform: [{ scale: pressed ? 0.97 : 1 }],
                       }}
                     >
-                      <View
+                      <Text
                         style={{
-                          width: '100%',
-                          aspectRatio: 4 / 3,
-                          backgroundColor: '#F4F0E8',
+                          fontFamily: designTokens.font.semibold,
+                          fontSize: 13.5,
+                          color: selected ? designTokens.colors.cream : inkPrimary,
+                          letterSpacing: -0.15,
                         }}
                       >
-                        <DishImage
-                          url={featured.imageUrl}
-                          blurhash={featured.blurhash}
-                          width={1000}
-                          style={{ width: '100%', height: '100%' }}
-                        />
-                      </View>
-                      <View style={{ padding: 18 }}>
-                        <Text
-                          style={{
-                            fontFamily: designTokens.font.semibold,
-                            fontSize: 11,
-                            letterSpacing: 1.3,
-                            textTransform: 'uppercase',
-                            color: designTokens.colors.olive,
-                            marginBottom: 8,
-                          }}
-                        >
-                          EDITOR'S PICK · {parseInt(featured.duration.split('-')[0], 10)} DAYS
-                        </Text>
-                        <Text
-                          style={{
-                            fontFamily: designTokens.font.semibold,
-                            fontSize: 22,
-                            color: inkPrimary,
-                            letterSpacing: -0.4,
-                          }}
-                        >
-                          {featured.name}
-                        </Text>
-                        <Text
-                          style={{
-                            fontFamily: designTokens.font.regular,
-                            fontSize: 13.5,
-                            lineHeight: 20,
-                            color: inkSecondary,
-                            marginTop: 8,
-                          }}
-                          numberOfLines={2}
-                        >
-                          {featured.description}
-                        </Text>
-
-                        {/* Tag chips */}
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            flexWrap: 'wrap',
-                            gap: 6,
-                            marginTop: 14,
-                          }}
-                        >
-                          {featured.tags.map((t) => (
-                            <View
-                              key={t}
-                              style={{
-                                paddingHorizontal: 10,
-                                paddingVertical: 5,
-                                borderRadius: 999,
-                                borderWidth: 1,
-                                borderColor: cardBorder,
-                                backgroundColor: isDark
-                                  ? '#181814'
-                                  : designTokens.colors.cream,
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  fontFamily: designTokens.font.medium,
-                                  fontSize: 11.5,
-                                  color: inkSecondary,
-                                  letterSpacing: -0.05,
-                                }}
-                              >
-                                {t}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-
-                        {/* Meta line — social proof + personal fit
-                            replaces the old "X recipes · cal/day"
-                            stat dump. Same helpers as PnPSpecials so
-                            the home tab and catalog stay in sync. */}
-                        <SocialProofRow
-                          stats={deriveLivePlanStats(
-                            featured,
-                            mealPlanRatings,
-                            cookingLogs,
-                            mealSlots,
-                          )}
-                          personalFit={pickPersonalFit(featured, preferences)}
-                          inkSecondary={inkSecondary}
-                          inkTertiary={inkTertiary}
-                        />
-                        <Text
-                          style={{
-                            fontFamily: designTokens.font.regular,
-                            fontSize: 12,
-                            color: inkTertiary,
-                            marginTop: 8,
-                            letterSpacing: -0.05,
-                          }}
-                        >
-                          {featured.meals.length} recipes · ~
-                          {Math.round(
-                            featured.totalCalories /
-                              parseInt(featured.duration.split('-')[0], 10),
-                          )}{' '}
-                          cal/day
-                        </Text>
-                      </View>
+                        {plan.name}
+                      </Text>
                     </View>
                   )}
                 </Pressable>
-              </Animated.View>
-            )}
-
-            {/* Standard cards (image-on-top, content below) */}
-            {rest.map((plan, idx) => {
-              const days = parseInt(plan.duration.split('-')[0], 10);
-              const avgCal = Math.round(plan.totalCalories / days);
-              return (
-                <Animated.View
-                  key={plan.id}
-                  entering={FadeInDown.delay(120 + idx * 60).springify()}
-                  style={{ paddingHorizontal: 16, marginBottom: 14 }}
-                >
-                  <Pressable
-                    onPress={() => goToDetail(plan)}
-                    style={{ width: '100%' }}
-                  >
-                    {({ pressed }) => (
-                      <View
-                        style={{
-                          borderRadius: 22,
-                          borderWidth: 1,
-                          borderColor: cardBorder,
-                          backgroundColor: cardBg,
-                          overflow: 'hidden',
-                          ...elevation.card,
-                          transform: [{ scale: pressed ? 0.985 : 1 }],
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: '100%',
-                            aspectRatio: 16 / 9,
-                            backgroundColor: '#F4F0E8',
-                          }}
-                        >
-                          <DishImage
-                            url={plan.imageUrl}
-                            blurhash={plan.blurhash}
-                            width={800}
-                            style={{ width: '100%', height: '100%' }}
-                          />
-                        </View>
-                        <View style={{ padding: 16 }}>
-                          <Text
-                            style={{
-                              fontFamily: designTokens.font.semibold,
-                              fontSize: 11,
-                              letterSpacing: 1.3,
-                              textTransform: 'uppercase',
-                              color: designTokens.colors.olive,
-                              marginBottom: 6,
-                            }}
-                          >
-                            {(plan.tags[0] ?? 'Curated').toUpperCase()} · {days} DAYS
-                          </Text>
-                          <Text
-                            style={{
-                              fontFamily: designTokens.font.semibold,
-                              fontSize: 17,
-                              color: inkPrimary,
-                              letterSpacing: -0.25,
-                            }}
-                            numberOfLines={1}
-                          >
-                            {plan.name}
-                          </Text>
-                          <Text
-                            style={{
-                              fontFamily: designTokens.font.regular,
-                              fontSize: 13,
-                              lineHeight: 19,
-                              color: inkSecondary,
-                              marginTop: 6,
-                            }}
-                            numberOfLines={2}
-                          >
-                            {plan.description}
-                          </Text>
-
-                          {/* Social-proof + personal-fit row drives
-                              the main meta line; the recipes/calorie
-                              detail moves below as fine-print. */}
-                          <SocialProofRow
-                            stats={deriveLivePlanStats(
-                              plan,
-                              mealPlanRatings,
-                              cookingLogs,
-                              mealSlots,
-                            )}
-                            personalFit={pickPersonalFit(plan, preferences)}
-                            inkSecondary={inkSecondary}
-                            inkTertiary={inkTertiary}
-                          />
-                          <Text
-                            style={{
-                              fontFamily: designTokens.font.regular,
-                              fontSize: 11.5,
-                              color: inkTertiary,
-                              marginTop: 6,
-                              letterSpacing: -0.05,
-                            }}
-                          >
-                            {plan.meals.length} recipes · ~{avgCal} cal/day
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                  </Pressable>
-                </Animated.View>
               );
             })}
-          </View>
+          </ScrollView>
+        </View>
+
+        {/* ─── Recipes for the selected plan, grouped by meal type ─── */}
+        <Animated.ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 36, paddingTop: 8 }}
+          showsVerticalScrollIndicator={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+        >
+          {/* Count line for the active plan */}
+          <Text
+            style={{
+              fontFamily: designTokens.font.regular,
+              fontSize: 13,
+              color: inkTertiary,
+              paddingHorizontal: 24,
+              marginBottom: 8,
+              letterSpacing: -0.05,
+            }}
+          >
+            {totalRecipes} {totalRecipes === 1 ? 'recipe' : 'recipes'} in {selectedPlan?.name}
+          </Text>
+
+          {sections.map((section, sIdx) => {
+            const SectionIcon = section.Icon;
+            return (
+              <View key={`${selectedPlan?.id}-${section.id}`} style={{ marginTop: sIdx === 0 ? 8 : 20 }}>
+                {/* Section header */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingHorizontal: 24,
+                    marginBottom: 12,
+                  }}
+                >
+                  <SectionIcon size={15} color={designTokens.colors.olive} strokeWidth={2} />
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.semibold,
+                      fontSize: 11,
+                      letterSpacing: 1.1,
+                      textTransform: 'uppercase',
+                      color: designTokens.colors.olive,
+                    }}
+                  >
+                    {section.label}
+                  </Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: cardBorder }} />
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.medium,
+                      fontSize: 12,
+                      color: inkTertiary,
+                    }}
+                  >
+                    {section.items.length}
+                  </Text>
+                </View>
+
+                {/* Recipe cards */}
+                {section.items.map((entry, idx) => {
+                  const r = entry.recipe;
+                  const totalMin = (r.prepTime || 0) + (r.cookTime || 0);
+                  return (
+                    <Animated.View
+                      key={`${section.id}-${entry.key}`}
+                      entering={FadeInDown.delay(40 + idx * 40).springify()}
+                      style={{ paddingHorizontal: 16, marginBottom: 10 }}
+                    >
+                      <Pressable onPress={() => openRecipe(entry)} style={{ width: '100%' }}>
+                        {({ pressed }) => (
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 12,
+                              borderRadius: 18,
+                              borderWidth: 1,
+                              borderColor: cardBorder,
+                              backgroundColor: cardBg,
+                              padding: 10,
+                              ...elevation.card,
+                              transform: [{ scale: pressed ? 0.985 : 1 }],
+                            }}
+                          >
+                            {/* Thumbnail */}
+                            <View
+                              style={{
+                                width: 78,
+                                height: 78,
+                                borderRadius: 13,
+                                overflow: 'hidden',
+                                backgroundColor: '#F4F0E8',
+                              }}
+                            >
+                              <DishImage
+                                url={r.imageUrl}
+                                blurhash={r.blurhash}
+                                width={220}
+                                style={{ width: '100%', height: '100%' }}
+                              />
+                            </View>
+
+                            {/* Text */}
+                            <View style={{ flex: 1, paddingRight: 4 }}>
+                              <Text
+                                style={{
+                                  fontFamily: designTokens.font.semibold,
+                                  fontSize: 15,
+                                  color: inkPrimary,
+                                  letterSpacing: -0.2,
+                                }}
+                                numberOfLines={2}
+                              >
+                                {r.name}
+                              </Text>
+
+                              {r.description ? (
+                                <Text
+                                  style={{
+                                    fontFamily: designTokens.font.regular,
+                                    fontSize: 12.5,
+                                    lineHeight: 17,
+                                    color: inkSecondary,
+                                    marginTop: 3,
+                                  }}
+                                  numberOfLines={1}
+                                >
+                                  {r.description}
+                                </Text>
+                              ) : null}
+
+                              {/* Meta row */}
+                              {(totalMin > 0 || r.calories) && (
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 12,
+                                    marginTop: 7,
+                                  }}
+                                >
+                                  {totalMin > 0 && (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                      <Clock size={12} color={inkTertiary} strokeWidth={1.9} />
+                                      <Text
+                                        style={{
+                                          fontFamily: designTokens.font.medium,
+                                          fontSize: 11.5,
+                                          color: inkTertiary,
+                                        }}
+                                      >
+                                        {totalMin} min
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {!!r.calories && (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                      <Flame size={12} color={inkTertiary} strokeWidth={1.9} />
+                                      <Text
+                                        style={{
+                                          fontFamily: designTokens.font.medium,
+                                          fontSize: 11.5,
+                                          color: inkTertiary,
+                                        }}
+                                      >
+                                        {r.calories} cal
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
+                              )}
+                            </View>
+
+                            <ChevronRight size={18} color={inkTertiary} strokeWidth={1.85} />
+                          </View>
+                        )}
+                      </Pressable>
+                    </Animated.View>
+                  );
+                })}
+              </View>
+            );
+          })}
         </Animated.ScrollView>
       </SafeAreaView>
 
-      {/* Sticky compact header overlays the scroll view; fades in past the
-          editorial title block. Outside SafeAreaView so it can paint into
-          the status-bar inset itself. */}
+      {/* Sticky compact header — fades in past the editorial title block. */}
       <StickyScreenHeader
         scrollY={scrollY}
-        title="Plans we've crafted"
+        title="Get Inspired"
         onBack={() => router.back()}
       />
     </View>

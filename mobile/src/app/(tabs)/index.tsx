@@ -50,7 +50,6 @@ import { ServingAdjustmentModal } from '@/components/ServingAdjustmentModal';
 import { PausedFeatureBanner } from '@/components/PausedFeatureBanner';
 import { MonthYearPicker } from '@/components/MonthYearPicker';
 import { PendingGenerationBanner } from '@/components/PendingGenerationBanner';
-import { UnlockReminderPill } from '@/components/UnlockReminderPill';
 import { CookConfirmSheet } from '@/components/CookConfirmSheet';
 import { WeeklyRatingSheet } from '@/components/WeeklyRatingSheet';
 import { UserAvatarDisplay } from '@/components/ProfileSetupModal';
@@ -272,14 +271,19 @@ export default function HomeScreen() {
     return map;
   }, [recipes]);
 
-  // ---- The Favorites — recipes loved / rated highly in the last 7 days ----
-  // Sources: explicit recipe ratings (≥4★) + Vibe-Cooking end ratings (≥4),
-  // both timestamped so we can window to the past week. One entry per recipe
-  // (the most recent, highest signal), newest first. Empty on a fresh account.
+  // ---- The Favorites — loved + highly-rated recipes ----
+  // Two signals, merged one-entry-per-recipe, newest first, capped at 8:
+  //   1. RECENT BEHAVIOUR (weekly window): explicit recipe ratings (≥4★) +
+  //      Vibe-Cooking end ratings (≥4) from the past 7 days — this is what
+  //      keeps the rail "updating weekly based on user behaviour."
+  //   2. LOVED RECIPES: anything the user hearted (isSaved) in the Recipes
+  //      section — persistent favourites that fill in alongside the week's
+  //      behaviour. Empty on a fresh account.
   const favoriteRecipes = useMemo<FavoriteRecipe[]>(() => {
     const weekAgo = Date.now() - 7 * 86400000;
     const byId = new Map<string, FavoriteRecipe>();
 
+    // 1) Recent behaviour — windowed to the past week.
     const consider = (recipeId: string | null, stars: number, atISO?: string) => {
       if (!recipeId || stars < 4 || !atISO) return;
       const at = new Date(atISO).getTime();
@@ -288,7 +292,12 @@ export default function HomeScreen() {
       if (!recipe) return;
       const existing = byId.get(recipeId);
       if (!existing || at > existing.at) {
-        byId.set(recipeId, { recipe, stars: Math.max(stars, existing?.stars ?? 0), at });
+        byId.set(recipeId, {
+          recipe,
+          stars: Math.max(stars, existing?.stars ?? 0),
+          at,
+          kind: 'rated',
+        });
       } else if (stars > existing.stars) {
         byId.set(recipeId, { ...existing, stars });
       }
@@ -297,10 +306,23 @@ export default function HomeScreen() {
     recipeRatings.forEach((r) => consider(r.recipeId, r.stars, r.ratedAt));
     cookingLogs.forEach((l) => consider(l.recipeId, l.vibeRating ?? 0, l.cookedAt));
 
+    // 2) Loved recipes — hearted in the Recipes section. Don't clobber a
+    //    recipe already captured as a recent rating (that's the higher signal).
+    recipes.forEach((r) => {
+      if (!r.isSaved || byId.has(r.id)) return;
+      const at = r.createdAt ? new Date(r.createdAt).getTime() : 0;
+      byId.set(r.id, {
+        recipe: r,
+        stars: 0,
+        at: Number.isNaN(at) ? 0 : at,
+        kind: 'loved',
+      });
+    });
+
     return Array.from(byId.values())
       .sort((a, b) => b.at - a.at)
-      .slice(0, 6);
-  }, [recipeRatings, cookingLogs, recipeById]);
+      .slice(0, 8);
+  }, [recipeRatings, cookingLogs, recipes, recipeById]);
 
   // ---- PnP Picks tile thumbnail stack ---------------------------------
   // Up to 3 most-recent recipe images with REAL hero photos (skipping
@@ -547,10 +569,12 @@ export default function HomeScreen() {
       if (isPaused) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (meal.state === 'empty') {
-        // Empty slot → jump to recipe picker so user can add one
+        // Empty slot → jump to recipe picker so user can add one. The date +
+        // meal type are already chosen here, so lock them (hides the date
+        // picker + per-date meal-type grid on the select-recipe screen).
         router.push({
           pathname: '/select-recipe',
-          params: { date: selectedDateKey, mealType: meal.mealTypeKey },
+          params: { date: selectedDateKey, mealType: meal.mealTypeKey, lockDate: 'true' },
         } as any);
       } else {
         // Any planned slot (1 recipe or N) → open the management sheet for consistency.
@@ -566,9 +590,10 @@ export default function HomeScreen() {
       if (isPaused) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (meal.state === 'empty' || !meal.slotId) {
+        // Empty slot behaves as an add — date + meal type are fixed, so lock them.
         router.push({
           pathname: '/select-recipe',
-          params: { date: selectedDateKey, mealType: meal.mealTypeKey },
+          params: { date: selectedDateKey, mealType: meal.mealTypeKey, lockDate: 'true' },
         } as any);
         return;
       }
@@ -728,7 +753,7 @@ export default function HomeScreen() {
     (item: { title: string }) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const t = item.title.toLowerCase();
-      if (t.includes('grocery')) {
+      if (t.includes('grocer')) {
         if (shouldGateSignup) {
           router.push('/signup');
           return;
@@ -736,15 +761,15 @@ export default function HomeScreen() {
         if (isAnonymous) markFreeGatedAction('grocery');
         router.push('/grocery');
       }
-      // "Explore meals" → opens the curated catalog of PnP special plans.
+      // "Get Inspired" → opens the curated recipe catalog (was "Explore meals").
       // No signup gate here: this is a browse-only catalog, always free.
-      else if (t.includes('explore')) {
+      else if (t.includes('get inspired') || t.includes('explore')) {
         router.push('/curated-meal-plan');
       }
-      // "PnP Suggests" → opens the curated multi-day plan flow.
-      // (Replaces the old "Generate recipe" slot — single-recipe generation
-      // is still reachable from the Recipes tab and select-recipe footer.)
-      else if (t.includes('suggests') || t.includes('pnp')) {
+      // "Plan My Meals" → opens the AI multi-day plan setup flow.
+      // (Was "PnP Picks"/"PnP Suggests"; single-recipe generation is still
+      // reachable from the Recipes tab and select-recipe footer.)
+      else if (t.includes('plan my meals') || t.includes('suggests') || t.includes('pnp')) {
         if (isPlanInFlight) {
           // Plan already streaming — banner above already explains it.
           // No-op rather than queue a second concurrent generation.
@@ -756,22 +781,9 @@ export default function HomeScreen() {
           return;
         }
         if (isAnonymous) markFreeGatedAction('plan');
-        // ─── Premium gate ───
-        // Signed-up, non-premium → hard paywall. Anonymous guests are
-        // governed by the signup gate above + the free-tier counters, so
-        // they pass through and reach plan-meals for their free build.
-        if (!isAnonymous && !hasPremiumAccess) {
-          if (!isPremiumResolved) {
-            // Subscription status hasn't settled yet — kick a re-sync and
-            // no-op this tap rather than gate a possibly-paying user.
-            if (currentUserId) {
-              void useSubscriptionStore.getState().syncWithRevenueCat(currentUserId);
-            }
-            return;
-          }
-          openPaywallSheet('pnp-second-tap');
-          return;
-        }
+        // Premium gate removed — tapping "Plan My Meals" goes straight to the
+        // plan setup screen (the signup gate above still applies to anonymous
+        // guests who've exhausted their free plan + grocery builds).
         router.push('/plan-meals');
       } else if (t.includes('vibe')) {
         if (shouldGateSignup) {
@@ -930,10 +942,6 @@ export default function HomeScreen() {
             />
           </Animated.View>
 
-          {/* Soft re-prompt — only renders for signed-in non-premium users
-              when no plan generation is in flight. Tap → opens paywall. */}
-          <UnlockReminderPill />
-
           {/* Background generation banner — visible only while a
               PnP-Suggests plan is being streamed in. Self-dismisses
               when complete or on failure tap-to-retry. */}
@@ -1081,17 +1089,17 @@ export default function HomeScreen() {
                 // sees the same affordance reflecting the banner state above.
                 {
                   icon: 'utensils',
-                  title: 'PnP Picks',
+                  title: 'Plan My Meals',
                   subtitle: isPlanInFlight
                     ? 'Plan in progress…'
                     : 'A plan, picked for you',
                   variant: 'primary',
                   thumbnails: recentThumbnails,
                 },
-                { icon: 'cart', title: 'Build grocery list', subtitle: 'Ready for this week' },
+                { icon: 'cart', title: 'Get Groceries', subtitle: 'Ready for this week' },
                 // Sits beside grocery in the secondary 2-col row. Routes to
                 // the curated catalog (PnP Specials / special plan options).
-                { icon: 'compass', title: 'Explore meals', subtitle: 'PnP curated plans' },
+                { icon: 'compass', title: 'Get Inspired', subtitle: 'PnP curated recipes' },
               ]}
               onActionPress={handleQuickAction}
               isDark={isDark}

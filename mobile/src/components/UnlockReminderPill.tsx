@@ -75,7 +75,7 @@ export function UnlockReminderPill() {
                 letterSpacing: -0.05,
               }}
             >
-              Unlock the rest of PnP
+              Do more with PnP
             </Text>
             <ChevronRight size={13} color={designTokens.colors.olive} strokeWidth={2} />
           </View>

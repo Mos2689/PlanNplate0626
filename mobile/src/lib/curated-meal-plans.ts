@@ -195,6 +195,87 @@ export const CURATED_MEAL_PLANS: CuratedMealPlan[] = [
   },
 ];
 
+// ───────────────────────────────────────────────────────────────────────────────
+// RECIPE BROWSING HELPERS — used by the Explore screen + curated recipe detail.
+// A "recipe entry" is one unique recipe within a plan (the plan's base week
+// repeats recipes across days; we dedupe by name slug for browsing).
+// ───────────────────────────────────────────────────────────────────────────────
+
+export interface CuratedRecipeEntry {
+  /** Stable per-plan key — curatedNameSlug(recipe.name). Used for navigation. */
+  key: string;
+  mealType: CuratedMeal['mealType'];
+  recipe: CuratedMeal['recipe'];
+  planId: string;
+  planName: string;
+}
+
+/** All unique recipes in a plan, deduped by name slug, in first-seen order. */
+export function getCuratedPlanRecipes(plan: CuratedMealPlan): CuratedRecipeEntry[] {
+  const seen = new Set<string>();
+  const out: CuratedRecipeEntry[] = [];
+  for (const meal of plan.meals) {
+    // Skip grab-&-go / buy-out placeholders — they have no real recipe to show.
+    if (meal.placeholderLabel) continue;
+    if (!meal.recipe?.name) continue;
+    const key = curatedNameSlug(meal.recipe.name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      key,
+      mealType: meal.mealType,
+      recipe: meal.recipe,
+      planId: plan.id,
+      planName: plan.name,
+    });
+  }
+  return out;
+}
+
+/** Look up a single curated recipe by plan id + recipe key (name slug). */
+export function findCuratedRecipe(
+  planId: string,
+  key: string,
+): CuratedRecipeEntry | undefined {
+  const plan = CURATED_MEAL_PLANS.find((p) => p.id === planId);
+  if (!plan) return undefined;
+  return getCuratedPlanRecipes(plan).find((r) => r.key === key);
+}
+
+/**
+ * The stable library identity for a curated recipe entry. Matches the id
+ * minted in applyCuratedMealPlan, so saving a recipe from the Explore screen
+ * dedupes against the same row created when its parent plan is applied.
+ */
+export function curatedSourceIdFor(entry: CuratedRecipeEntry): string {
+  return entry.recipe.sourceId ?? `${entry.planId}::${entry.key}`;
+}
+
+/**
+ * Build a full Recipe from a curated entry, ready for store.addRecipe (which
+ * upserts on curatedSourceId — so it can never create a duplicate row).
+ * Ingredients are sanitized to metric, mirroring applyCuratedMealPlan.
+ */
+export function buildCuratedRecipe(
+  entry: CuratedRecipeEntry,
+  isSaved: boolean,
+): Recipe {
+  const { sourceId: _override, ...recipeData } = entry.recipe;
+  const sanitizedIngredients = entry.recipe.ingredients.map((ingredient) => {
+    const validated = validateIngredient(ingredient);
+    return { ...ingredient, quantity: validated.quantity, unit: validated.unit };
+  });
+  return {
+    ...recipeData,
+    ingredients: sanitizedIngredients,
+    id: '',
+    curatedSourceId: curatedSourceIdFor(entry),
+    isAIGenerated: false,
+    isSaved,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 /**
  * Resolve the meal list for a plan at a given duration + cooking style.
  *

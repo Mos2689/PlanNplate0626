@@ -1,22 +1,24 @@
-// useRecipeFeatureGate — one-free-use paywall gate for the recipe-page
+// useRecipeFeatureGate — monthly-limit paywall gate for the recipe-page
 // features (Add recipe / Import recipe / Vibe cooking).
 //
-// Each feature gets ONE free use for non-premium users; the SECOND time the
-// screen is opened it fires the paywall and backs out. Premium / in-trial
-// users are never gated and never counted. This is independent of the
-// meal-planning PnP/grocery signup gate and of the other recipe features.
+// Non-premium users get a fixed number of uses PER CALENDAR MONTH (see
+// MONTHLY_FEATURE_LIMITS — 10/mo for add & import, 1/mo for vibe). Opening the
+// screen once the month's allowance is spent fires the paywall and backs out.
+// Premium users are never gated and never counted. Independent of the
+// meal-planning signup gate and of the other recipe features.
 //
 // Called as the first hook in each feature screen:
 //   • `blocked` true  → render `null` (the paywall is already showing).
-//   • `accessGranted` → this render is a permitted use (premium OR a free use
-//     still available), so the screen should SUPPRESS its own premium
+//   • `accessGranted` → this render is a permitted use (premium OR allowance
+//     remaining this month), so the screen should SUPPRESS its own premium
 //     "subscribe" overlay and let the user actually use the feature.
 //   • `markUsed()` → the screen calls this on a SUCCESSFUL use (recipe actually
-//     added / imported / generated). That's what spends the one free use — just
-//     opening and backing out does NOT count. Once spent, the next OPEN gates.
+//     added / imported / generated). That's what spends one monthly use — just
+//     opening and backing out does NOT count. Once the month's allowance is
+//     spent, the next OPEN gates.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { useMealPlanStore } from '@/lib/store';
+import { useMealPlanStore, MONTHLY_FEATURE_LIMITS, type MonthlyFeature } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
 import {
   useHasPremiumAccess,
@@ -27,12 +29,9 @@ import {
 
 type RecipeFeature = 'add' | 'import' | 'vibe';
 
-const usedField = (kind: RecipeFeature) =>
-  kind === 'add'
-    ? ('freeAddRecipeUsed' as const)
-    : kind === 'import'
-      ? ('freeImportRecipeUsed' as const)
-      : ('freeVibeUsed' as const);
+// Map the screen-level feature key to the monthly-usage feature key.
+const monthlyKey = (kind: RecipeFeature): MonthlyFeature =>
+  kind === 'add' ? 'addRecipe' : kind === 'import' ? 'importRecipe' : 'vibe';
 
 export function useRecipeFeatureGate(
   kind: RecipeFeature,
@@ -46,18 +45,21 @@ export function useRecipeFeatureGate(
   // directly.
   const isAnonymous = useAuthStore((s) => s.isAnonymous);
   const storeHydrated = useMealPlanStore((s) => s._hasHydrated);
-  const markRecipeFeatureUsed = useMealPlanStore((s) => s.markRecipeFeatureUsed);
+  const recordMonthlyFeatureUse = useMealPlanStore((s) => s.recordMonthlyFeatureUse);
   const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
 
-  // Snapshot the count synchronously at mount so the very first render already
-  // knows whether a free use is available (avoids a flash of the premium
-  // overlay). The free use is SPENT on success via markUsed(), not on open.
-  const mountUsed = useMealPlanStore.getState().preferences[usedField(kind)] ?? 0;
+  const feature = monthlyKey(kind);
+  const limit = MONTHLY_FEATURE_LIMITS[feature];
+
+  // Snapshot this month's count synchronously at mount so the first render
+  // already knows whether an allowance is available (avoids a flash of the
+  // premium overlay). A use is SPENT on success via markUsed(), not on open.
+  const mountCount = useMealPlanStore.getState().getMonthlyFeatureCount(feature);
 
   const markedRef = useRef(false);
   const [blocked, setBlocked] = useState(false);
   const [accessGranted, setAccessGranted] = useState(
-    hasPremiumAccess || mountUsed < 1,
+    hasPremiumAccess || mountCount < limit,
   );
 
   useEffect(() => {
@@ -67,16 +69,16 @@ export function useRecipeFeatureGate(
     // boot a paying user back to home.
     if (subscriptionLoading) return;
 
-    // Premium / in-trial: unlimited access, nothing to count.
+    // Premium: unlimited access, nothing to count.
     if (hasPremiumAccess) {
       setBlocked(false);
       setAccessGranted(true);
       return;
     }
 
-    const used = useMealPlanStore.getState().preferences[usedField(kind)] ?? 0;
-    if (used >= 1) {
-      // Free use already spent → leave the feature screen and gate. An
+    const used = useMealPlanStore.getState().getMonthlyFeatureCount(feature);
+    if (used >= limit) {
+      // Month's allowance spent → leave the feature screen and gate. An
       // anonymous guest is sent to signup first (the paywall fires after a
       // successful signup); a registered non-premium user gets the paywall.
       setAccessGranted(false);
@@ -88,18 +90,18 @@ export function useRecipeFeatureGate(
         openPaywallSheet(trigger);
       }
     } else {
-      // Free use still available — let them in (counted only on success).
+      // Allowance remaining — let them in (counted only on success).
       setAccessGranted(true);
     }
-  }, [storeHydrated, subscriptionLoading, hasPremiumAccess, isAnonymous, kind, trigger, openPaywallSheet, router]);
+  }, [storeHydrated, subscriptionLoading, hasPremiumAccess, isAnonymous, feature, limit, trigger, openPaywallSheet, router]);
 
-  // Spend the one free use — called by the screen when the feature SUCCEEDS.
+  // Spend one monthly use — called by the screen when the feature SUCCEEDS.
   // No-op for premium users and idempotent within a session.
   const markUsed = useCallback(() => {
     if (markedRef.current || hasPremiumAccess) return;
     markedRef.current = true;
-    markRecipeFeatureUsed(kind);
-  }, [hasPremiumAccess, markRecipeFeatureUsed, kind]);
+    recordMonthlyFeatureUse(feature);
+  }, [hasPremiumAccess, recordMonthlyFeatureUse, feature]);
 
   return { blocked, accessGranted, markUsed };
 }

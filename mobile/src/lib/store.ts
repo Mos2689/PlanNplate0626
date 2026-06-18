@@ -486,6 +486,25 @@ export function servingSizeFromHousehold(household: Household | undefined): numb
   }
 }
 
+// ── Monthly feature limits (paywall) ──
+// Free, non-premium users get this many uses of each feature PER CALENDAR
+// MONTH; exceeding the limit opens the paywall. Premium users are unlimited.
+// "Get Groceries" and "Get Inspired" are intentionally NOT listed — they are
+// free with no monthly restriction.
+export type MonthlyFeature = 'planMeals' | 'addRecipe' | 'importRecipe' | 'vibe';
+
+export const MONTHLY_FEATURE_LIMITS: Record<MonthlyFeature, number> = {
+  planMeals: 10,
+  addRecipe: 10,
+  importRecipe: 10,
+  vibe: 1,
+};
+
+// Calendar-month key, e.g. "2026-06". Usage counters reset when this changes.
+export function currentMonthKey(date: Date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export interface UserPreferences {
   dietaryRestrictions: string[];
   cuisinePreferences: string[];
@@ -538,6 +557,14 @@ export interface UserPreferences {
   freeImportRecipeUsed?: number;
   freeVibeUsed?: number;
 
+  // ── Monthly feature usage (paywall limits) ──
+  // Per-calendar-month usage counters for the gated features. `period` is the
+  // month key ("YYYY-MM"); when the current month differs, the counts are
+  // treated as 0 (a fresh month). See MONTHLY_FEATURE_LIMITS.
+  monthlyFeatureUsage?: {
+    period: string;
+  } & Partial<Record<MonthlyFeature, number>>;
+
   // ── DEPRECATED — dormant trial window ──
   // The 30-day client-side trial has been removed. This field is kept in
   // the persisted shape to avoid a migration for existing installs; nothing
@@ -575,6 +602,11 @@ interface MealPlanStore {
   // Bumps the free-use counter for a recipe-page feature (one free use each,
   // then the paywall). Independent of the signup gate.
   markRecipeFeatureUsed: (kind: 'add' | 'import' | 'vibe') => void;
+  // ── Monthly feature usage (paywall limits) ──
+  // Read the current month's usage for a feature (0 when the stored period is
+  // a previous month) and record one use (resets the period on a new month).
+  getMonthlyFeatureCount: (feature: MonthlyFeature) => number;
+  recordMonthlyFeatureUse: (feature: MonthlyFeature) => void;
 
   // Recipes
   recipes: Recipe[];
@@ -1586,6 +1618,41 @@ export const useMealPlanStore = create<MealPlanStore>()(
             [field]: (state.preferences[field] ?? 0) + 1,
           },
         }));
+        const userId = getCurrentUserId();
+        if (userId) {
+          const { preferences } = get();
+          db.upsertUserPreferences(userId, preferences).catch(() => {
+            /* best-effort sync — local counts are the source of truth */
+          });
+        }
+      },
+
+      // ── Monthly feature usage (paywall limits) ──
+      getMonthlyFeatureCount: (feature) => {
+        const usage = get().preferences.monthlyFeatureUsage;
+        const period = currentMonthKey();
+        if (!usage || usage.period !== period) return 0;
+        return usage[feature] ?? 0;
+      },
+
+      recordMonthlyFeatureUse: (feature) => {
+        set((state) => {
+          const period = currentMonthKey();
+          const cur = state.preferences.monthlyFeatureUsage;
+          // Start a fresh bucket when the stored period is a previous month
+          // (or nothing has been recorded yet).
+          const base =
+            cur && cur.period === period ? cur : { period };
+          return {
+            preferences: {
+              ...state.preferences,
+              monthlyFeatureUsage: {
+                ...base,
+                [feature]: (base[feature] ?? 0) + 1,
+              },
+            },
+          };
+        });
         const userId = getCurrentUserId();
         if (userId) {
           const { preferences } = get();
@@ -3049,6 +3116,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   data.preferences.freePlanBuildsUsed ?? localPrefs.freePlanBuildsUsed ?? 0,
                 freeGroceryBuildsUsed:
                   data.preferences.freeGroceryBuildsUsed ?? localPrefs.freeGroceryBuildsUsed ?? 0,
+                // Monthly paywall-limit usage is local-only (not stored in the
+                // DB), so fold the rehydrated value back in or a cold start
+                // would zero the month's counts and hand out fresh allowances.
+                monthlyFeatureUsage:
+                  data.preferences.monthlyFeatureUsage ?? localPrefs.monthlyFeatureUsage,
               }
             : defaultPreferences;
 

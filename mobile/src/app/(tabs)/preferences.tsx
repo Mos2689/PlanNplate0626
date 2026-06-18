@@ -801,6 +801,43 @@ export default function ProfileScreen() {
                 Edit cooking profile
               </Text>
             </Pressable>
+            {/* Do more with PnP — premium upsell (non-premium only). Moved here
+                from the meal-plan page; styled as a secondary CTA that sits
+                directly under the Edit button. */}
+            {!isPremium && (
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  openPaywallSheet('profile-banner');
+                }}
+                style={{
+                  marginTop: 10,
+                  width: '100%',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  paddingHorizontal: 16,
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: designTokens.colors.olive,
+                  backgroundColor: 'transparent',
+                }}
+              >
+                <Crown size={15} color={designTokens.colors.olive} strokeWidth={1.8} />
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 14.5,
+                    color: designTokens.colors.olive,
+                    letterSpacing: -0.145,
+                  }}
+                >
+                  Do more with PnP
+                </Text>
+              </Pressable>
+            )}
             {/* Restore Purchases — non-premium only. Gives a paid user who
                 ended up locally non-premium (reinstall, switched device, etc.)
                 a recovery path that doesn't require the paywall first. */}

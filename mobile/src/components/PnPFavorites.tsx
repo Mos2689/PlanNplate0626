@@ -1,20 +1,21 @@
-// PnPFavorites — home-tab section that surfaces the recipes the user
-// has loved or rated highly over the PAST WEEK. Replaces the old
-// "PnP Specials" curated-plan rail.
+// PnPFavorites — home-tab section that surfaces the recipes the user has
+// loved or rated highly. Two signals feed it (computed by the parent):
+//   • RATED — recipes rated ≥4★ or Vibe-rated ≥4 in the past week (so the
+//     rail refreshes weekly based on behaviour).
+//   • LOVED — recipes hearted (saved) in the Recipes section.
 //
-// Data is computed by the parent (home screen) from recipe ratings +
-// Vibe-Cooking ratings within the last 7 days, so this component stays
-// purely presentational. On a fresh account there are no favorites yet,
-// so it renders a gentle empty state instead of hiding.
+// Rendered as a horizontal rail (max 8 tiles). Purely presentational; the
+// parent owns the data + the 8-item cap. Fresh accounts get a gentle empty
+// state instead of a hidden section.
 //
 // Brand rules preserved:
 //   • One italic word per surface → "Your *favorites*." in the header.
 //   • Sage / olive accents only.
 //   • FadeInDown stagger so the section reads as its own beat.
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
-import { Heart, Star, ChevronRight } from 'lucide-react-native';
+import { Heart, Star } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { designTokens, elevation, getThemeColors } from '@/lib/design-tokens';
@@ -22,8 +23,9 @@ import type { Recipe } from '@/lib/store';
 
 export interface FavoriteRecipe {
   recipe: Recipe;
-  stars: number; // 1–5 (the highest signal seen for this recipe this week)
+  stars: number; // 1–5 (the highest rating seen this week); 0 for loved-only
   at: number; // epoch ms of the most recent love/rating
+  kind: 'rated' | 'loved'; // 'rated' shows the star score, 'loved' shows a heart
 }
 
 interface PnPFavoritesProps {
@@ -32,12 +34,7 @@ interface PnPFavoritesProps {
   isDark?: boolean;
 }
 
-function relativeDay(ms: number): string {
-  const days = Math.floor((Date.now() - ms) / 86400000);
-  if (days <= 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  return `${days}d ago`;
-}
+const TILE_WIDTH = 156;
 
 export function PnPFavorites({ favorites, onRecipePress, isDark = false }: PnPFavoritesProps) {
   const colors = getThemeColors(isDark);
@@ -97,14 +94,19 @@ export function PnPFavorites({ favorites, onRecipePress, isDark = false }: PnPFa
             lineHeight: 17,
           }}
         >
-          Meals you loved or rated highly this past week.
+          Recipes you loved or rated highly, updated weekly.
         </Text>
       </View>
 
       {favorites.length === 0 ? (
         <EmptyFavorites isDark={isDark} />
       ) : (
-        <View style={{ paddingHorizontal: 16, gap: 12 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flexGrow: 0 }}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+        >
           {favorites.map((fav, index) => (
             <FavoriteCard
               key={fav.recipe.id}
@@ -114,13 +116,13 @@ export function PnPFavorites({ favorites, onRecipePress, isDark = false }: PnPFa
               isDark={isDark}
             />
           ))}
-        </View>
+        </ScrollView>
       )}
     </View>
   );
 }
 
-// ─── Per-recipe card ───────────────────────────────────────────────────────
+// ─── Per-recipe tile (horizontal rail) ───────────────────────────────────────
 
 function FavoriteCard({
   fav,
@@ -136,43 +138,38 @@ function FavoriteCard({
   const cardBg = isDark ? '#1f1f1f' : '#FFFFFF';
   const cardBorder = isDark ? '#2a2a2a' : designTokens.colors.hair;
   const inkPrimary = isDark ? '#fff' : designTokens.colors.ink;
-  const inkSecondary = isDark ? '#aaa' : designTokens.colors.ink2;
-  const inkTertiary = isDark ? '#888' : designTokens.colors.ink3;
 
-  const { recipe } = fav;
-  const totalMin = (recipe.cookTime || 0) + (recipe.prepTime || 0);
+  const { recipe, kind } = fav;
+  const isLoved = kind === 'loved' || fav.stars <= 0;
 
   return (
-    <Animated.View entering={FadeInDown.delay(index * 70).springify()}>
+    <Animated.View entering={FadeInDown.delay(index * 60).springify()} style={{ width: TILE_WIDTH }}>
       <Pressable
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           onPress();
         }}
-        accessibilityLabel={`${recipe.name}, rated ${fav.stars} stars`}
+        accessibilityLabel={
+          isLoved ? `${recipe.name}, loved` : `${recipe.name}, rated ${fav.stars} stars`
+        }
       >
         {({ pressed }) => (
           <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
               borderRadius: 18,
               borderWidth: 1,
               borderColor: cardBorder,
               backgroundColor: cardBg,
-              padding: 10,
+              overflow: 'hidden',
               ...elevation.card,
-              transform: [{ scale: pressed ? 0.985 : 1 }],
+              transform: [{ scale: pressed ? 0.98 : 1 }],
             }}
           >
             {/* Thumbnail */}
             <View
               style={{
-                width: 66,
-                height: 66,
-                borderRadius: 13,
-                overflow: 'hidden',
+                width: '100%',
+                aspectRatio: 4 / 3,
                 backgroundColor: '#F4F0E8',
               }}
             >
@@ -184,14 +181,47 @@ function FavoriteCard({
                   transition={200}
                 />
               ) : null}
+
+              {/* Signal badge — heart for loved, star score for rated. */}
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 7,
+                  left: 7,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 2,
+                  paddingHorizontal: 5,
+                  paddingVertical: 2,
+                  borderRadius: 999,
+                  backgroundColor: 'rgba(0,0,0,0.55)',
+                }}
+              >
+                {isLoved ? (
+                  <Heart size={9} color="#F6F2E9" fill="#F6F2E9" strokeWidth={0} />
+                ) : (
+                  <>
+                    <Star size={9} color="#F4C76A" fill="#F4C76A" strokeWidth={0} />
+                    <Text
+                      style={{
+                        fontFamily: designTokens.font.semibold,
+                        fontSize: 9.5,
+                        color: '#F6F2E9',
+                      }}
+                    >
+                      {fav.stars}.0
+                    </Text>
+                  </>
+                )}
+              </View>
             </View>
 
-            {/* Text */}
-            <View style={{ flex: 1, minWidth: 0 }}>
+            {/* Title only — description removed to keep the tile compact. */}
+            <View style={{ paddingHorizontal: 10, paddingVertical: 8 }}>
               <Text
                 style={{
                   fontFamily: designTokens.font.semibold,
-                  fontSize: 15,
+                  fontSize: 13.5,
                   color: inkPrimary,
                   letterSpacing: -0.2,
                 }}
@@ -199,55 +229,7 @@ function FavoriteCard({
               >
                 {recipe.name}
               </Text>
-              <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}
-              >
-                {/* Star rating */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                  <Star
-                    size={12}
-                    color={designTokens.colors.olive}
-                    fill={designTokens.colors.olive}
-                    strokeWidth={0}
-                  />
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.semibold,
-                      fontSize: 12,
-                      color: inkSecondary,
-                    }}
-                  >
-                    {fav.stars}.0
-                  </Text>
-                </View>
-                <Dot inkTertiary={inkTertiary} />
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 12,
-                    color: inkSecondary,
-                  }}
-                >
-                  {relativeDay(fav.at)}
-                </Text>
-                {totalMin > 0 && (
-                  <>
-                    <Dot inkTertiary={inkTertiary} />
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.regular,
-                        fontSize: 12,
-                        color: inkSecondary,
-                      }}
-                    >
-                      {totalMin} min
-                    </Text>
-                  </>
-                )}
-              </View>
             </View>
-
-            <ChevronRight size={18} color={inkTertiary} strokeWidth={1.7} />
           </View>
         )}
       </Pressable>
@@ -255,7 +237,7 @@ function FavoriteCard({
   );
 }
 
-// ─── Empty state (fresh account / no loved meals this week) ──────────────────
+// ─── Empty state (fresh account / no loved or rated recipes) ─────────────────
 
 function EmptyFavorites({ isDark }: { isDark: boolean }) {
   const cardBorder = isDark ? '#2a2a2a' : designTokens.colors.hair;
@@ -311,23 +293,9 @@ function EmptyFavorites({ isDark }: { isDark: boolean }) {
             marginTop: 5,
           }}
         >
-          Rate the meals you cook, and the ones you love this week will gather here.
+          Save the recipes you love, or rate the meals you cook — they'll gather here.
         </Text>
       </View>
     </Animated.View>
-  );
-}
-
-function Dot({ inkTertiary }: { inkTertiary: string }) {
-  return (
-    <View
-      style={{
-        width: 2,
-        height: 2,
-        borderRadius: 999,
-        backgroundColor: inkTertiary,
-        opacity: 0.6,
-      }}
-    />
   );
 }

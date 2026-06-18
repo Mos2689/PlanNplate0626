@@ -33,7 +33,6 @@ export function NudgeCard({
 }: NudgeCardProps) {
   const cardBg = designTokens.colors.charcoal;
   const textColor = '#F6F2E9';
-  const mutedText = 'rgba(246,242,233,0.7)';
 
   return (
     <View style={{ marginHorizontal: 16, marginBottom: 22 }}>
@@ -98,7 +97,8 @@ export function NudgeCard({
               )}
             </View>
 
-            {/* Bold title */}
+            {/* Bold title — description intentionally omitted to keep the
+                card compact (title + actions only). */}
             <Text
               style={{
                 fontFamily: designTokens.font.medium,
@@ -112,21 +112,8 @@ export function NudgeCard({
               {title}
             </Text>
 
-            {/* Detail message */}
-            <Text
-              style={{
-                fontFamily: designTokens.font.regular,
-                fontSize: 13.5,
-                color: mutedText,
-                marginTop: 4,
-                lineHeight: 20,
-              }}
-            >
-              {message}
-            </Text>
-
             {/* Actions */}
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
               {onPrimaryAction && (
                 <Pressable
                   onPress={onPrimaryAction}

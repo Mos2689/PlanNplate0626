@@ -309,6 +309,13 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           }}
         />
         <Stack.Screen
+          name="curated-recipe-detail"
+          options={{
+            headerShown: false,
+            presentation: 'card',
+          }}
+        />
+        <Stack.Screen
           name="curated-plan-browse"
           options={{
             headerShown: false,

@@ -1618,22 +1618,8 @@ export default function GroceryScreen() {
       router.push('/signup');
       return;
     }
-    // Premium gate — smart grocery aggregation is a Premium feature for
-    // signed-up users. Anonymous users still get one free build via the gate
-    // above; manual grocery item add stays free for everyone.
-    if (!isAnonymous && !hasPremiumAccess) {
-      if (!isPremiumResolved) {
-        // Subscription state hasn't settled — kick a re-sync and no-op so
-        // a paying user doesn't see the paywall during the cold-start race.
-        if (currentUserId) {
-          void useSubscriptionStore.getState().syncWithRevenueCat(currentUserId);
-        }
-        return;
-      }
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      openPaywallSheet('pnp-second-tap');
-      return;
-    }
+    // "Get Groceries" is free with no monthly restriction — no premium gate.
+    // (The signup gate above still applies to anonymous guests.)
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     generateGroceryList(startDate, endDate);
     setGroceryDateRange(startDate, endDate);

@@ -237,6 +237,8 @@ export default function SelectRecipeScreen() {
 
   const isAddToSlotMode = params.mode === 'add-to-plan' && !!params.recipeId;
   const isSwapMode = params.swap === 'true';
+  // When locked (user tapped "Add" on a specific meal slot), the date picker
+  // and per-date meal-type grid are hidden — the slot is already chosen.
   const isDateLocked = params.lockDate === 'true';
 
   const filteredRecipes = useMemo(() => {
@@ -423,7 +425,7 @@ export default function SelectRecipeScreen() {
           contentContainerStyle={{ paddingBottom: 140 }}
         >
           {/* Date selector — hidden in swap mode, AND when the caller locked the date
-              (e.g. coming from the recipe-management sheet's "+" button). */}
+              (e.g. coming from a specific meal slot on the meal plan). */}
           {!isSwapMode && !isDateLocked && (
             <Animated.View
               entering={FadeInDown.delay(120).springify()}
@@ -501,9 +503,10 @@ export default function SelectRecipeScreen() {
             </Animated.View>
           )}
 
-          {/* Per-date meal type schedule — always visible (so users can add more meal types
-              or dates), except in swap mode where the slot is fixed. */}
-          {!isSwapMode && selectedDates.length > 0 && (
+          {/* Per-date meal type schedule — lets users add more meal types or
+              dates. Hidden in swap mode and when the target slot is locked
+              (the date + meal type are already chosen). */}
+          {!isSwapMode && !isDateLocked && selectedDates.length > 0 && (
             <Animated.View
               entering={FadeInDown.delay(160).springify()}
               style={{ paddingHorizontal: 16, paddingBottom: 18 }}

@@ -150,8 +150,8 @@ function ThumbnailStack({ thumbnails }: { thumbnails: Array<string | number> }) 
 }
 
 const DEFAULT_ACTIONS: QuickActionItem[] = [
-  { icon: 'utensils', title: 'PnP Picks', subtitle: 'A plan, picked for you', variant: 'primary' },
-  { icon: 'cart', title: 'Build grocery list', subtitle: 'Ready for this week' },
+  { icon: 'utensils', title: 'Plan My Meals', subtitle: 'A plan, picked for you', variant: 'primary' },
+  { icon: 'cart', title: 'Get Groceries', subtitle: 'Ready for this week' },
 ];
 
 // Per-tile accent map for the SECONDARY 2-col row. Full-saturation discs
