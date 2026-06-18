@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PlannPlate — Welcome preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #15140F;
+    --cream: #FAF7F0;
+    --olive: #E46D46;
+    --bg: #0E0D0A;
+    --sans: 'Geist', -apple-system, system-ui, sans-serif;
+    --serif: 'Instrument Serif', Georgia, serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #2a2a2c;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    padding: 32px 16px;
+    font-family: var(--sans);
+    color: #ddd;
+  }
+  .caption { font-size: 13px; color: #aaa; text-align: center; max-width: 390px; line-height: 1.5; }
+  .replay { cursor: pointer; background: #3a3a3c; color: #fff; border: 1px solid #555; border-radius: 999px; padding: 8px 18px; font-family: var(--sans); font-size: 13px; }
+
+  .phone {
+    width: 390px; height: 844px;
+    border-radius: 46px;
+    overflow: hidden;
+    position: relative;
+    background: var(--bg);
+    box-shadow: 0 24px 70px rgba(0,0,0,0.5);
+    border: 10px solid #0a0a0a;
+  }
+
+  /* Layer 0 — hero (Ken-Burns) */
+  .hero {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    animation: ken 12s ease-in-out infinite alternate;
+    transform-origin: 60% 40%;
+  }
+  .hero2 { opacity: 0; animation: ken 12s ease-in-out infinite alternate, swap 14s ease-in-out infinite; }
+  @keyframes ken {
+    from { transform: scale(1.08) translate(0, 0); }
+    to   { transform: scale(1.18) translate(-16px, -12px); }
+  }
+  @keyframes swap {
+    0%, 32% { opacity: 0; } 50%, 82% { opacity: 1; } 100% { opacity: 0; }
+  }
+
+  /* Layer 1 — scrims */
+  .scrim-top { position:absolute; inset:0; background: linear-gradient(to bottom, rgba(14,13,10,0.55), rgba(14,13,10,0) 28%); }
+  .scrim-bottom { position:absolute; inset:0; background: linear-gradient(to bottom, rgba(14,13,10,0) 32%, rgba(14,13,10,0.55) 60%, rgba(14,13,10,0.92) 82%, #0E0D0A 100%); }
+  .glow { position:absolute; top:0; right:0; width:320px; height:320px; background: radial-gradient(circle at top right, rgba(228,109,70,0.22), transparent 60%); }
+
+  /* Layer 2 — top bar */
+  .topbar {
+    position:absolute; top:60px; left:24px; right:24px;
+    display:flex; align-items:center; justify-content:space-between; z-index:5;
+  }
+  .brand { display:flex; align-items:center; gap:8px; }
+  .brand svg { width:26px; height:26px; }
+  .brand span { font-weight:600; font-size:16px; color:#fff; letter-spacing:-0.3px; }
+  .signin { font-weight:500; font-size:14px; color:rgba(255,255,255,0.82); cursor:pointer; }
+
+  /* Layer 3 — content */
+  .content { position:absolute; left:0; right:0; bottom:0; padding: 0 24px 44px; z-index:5; }
+  .eyebrow {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:7px 12px; border-radius:999px; margin-bottom:16px;
+    background: rgba(40,38,34,0.45); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border:1px solid rgba(255,255,255,0.18);
+  }
+  .eyebrow .dot { width:6px; height:6px; border-radius:50%; background:var(--olive); }
+  .eyebrow span { font-weight:600; font-size:11px; letter-spacing:0.6px; text-transform:uppercase; color:#fff; }
+
+  .h1 { font-family:var(--sans); font-weight:500; font-size:42px; line-height:46px; letter-spacing:-1px; color:#fff; }
+  .h2 { font-family:var(--serif); font-style:italic; font-size:46px; line-height:52px; letter-spacing:-0.5px; color:#fff; }
+  .sub { font-weight:400; font-size:15px; line-height:22px; color:rgba(255,255,255,0.82); margin-top:14px; }
+
+  .proof { display:flex; align-items:center; gap:8px; margin-top:18px; }
+  .proof .chk { width:20px; height:20px; border-radius:50%; background:rgba(228,109,70,0.22); display:flex; align-items:center; justify-content:center; }
+  .proof .chk svg { width:12px; height:12px; }
+  .proof span { font-weight:500; font-size:13px; color:rgba(255,255,255,0.72); }
+
+  .cta {
+    margin-top:24px; height:58px; border-radius:999px;
+    background:var(--cream); color:var(--ink);
+    display:flex; align-items:center; justify-content:center; gap:9px;
+    font-weight:600; font-size:16px; letter-spacing:-0.2px; cursor:pointer;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.28);
+  }
+  .cta svg { width:19px; height:19px; }
+  .cta:active { transform: scale(0.97); }
+  .reassure { font-weight:400; font-size:12px; color:rgba(255,255,255,0.55); text-align:center; margin-top:12px; }
+
+  /* Entrance choreography */
+  .anim { opacity:0; transform: translateY(20px); }
+  .play .anim { animation: rise 0.55s cubic-bezier(0.23,1,0.32,1) forwards; }
+  .play .d0 { animation-delay: 0.12s; } .play .d1 { animation-delay: 0.22s; }
+  .play .d2 { animation-delay: 0.36s; } .play .d3 { animation-delay: 0.46s; }
+  .play .d4 { animation-delay: 0.56s; }
+  @keyframes rise { to { opacity:1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+  <div class="caption">Layout / motion preview using your real hero assets. The live app renders this in React Native (Reanimated) — fonts, timing and depth match; treat this as a faithful comp, not a pixel-exact build.</div>
+  <button class="replay" onclick="replay()">↻ Replay entrance</button>
+
+  <div class="phone play" id="phone">
+    <img class="hero"  src="assets/images/welcome-hero-1.png" alt="" />
+    <img class="hero hero2" src="assets/images/welcome-hero-2.png" alt="" />
+    <div class="scrim-top"></div>
+    <div class="scrim-bottom"></div>
+    <div class="glow"></div>
+
+    <div class="topbar">
+      <div class="brand">
+        <svg viewBox="0 0 100 100" fill="none" stroke="#fff">
+          <circle cx="50" cy="50" r="45" stroke-width="6.6"/>
+          <circle cx="50" cy="50" r="38" stroke-width="5.3" opacity="0.6"/>
+          <path d="M 30 35 L 30 65 M 25 40 L 35 40 M 25 50 L 35 50 M 25 60 L 35 60" stroke-width="6" stroke-linecap="round"/>
+          <path d="M 70 35 L 70 65" stroke-width="6.6" stroke-linecap="round"/>
+          <circle cx="70" cy="35" r="10" fill="#fff" stroke="none"/>
+        </svg>
+        <span>PlannPlate</span>
+      </div>
+      <div class="signin">Sign in</div>
+    </div>
+
+    <div class="content">
+      <div class="eyebrow anim d2"><span class="dot"></span><span>Free · No signup</span></div>
+      <div class="h1 anim d0">Your first meal plan,</div>
+      <div class="h2 anim d1">on the house.</div>
+      <div class="sub anim d2">Tell us what you like — a full week of personalized meals in under a minute. No account, no catch.</div>
+      <div class="proof anim d3">
+        <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="#E46D46" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <span>Personalized for 20+ diets &amp; allergies</span>
+      </div>
+      <div class="cta anim d4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#15140F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/><line x1="6" y1="17" x2="18" y2="17"/></svg>
+        Make my meal plan
+        <svg viewBox="0 0 24 24" fill="none" stroke="#15140F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </div>
+      <div class="reassure anim d4">Takes about 60 seconds</div>
+    </div>
+  </div>
+
+<script>
+  function replay() {
+    const p = document.getElementById('phone');
+    p.classList.remove('play');
+    void p.offsetWidth;
+    p.classList.add('play');
+  }
+</script>
+</body>
+</html>

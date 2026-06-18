@@ -1,0 +1,13 @@
+diff --git a/node_modules/expo-network-addons/expo-network-addons-gradle-plugin/build.gradle.kts b/node_modules/expo-network-addons/expo-network-addons-gradle-plugin/build.gradle.kts
+index c904f31..8c86ec7 100644
+--- a/node_modules/expo-network-addons/expo-network-addons-gradle-plugin/build.gradle.kts
++++ b/node_modules/expo-network-addons/expo-network-addons-gradle-plugin/build.gradle.kts
+@@ -1,7 +1,7 @@
+ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+ 
+ plugins {
+-  kotlin("jvm") version "1.9.25"
++  kotlin("jvm") version "2.1.0"
+   id("java-gradle-plugin")
+ }
+ 

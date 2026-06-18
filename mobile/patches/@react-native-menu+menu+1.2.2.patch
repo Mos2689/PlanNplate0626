@@ -1,0 +1,34 @@
+diff --git a/node_modules/@react-native-menu/menu/android/src/main/java/com/reactnativemenu/MenuView.kt b/node_modules/@react-native-menu/menu/android/src/main/java/com/reactnativemenu/MenuView.kt
+index 17ed7c6..3ecbfa7 100644
+--- a/node_modules/@react-native-menu/menu/android/src/main/java/com/reactnativemenu/MenuView.kt
++++ b/node_modules/@react-native-menu/menu/android/src/main/java/com/reactnativemenu/MenuView.kt
+@@ -47,8 +47,7 @@ class MenuView(private val mContext: ReactContext) : ReactViewGroup(mContext) {
+     prepareMenu()
+   }
+ 
+-  override fun setHitSlopRect(rect: Rect?) {
+-    super.setHitSlopRect(rect)
++  fun setCustomHitSlopRect(rect: Rect?) {
+     mHitSlopRect = rect
+     updateTouchDelegate()
+   }
+diff --git a/node_modules/@react-native-menu/menu/android/src/main/java/com/reactnativemenu/MenuViewManagerBase.kt b/node_modules/@react-native-menu/menu/android/src/main/java/com/reactnativemenu/MenuViewManagerBase.kt
+index 0cd90f4..38fac08 100644
+--- a/node_modules/@react-native-menu/menu/android/src/main/java/com/reactnativemenu/MenuViewManagerBase.kt
++++ b/node_modules/@react-native-menu/menu/android/src/main/java/com/reactnativemenu/MenuViewManagerBase.kt
+@@ -120,12 +120,12 @@ abstract class MenuViewManagerBase : ReactClippingViewManager<MenuView>() {
+   }
+ 
+   @ReactProp(name = "hitSlop")
+-  fun setHitSlop(view: ReactViewGroup, @Nullable hitSlop: ReadableMap?) {
++  fun setHitSlop(view: MenuView, @Nullable hitSlop: ReadableMap?) {
+     if (hitSlop == null) {
+       // We should keep using setters as `Val cannot be reassigned`
+-      view.setHitSlopRect(null)
++      view.setCustomHitSlopRect(null)
+     } else {
+-      view.setHitSlopRect(
++      view.setCustomHitSlopRect(
+               Rect(
+                       if (hitSlop.hasKey("left"))
+                               PixelUtil.toPixelFromDIP(hitSlop.getDouble("left")).toInt()

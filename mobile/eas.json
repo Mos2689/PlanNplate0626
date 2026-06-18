@@ -1,0 +1,51 @@
+{
+  "cli": {
+    "version": ">=16.17.4"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "env": {
+        "BACKEND_URL": "https://ample-pony.vibecode.run",
+        "EXPO_PUBLIC_VIBECODE_REVENUECAT_APPLE_KEY": "appl_twIltSRpbHfdtREIEbywimmFvBp",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://wcjsrhdlnmfugdjtvadj.supabase.co",
+        "EXPO_PUBLIC_PEXELS_API_KEY": "e04AwB0tvSH3BVmyE9c7sZTNvQcbUHKKFQXX1j98dKhT0715wH785NF5",
+        "EXPO_PUBLIC_VIBECODE_REVENUECAT_GOOGLE_KEY": "goog_CvNmqdxQPrauotlExRcsCACMZFm",
+        "EXPO_PUBLIC_BACKEND_URL": "https://ample-pony.vibecode.run",
+        "EXPO_PUBLIC_RESEND_API_KEY": "re_UoTB48Mg_31XMgVNrXErcsYcdqETiM83v",
+        "EXPO_PUBLIC_Maps_API_Key": "AIzaSyBgytbZVqyYEo1moD5lx9seo1ggoi9D7qs",
+        "EXPO_PUBLIC_VIBECODE_GOOGLE_API_KEY": "AIzaSyCvUH65MwBnRmDIuh6eootfGFc9PsyNDqk",
+        "EXPO_PUBLIC_VIBECODE_REVENUECAT_TEST_KEY": "test_TDYtycKpCSihFZcSXqkDGJXvecl",
+        "EXPO_PUBLIC_VIBECODE_BACKEND_URL": "https://ample-pony.vibecode.run",
+        "SUPABASE_SERVICE_ROLE_KEY": "your-supabase-service-role-key",
+        "OPENAI_API_KEY": "your-openai-api-key",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_NihKFWAv5fqC1iyZRlHDHA_yuvikvsI",
+        "EXPO_PUBLIC_META_APP_ID": "986931690923533",
+        "EXPO_PUBLIC_META_CLIENT_TOKEN": "5938fbffd345bc485d7f6be76d0d9982",
+        "EXPO_PUBLIC_META_DISPLAY_NAME": "PlanNplate"
+      },
+      "ios": {
+        "distribution": "store"
+      },
+      "android": {
+        "distribution": "store"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6757459949"
+      }
+    }
+  }
+}

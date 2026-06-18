@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PlannPlate — Plan Setup redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+  :root{
+    --ink:#15140F; --ink2:#5B5950; --ink3:#9A968B; --hair:#ECEAE2; --hair2:#F4F2EB;
+    --brand:#546445; --brandDeep:#3F4D33; --olive:#E46D46; --cream:#FAF7F0;
+    --sans:'Geist',-apple-system,system-ui,sans-serif; --serif:'Instrument Serif',Georgia,serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#d9d7d0;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;padding:28px 16px;font-family:var(--sans);}
+  .cap{font-size:13px;color:#6b6b6b;text-align:center;max-width:390px;line-height:1.5;}
+  .phone{width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;background:#FFFFFF;box-shadow:0 24px 70px rgba(0,0,0,0.35);border:10px solid #111;}
+  .scroll{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column;}
+  .pad{padding:0 24px;}
+
+  .hdr{display:flex;align-items:center;gap:12px;padding:54px 16px 8px;}
+  .back{width:40px;height:40px;border-radius:20px;border:1px solid var(--hair);display:flex;align-items:center;justify-content:center;color:var(--ink);}
+  .eyebrow{font-weight:600;font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--olive);}
+  .title{font-weight:500;font-size:18px;color:var(--ink);letter-spacing:-0.3px;}
+  .title i{font-family:var(--serif);font-style:italic;font-weight:400;}
+
+  .seclbl{display:flex;align-items:center;gap:6px;margin-bottom:12px;color:var(--ink3);}
+  .seclbl span{font-weight:500;font-size:11px;letter-spacing:0.55px;text-transform:uppercase;}
+  .seclbl svg{width:12px;height:12px;}
+
+  .dur{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;border:1px solid var(--hair);background:#fff;}
+  .dur .cal{width:40px;height:40px;border-radius:12px;background:var(--brand);display:flex;align-items:center;justify-content:center;color:var(--cream);}
+  .dur .cal svg{width:19px;height:19px;}
+  .dur .t1{font-weight:600;font-size:15.5px;color:var(--ink);letter-spacing:-0.2px;}
+  .dur .t2{font-size:12.5px;color:var(--ink3);margin-top:2px;}
+  .grow{flex:1;}
+
+  .desc{font-size:12px;color:var(--ink3);line-height:17px;}
+
+  .rowlbl{display:flex;align-items:center;gap:6px;margin-bottom:8px;color:var(--ink3);}
+  .rowlbl svg{width:13px;height:13px;}
+  .rowlbl span{font-weight:500;font-size:12.5px;letter-spacing:-0.1px;}
+
+  .seg{display:flex;gap:6px;}
+  .seg .opt{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:12px 6px;border-radius:12px;border:1px solid var(--hair);background:#fff;font-weight:600;font-size:12.5px;color:var(--ink);letter-spacing:-0.1px;}
+  .seg .opt svg{width:15px;height:15px;color:var(--brand);}
+  .seg .opt.sel{border:none;background:var(--brand);color:var(--cream);}
+  .seg .opt.sel svg{color:var(--cream);}
+
+  .tiles{display:flex;gap:8px;}
+  .tile{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:9px;padding:14px 6px;border-radius:14px;border:1px solid var(--hair);background:#fff;}
+  .tile .chip{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--hair);}
+  .tile .chip svg{width:19px;height:19px;color:var(--ink3);}
+  .tile .lbl{font-weight:500;font-size:12px;color:var(--ink2);letter-spacing:-0.1px;}
+  .tile.sel{border-width:1.5px;}
+  .tile.sel .lbl{color:var(--ink);font-weight:600;}
+  .badge{position:absolute;top:8px;right:8px;width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;}
+  .badge svg{width:11px;height:11px;color:var(--cream);}
+
+  .cta{position:absolute;left:0;right:0;bottom:0;padding:14px 24px 30px;background:#fff;border-top:1px solid var(--hair2);}
+  .cta .btn{display:flex;align-items:center;justify-content:center;gap:10px;padding:18px;border-radius:999px;background:var(--brand);color:var(--cream);font-weight:600;font-size:16px;letter-spacing:-0.25px;box-shadow:0 8px 18px rgba(63,77,51,0.22);}
+  .cta .btn svg{width:20px;height:20px;}
+</style>
+</head>
+<body>
+  <div class="cap">Redesigned “Plan Setup” — bespoke Lucide icons in tinted chips, selected check-badge, meal-time glyphs, press-spring tiles. Rendered with the real icon set.</div>
+  <div class="phone">
+    <div class="scroll">
+      <div class="hdr">
+        <div class="back"><i data-lucide="chevron-left"></i></div>
+        <div>
+          <div class="eyebrow">Plan setup</div>
+          <div class="title">Vegetarian <i>Delight</i></div>
+        </div>
+      </div>
+
+      <div class="pad" style="margin-top:16px;">
+        <div class="seclbl"><i data-lucide="calendar"></i><span>Meal plan duration</span></div>
+        <div class="dur">
+          <div class="cal"><i data-lucide="calendar"></i></div>
+          <div class="grow">
+            <div class="t1">Jun 13 – Jun 19</div>
+            <div class="t2">7 days · tap to change</div>
+          </div>
+          <i data-lucide="chevron-right" style="color:var(--ink3);width:18px;height:18px;"></i>
+        </div>
+      </div>
+
+      <div class="pad" style="margin-top:28px;">
+        <div class="seclbl"><i data-lucide="chef-hat"></i><span>How you like to cook</span></div>
+        <div class="desc" style="margin-bottom:14px;">First pick your rhythm, then how you cook each meal — starts from your saved habits, tweak just for this plan.</div>
+
+        <div class="rowlbl"><span style="text-transform:none;font-size:12.5px;color:var(--ink3);">Cooking rhythm</span></div>
+        <div class="seg" style="margin-bottom:14px;">
+          <div class="opt sel"><i data-lucide="flame"></i>Cook daily</div>
+          <div class="opt"><i data-lucide="layers"></i>Batch cook</div>
+        </div>
+
+        <div class="desc" style="margin-bottom:18px;">Skip / Grab &amp; go leaves breakfast un-cooked (just a reminder on the calendar). Leftovers reuse the previous night's dinner; Buy out leaves the slot for eating out.</div>
+
+        <div style="margin-bottom:16px;">
+          <div class="rowlbl"><i data-lucide="sunrise" style="color:#B85A2E;"></i><span>Breakfast</span></div>
+          <div class="tiles">
+            <div class="tile"><div class="chip"><i data-lucide="ban"></i></div><div class="lbl">Skip</div></div>
+            <div class="tile sel" style="border-color:#B85A2E;box-shadow:0 4px 9px rgba(184,90,46,0.12);"><div class="chip"><i data-lucide="egg-fried" style="color:#B85A2E;"></i></div><div class="lbl">Cook</div><div class="badge" style="background:#B85A2E;"><i data-lucide="check"></i></div></div>
+            <div class="tile"><div class="chip"><i data-lucide="croissant"></i></div><div class="lbl">Grab &amp; go</div></div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <div class="rowlbl"><i data-lucide="sun" style="color:#546445;"></i><span>Lunch</span></div>
+          <div class="tiles">
+            <div class="tile sel" style="border-color:#546445;box-shadow:0 4px 9px rgba(84,100,69,0.12);"><div class="chip"><i data-lucide="refrigerator" style="color:#546445;"></i></div><div class="lbl">Leftovers</div><div class="badge" style="background:#546445;"><i data-lucide="check"></i></div></div>
+            <div class="tile"><div class="chip"><i data-lucide="salad"></i></div><div class="lbl">Cook fresh</div></div>
+            <div class="tile"><div class="chip"><i data-lucide="store"></i></div><div class="lbl">Buy out</div></div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <div class="rowlbl"><i data-lucide="moon" style="color:#42526A;"></i><span>Dinner</span></div>
+          <div class="tiles">
+            <div class="tile"><div class="chip"><i data-lucide="refrigerator"></i></div><div class="lbl">Leftovers</div></div>
+            <div class="tile sel" style="border-color:#42526A;box-shadow:0 4px 9px rgba(66,82,106,0.12);"><div class="chip"><i data-lucide="cooking-pot" style="color:#42526A;"></i></div><div class="lbl">Cook fresh</div><div class="badge" style="background:#42526A;"><i data-lucide="check"></i></div></div>
+            <div class="tile"><div class="chip"><i data-lucide="store"></i></div><div class="lbl">Buy out</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cta">
+      <div class="btn"><i data-lucide="utensils-crossed"></i>Apply 7-day plan<i data-lucide="chevron-right"></i></div>
+    </div>
+  </div>
+<script>lucide.createIcons();</script>
+</body>
+</html>

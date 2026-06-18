@@ -1,0 +1,2427 @@
+{
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\app.json": {
+    "mtime": 1780151593.1860182,
+    "ast_hash": "ae1b5a5ea1bda2b5f15e2598f029da55",
+    "semantic_hash": "ae1b5a5ea1bda2b5f15e2598f029da55"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\babel.config.js": {
+    "mtime": 1778373856.0,
+    "ast_hash": "43944086ea7e911b17f0fcee86660fbb",
+    "semantic_hash": "43944086ea7e911b17f0fcee86660fbb"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\deploy-fix.sh": {
+    "mtime": 1778373856.0,
+    "ast_hash": "8d50d293184c6172d113a3d2ed6e6779",
+    "semantic_hash": "8d50d293184c6172d113a3d2ed6e6779"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\eas.json": {
+    "mtime": 1780018811.8107004,
+    "ast_hash": "fb4e0a4afa6f6e0362d6fc427c0a5586",
+    "semantic_hash": "fb4e0a4afa6f6e0362d6fc427c0a5586"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\eslint.config.js": {
+    "mtime": 1778373856.0,
+    "ast_hash": "1133c84262b5a574d3d185c2da07a5a5",
+    "semantic_hash": "1133c84262b5a574d3d185c2da07a5a5"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\fetch_logs.mjs": {
+    "mtime": 1780023175.1410794,
+    "ast_hash": "0498615c1dbef48d2f62a93348b243da",
+    "semantic_hash": "0498615c1dbef48d2f62a93348b243da"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\fetch_logs.py": {
+    "mtime": 1779990088.7751958,
+    "ast_hash": "7a75665db08a6944db093577c8c66a43",
+    "semantic_hash": "7a75665db08a6944db093577c8c66a43"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\index.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "5202c02cc701223dd222414479f91834",
+    "semantic_hash": "5202c02cc701223dd222414479f91834"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\metro.config.js": {
+    "mtime": 1778569316.2359967,
+    "ast_hash": "ec28f71274c0d7dd077aa0dad2ce0b4f",
+    "semantic_hash": "ec28f71274c0d7dd077aa0dad2ce0b4f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\nativewind-env.d.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "a10be861c8004b7ba8702798711b3dd6",
+    "semantic_hash": "a10be861c8004b7ba8702798711b3dd6"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\package.json": {
+    "mtime": 1780033985.201763,
+    "ast_hash": "8aec0d68e7dd40d77f1ed9492d73a4a9",
+    "semantic_hash": "8aec0d68e7dd40d77f1ed9492d73a4a9"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase-auto-user-creation.sql": {
+    "mtime": 1778373856.0,
+    "ast_hash": "02563bde8245b8c75c1de5e6c6a28582",
+    "semantic_hash": "02563bde8245b8c75c1de5e6c6a28582"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase-schema.sql": {
+    "mtime": 1778373856.0,
+    "ast_hash": "5462c216e60ca26ce9a2ab16cde2091a",
+    "semantic_hash": "5462c216e60ca26ce9a2ab16cde2091a"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\tailwind.config.js": {
+    "mtime": 1778373856.0,
+    "ast_hash": "da9cf6fefbe3975c68325fb904452cf1",
+    "semantic_hash": "da9cf6fefbe3975c68325fb904452cf1"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\tsconfig.json": {
+    "mtime": 1780034460.924225,
+    "ast_hash": "a4a5d2b892f29c0d18a7819f9257051d",
+    "semantic_hash": "a4a5d2b892f29c0d18a7819f9257051d"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\scripts\\supabase-sync.ps1": {
+    "mtime": 1778680052.696965,
+    "ast_hash": "58336e1708334823ca9f5d467bc2d189",
+    "semantic_hash": "58336e1708334823ca9f5d467bc2d189"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\+html.tsx": {
+    "mtime": 1778373856.0,
+    "ast_hash": "56b602b5b9492c68c88388d86508e841",
+    "semantic_hash": "56b602b5b9492c68c88388d86508e841"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\+not-found.tsx": {
+    "mtime": 1778373856.0,
+    "ast_hash": "058c875d5085d194f3b6cbd1e5b38667",
+    "semantic_hash": "058c875d5085d194f3b6cbd1e5b38667"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\add-recipe.tsx": {
+    "mtime": 1779529223.1416364,
+    "ast_hash": "d45077253eabc50261ffa92a48b0c2b5",
+    "semantic_hash": "d45077253eabc50261ffa92a48b0c2b5"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\combine-ingredients.tsx": {
+    "mtime": 1778373856.0,
+    "ast_hash": "06d87544a910eea2fab36620e4e13a6e",
+    "semantic_hash": "06d87544a910eea2fab36620e4e13a6e"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\curated-meal-plan.tsx": {
+    "mtime": 1779900645.242417,
+    "ast_hash": "3ab40c8c0da17111b1724c0c487b1526",
+    "semantic_hash": "3ab40c8c0da17111b1724c0c487b1526"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\curated-plan-browse.tsx": {
+    "mtime": 1780034494.545782,
+    "ast_hash": "4dcbc899cfb0bfab0cceb1937cc36640",
+    "semantic_hash": "4dcbc899cfb0bfab0cceb1937cc36640"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\curated-plan-detail.tsx": {
+    "mtime": 1780034494.5521977,
+    "ast_hash": "e9a05b2e76bc1f9a5b244838e51608a0",
+    "semantic_hash": "e9a05b2e76bc1f9a5b244838e51608a0"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\email-verification.tsx": {
+    "mtime": 1778373856.0,
+    "ast_hash": "4b1afe7ac3e30bb195aef0bf553ab769",
+    "semantic_hash": "4b1afe7ac3e30bb195aef0bf553ab769"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\generate-recipe.tsx": {
+    "mtime": 1780034494.5603583,
+    "ast_hash": "756e20901b9a92f74399e13c1c9c785e",
+    "semantic_hash": "756e20901b9a92f74399e13c1c9c785e"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\import-recipe.tsx": {
+    "mtime": 1778922116.2803543,
+    "ast_hash": "a63b0a207f4db5688cc307e576ea24c9",
+    "semantic_hash": "a63b0a207f4db5688cc307e576ea24c9"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\import-review.tsx": {
+    "mtime": 1778373856.0,
+    "ast_hash": "71faadc31c50b10edd8f31ac6cd339df",
+    "semantic_hash": "71faadc31c50b10edd8f31ac6cd339df"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\login.tsx": {
+    "mtime": 1778983481.3857968,
+    "ast_hash": "2c3aa539a1d8c439add26bdfe9129cb0",
+    "semantic_hash": "2c3aa539a1d8c439add26bdfe9129cb0"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\modal.tsx": {
+    "mtime": 1778373856.0,
+    "ast_hash": "861106211ec56bbde81bf7cfb6bab1e3",
+    "semantic_hash": "861106211ec56bbde81bf7cfb6bab1e3"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\onboarding.tsx": {
+    "mtime": 1779761576.8523517,
+    "ast_hash": "e5a6d0876fc968c5ffed6cd4d1c10ba8",
+    "semantic_hash": "e5a6d0876fc968c5ffed6cd4d1c10ba8"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\paywall.tsx": {
+    "mtime": 1779758427.3252535,
+    "ast_hash": "2b8710393a13c9cdb16212e11cc22c91",
+    "semantic_hash": "2b8710393a13c9cdb16212e11cc22c91"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\plan-meals.tsx": {
+    "mtime": 1780034494.564354,
+    "ast_hash": "7c148089d86a73c7ab7c05107a495173",
+    "semantic_hash": "7c148089d86a73c7ab7c05107a495173"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\recipe-detail.tsx": {
+    "mtime": 1778939334.0540726,
+    "ast_hash": "04e00e06c0f352aec2339d0d108b16a3",
+    "semantic_hash": "04e00e06c0f352aec2339d0d108b16a3"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\select-recipe.tsx": {
+    "mtime": 1778841353.337233,
+    "ast_hash": "11b38694ef3caaa2d3af224a48e6daed",
+    "semantic_hash": "11b38694ef3caaa2d3af224a48e6daed"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\signup.tsx": {
+    "mtime": 1778981542.056826,
+    "ast_hash": "8c2065eae41690a550879c9ba73d25fc",
+    "semantic_hash": "8c2065eae41690a550879c9ba73d25fc"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\verify-otp.tsx": {
+    "mtime": 1778373856.0,
+    "ast_hash": "ed5c3d15f57c39d1e5a12897f06af16b",
+    "semantic_hash": "ed5c3d15f57c39d1e5a12897f06af16b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\vibe-cooking.tsx": {
+    "mtime": 1779931227.8978314,
+    "ast_hash": "f2d465a323db0b7a9fdfd7e676ed5520",
+    "semantic_hash": "f2d465a323db0b7a9fdfd7e676ed5520"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\_layout.tsx": {
+    "mtime": 1780034494.545782,
+    "ast_hash": "e4fd5a096b728bfaaaad1a9b63fc2f23",
+    "semantic_hash": "e4fd5a096b728bfaaaad1a9b63fc2f23"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\(tabs)\\grocery.tsx": {
+    "mtime": 1779936187.0470579,
+    "ast_hash": "bfc25c8a446063572b3ceac8afcf0bf1",
+    "semantic_hash": "bfc25c8a446063572b3ceac8afcf0bf1"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\(tabs)\\index.tsx": {
+    "mtime": 1779900559.1196015,
+    "ast_hash": "9e7b2fbe4448390a7d59903bb024850f",
+    "semantic_hash": "9e7b2fbe4448390a7d59903bb024850f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\(tabs)\\preferences.tsx": {
+    "mtime": 1779758379.849646,
+    "ast_hash": "d113f86703808da5824c336d157c285f",
+    "semantic_hash": "d113f86703808da5824c336d157c285f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\(tabs)\\recipes.tsx": {
+    "mtime": 1779503906.5428753,
+    "ast_hash": "d07df2f74ca9a191956d57b69d939724",
+    "semantic_hash": "d07df2f74ca9a191956d57b69d939724"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\app\\(tabs)\\_layout.tsx": {
+    "mtime": 1778858375.8152208,
+    "ast_hash": "3d98c79c4cacaa1679b7258a6231e1a7",
+    "semantic_hash": "3d98c79c4cacaa1679b7258a6231e1a7"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\AccountManagementModal.tsx": {
+    "mtime": 1778771472.8351,
+    "ast_hash": "2cf1a541d129080cb77acaa6a89f067d",
+    "semantic_hash": "2cf1a541d129080cb77acaa6a89f067d"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\BrandLogo.tsx": {
+    "mtime": 1778771472.8426938,
+    "ast_hash": "0ef5ea8a7e4c1c340b63641e67b7ca4f",
+    "semantic_hash": "0ef5ea8a7e4c1c340b63641e67b7ca4f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\ConfirmDialog.tsx": {
+    "mtime": 1778831360.3243234,
+    "ast_hash": "00adf7b058380cd09d326ec5d15a071c",
+    "semantic_hash": "00adf7b058380cd09d326ec5d15a071c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\CookConfirmSheet.tsx": {
+    "mtime": 1779301066.866848,
+    "ast_hash": "8187a310a65506de8bc633d1579e7705",
+    "semantic_hash": "8187a310a65506de8bc633d1579e7705"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\CookStepCard.tsx": {
+    "mtime": 1779931294.0172179,
+    "ast_hash": "d7cb48ea7977c940ab584312733586a1",
+    "semantic_hash": "d7cb48ea7977c940ab584312733586a1"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\DuplicateIngredientModal.tsx": {
+    "mtime": 1778857188.6513753,
+    "ast_hash": "c4bd28493c7002fb4eb22bc89214156f",
+    "semantic_hash": "c4bd28493c7002fb4eb22bc89214156f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\DuplicateRecipeModal.tsx": {
+    "mtime": 1778771472.9153936,
+    "ast_hash": "5f9f3cd7535ea7f049cd224d3f05a16f",
+    "semantic_hash": "5f9f3cd7535ea7f049cd224d3f05a16f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\EditProfileModal.tsx": {
+    "mtime": 1780034494.5683508,
+    "ast_hash": "79a498ec79f57957e486f5ac41a1f49b",
+    "semantic_hash": "79a498ec79f57957e486f5ac41a1f49b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\HomeHeader.tsx": {
+    "mtime": 1779589087.0466645,
+    "ast_hash": "647ee2fef57ff24b497c64a0aa53d01c",
+    "semantic_hash": "647ee2fef57ff24b497c64a0aa53d01c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\InferredFridgeChips.tsx": {
+    "mtime": 1779594377.2091942,
+    "ast_hash": "8d8c580dc804e81a98c8f9b88b6799ad",
+    "semantic_hash": "8d8c580dc804e81a98c8f9b88b6799ad"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\IngredientCheckRow.tsx": {
+    "mtime": 1779803071.3592951,
+    "ast_hash": "30a0009d8a8a97c2bfe3585d4055fae5",
+    "semantic_hash": "30a0009d8a8a97c2bfe3585d4055fae5"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\MealCard.tsx": {
+    "mtime": 1778840578.0663867,
+    "ast_hash": "09783e8611fefb1e05b262d5c5cb920b",
+    "semantic_hash": "09783e8611fefb1e05b262d5c5cb920b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\MealSlotSheet.tsx": {
+    "mtime": 1779588457.6786351,
+    "ast_hash": "adbb6387925da5de72e3296bdea3c7f0",
+    "semantic_hash": "adbb6387925da5de72e3296bdea3c7f0"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\MonthYearPicker.tsx": {
+    "mtime": 1779503449.8141465,
+    "ast_hash": "5ea0b2ad4883762f86bf418c5505f855",
+    "semantic_hash": "5ea0b2ad4883762f86bf418c5505f855"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\NudgeCard.tsx": {
+    "mtime": 1778776138.862614,
+    "ast_hash": "ab692919ad3856c05c3367b9ee98375c",
+    "semantic_hash": "ab692919ad3856c05c3367b9ee98375c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PagerSheet.tsx": {
+    "mtime": 1780034494.572368,
+    "ast_hash": "050592c4f7efb4dd114c8dc07372624c",
+    "semantic_hash": "050592c4f7efb4dd114c8dc07372624c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PausedAccountOverlay.tsx": {
+    "mtime": 1778771473.0629804,
+    "ast_hash": "434dcfd4f631e86ce0c2baff8e8e14c7",
+    "semantic_hash": "434dcfd4f631e86ce0c2baff8e8e14c7"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PausedFeatureBanner.tsx": {
+    "mtime": 1778771473.0709653,
+    "ast_hash": "984f3111f591d60802dceb743de3430c",
+    "semantic_hash": "984f3111f591d60802dceb743de3430c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PaywallSheet.tsx": {
+    "mtime": 1779902102.1197627,
+    "ast_hash": "670e95867162f78a2d09694d7fe276a4",
+    "semantic_hash": "670e95867162f78a2d09694d7fe276a4"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PendingGenerationBanner.tsx": {
+    "mtime": 1779503058.1861768,
+    "ast_hash": "631fb198f589ed24efde888856ddb258",
+    "semantic_hash": "631fb198f589ed24efde888856ddb258"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PicksForYou.tsx": {
+    "mtime": 1778776231.7708154,
+    "ast_hash": "af0b16761b89ea546e0c045b1696006d",
+    "semantic_hash": "af0b16761b89ea546e0c045b1696006d"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PlanRatingPrompt.tsx": {
+    "mtime": 1779900378.5921,
+    "ast_hash": "d698e278a5c9fd636492f03c86694f3b",
+    "semantic_hash": "d698e278a5c9fd636492f03c86694f3b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PlanTuneSheet.tsx": {
+    "mtime": 1779894770.581741,
+    "ast_hash": "9388af8d72d4115f9dc036b4e2c456b9",
+    "semantic_hash": "9388af8d72d4115f9dc036b4e2c456b9"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PnPSpecials.tsx": {
+    "mtime": 1779900524.2889497,
+    "ast_hash": "552c5a47398885bb13b09c5da58a169d",
+    "semantic_hash": "552c5a47398885bb13b09c5da58a169d"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\PremiumFeatureBanner.tsx": {
+    "mtime": 1779758302.4779422,
+    "ast_hash": "0dfe0fbd177413aee93491c4e12739ab",
+    "semantic_hash": "0dfe0fbd177413aee93491c4e12739ab"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\ProfileSetupModal.tsx": {
+    "mtime": 1778771473.0859537,
+    "ast_hash": "33830577cec25f238a4df53c9891a958",
+    "semantic_hash": "33830577cec25f238a4df53c9891a958"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\ProgressCircle.tsx": {
+    "mtime": 1778771473.1211524,
+    "ast_hash": "444249f22c973577b925d62bae844020",
+    "semantic_hash": "444249f22c973577b925d62bae844020"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\QuickActions.tsx": {
+    "mtime": 1779891272.4174545,
+    "ast_hash": "d95db0c6d22bfa47de04319697486f45",
+    "semantic_hash": "d95db0c6d22bfa47de04319697486f45"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\ServingAdjustmentModal.tsx": {
+    "mtime": 1778771473.1333966,
+    "ast_hash": "0713ab91d5db4595d2885ac1f0bc94d3",
+    "semantic_hash": "0713ab91d5db4595d2885ac1f0bc94d3"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\ShoppingListCompletionModal.tsx": {
+    "mtime": 1779934910.3895745,
+    "ast_hash": "18da29e946ed4c2bf6daaff0409d07fe",
+    "semantic_hash": "18da29e946ed4c2bf6daaff0409d07fe"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\SimilarIngredientsModal.tsx": {
+    "mtime": 1778771473.165799,
+    "ast_hash": "23bafc8e4d4465d6bc38d393a254f8bf",
+    "semantic_hash": "23bafc8e4d4465d6bc38d393a254f8bf"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\StoreHydration.tsx": {
+    "mtime": 1778771473.2036238,
+    "ast_hash": "d6898ad8f211dfa363cb2732dd53e893",
+    "semantic_hash": "d6898ad8f211dfa363cb2732dd53e893"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\SuccessToast.tsx": {
+    "mtime": 1778771473.2088091,
+    "ast_hash": "715aa2d2c583db4f44e5a3628e13e610",
+    "semantic_hash": "715aa2d2c583db4f44e5a3628e13e610"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\Themed.tsx": {
+    "mtime": 1778771473.212675,
+    "ast_hash": "9535d839e7b1c1271c5a84df6469dbc1",
+    "semantic_hash": "9535d839e7b1c1271c5a84df6469dbc1"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\TrialStatusBanner.tsx": {
+    "mtime": 1779891213.5848649,
+    "ast_hash": "eca1559c7250d818a28bf5c2aca21583",
+    "semantic_hash": "eca1559c7250d818a28bf5c2aca21583"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\VibeDeck.tsx": {
+    "mtime": 1779598087.9424891,
+    "ast_hash": "f3dc41a1e441ebffa91095d7644e66d0",
+    "semantic_hash": "f3dc41a1e441ebffa91095d7644e66d0"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\VibeEndState.tsx": {
+    "mtime": 1779775621.5028703,
+    "ast_hash": "f67dbeb493b90657d2cf3f7fb4f7ca63",
+    "semantic_hash": "f67dbeb493b90657d2cf3f7fb4f7ca63"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\VibeHero.tsx": {
+    "mtime": 1779802556.3352532,
+    "ast_hash": "4fd1e41aed2bf5b619c17f1bf07435c3",
+    "semantic_hash": "4fd1e41aed2bf5b619c17f1bf07435c3"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\VibeSlider.tsx": {
+    "mtime": 1779301136.9989216,
+    "ast_hash": "5866f1287c8e7a11cfec1f68cc8e4268",
+    "semantic_hash": "5866f1287c8e7a11cfec1f68cc8e4268"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\VibeTimerCompleteSheet.tsx": {
+    "mtime": 1779931058.7777362,
+    "ast_hash": "149bafd905dbfb6341970423f5904067",
+    "semantic_hash": "149bafd905dbfb6341970423f5904067"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\WeeklyRatingSheet.tsx": {
+    "mtime": 1779301102.084507,
+    "ast_hash": "2df8d975fd37cd4bea8619f82053e18a",
+    "semantic_hash": "2df8d975fd37cd4bea8619f82053e18a"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\WeekStrip.tsx": {
+    "mtime": 1778780201.3502266,
+    "ast_hash": "dcbf8c8d7d40bf973d00d08591b1d2ba",
+    "semantic_hash": "dcbf8c8d7d40bf973d00d08591b1d2ba"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\components\\icons\\VibeHeartIcon.tsx": {
+    "mtime": 1779789304.9943714,
+    "ast_hash": "5d75590d80b56afe4a3187278c15805c",
+    "semantic_hash": "5d75590d80b56afe4a3187278c15805c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\hooks\\useActiveNudge.ts": {
+    "mtime": 1779380709.3635278,
+    "ast_hash": "a66783116bc351d896a407b13ab29f21",
+    "semantic_hash": "a66783116bc351d896a407b13ab29f21"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\hooks\\useBehaviorInsights.ts": {
+    "mtime": 1779380348.4953184,
+    "ast_hash": "22a0940b95d0027735964d61ce94458c",
+    "semantic_hash": "22a0940b95d0027735964d61ce94458c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\allergy-checker.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "a27ee02db8a1f2ed2c735dc561b6e816",
+    "semantic_hash": "a27ee02db8a1f2ed2c735dc561b6e816"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\api-router.ts": {
+    "mtime": 1779529132.6171205,
+    "ast_hash": "d07ca4dbd88daed103faa5efa59e8611",
+    "semantic_hash": "d07ca4dbd88daed103faa5efa59e8611"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\auth-store.ts": {
+    "mtime": 1779759399.9884417,
+    "ast_hash": "7fe161fc33b4c555728a4f13b5b5210b",
+    "semantic_hash": "7fe161fc33b4c555728a4f13b5b5210b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\average-weight-lookup-au.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "40de7e80c337c4069de1278e53001741",
+    "semantic_hash": "40de7e80c337c4069de1278e53001741"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\behavior-insights.ts": {
+    "mtime": 1779442635.627892,
+    "ast_hash": "571c199136a6ce87c47009847117760b",
+    "semantic_hash": "571c199136a6ce87c47009847117760b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\cn.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "d9837f38cc05303254571985e3164050",
+    "semantic_hash": "d9837f38cc05303254571985e3164050"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\conversion-metadata.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "4055e8a300da7dfad648d92c63331004",
+    "semantic_hash": "4055e8a300da7dfad648d92c63331004"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\curated-meal-plans.ts": {
+    "mtime": 1779900135.1182892,
+    "ast_hash": "0334dc18ce94129b7073926b68208aa6",
+    "semantic_hash": "0334dc18ce94129b7073926b68208aa6"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\database.ts": {
+    "mtime": 1779900335.3356671,
+    "ast_hash": "38db547c67ed740d5091f111bac94856",
+    "semantic_hash": "38db547c67ed740d5091f111bac94856"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\date-restrictions.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "d355d75da2cb55ee4c66bff0731be932",
+    "semantic_hash": "d355d75da2cb55ee4c66bff0731be932"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\duplicate-ingredient-finder.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "3140b41f373efe6c3ccf9c528189f1a6",
+    "semantic_hash": "3140b41f373efe6c3ccf9c528189f1a6"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\email.ts": {
+    "mtime": 1778684966.6930108,
+    "ast_hash": "2c1871b4683798745b5fc14eb45ce853",
+    "semantic_hash": "2c1871b4683798745b5fc14eb45ce853"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\ingredient-aggregation.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "127769570c6fe2a06059e050dfb27616",
+    "semantic_hash": "127769570c6fe2a06059e050dfb27616"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\ingredient-aliases.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "0c000085aaa3531e71fe59f07a92a616",
+    "semantic_hash": "0c000085aaa3531e71fe59f07a92a616"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\ingredient-category-mapper.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "631bc66f2517ae04f4e2c9fe90ffa09b",
+    "semantic_hash": "631bc66f2517ae04f4e2c9fe90ffa09b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\ingredient-combiner.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "bd7242b8770342f3f7ab89714bf003fd",
+    "semantic_hash": "bd7242b8770342f3f7ab89714bf003fd"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\ingredient-normalizer.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "06ecd6be0372d21a4dd2b30aaa8c43db",
+    "semantic_hash": "06ecd6be0372d21a4dd2b30aaa8c43db"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\ingredient-unit-rules.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "6abf217dc16de6cf5f41b7f64119a466",
+    "semantic_hash": "6abf217dc16de6cf5f41b7f64119a466"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\ingredient-validator.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "e2d5e01c0dafe317ceb18cbb5b0e6a41",
+    "semantic_hash": "e2d5e01c0dafe317ceb18cbb5b0e6a41"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\intelligent-aggregation.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "e4e8b51dc26d2a39ea82ee9425550035",
+    "semantic_hash": "e4e8b51dc26d2a39ea82ee9425550035"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\meal-type-validator.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "89e85fae77c229d0101f75b3e0a9051e",
+    "semantic_hash": "89e85fae77c229d0101f75b3e0a9051e"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\nudge-engine.ts": {
+    "mtime": 1779380686.8562286,
+    "ast_hash": "7f41381d3808394048b0b8011b121351",
+    "semantic_hash": "7f41381d3808394048b0b8011b121351"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\openai.ts": {
+    "mtime": 1778688310.4617393,
+    "ast_hash": "ef2cfe94f2574d95f6de46051d49682c",
+    "semantic_hash": "ef2cfe94f2574d95f6de46051d49682c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\optimized-recipe-generation.ts": {
+    "mtime": 1779806950.919963,
+    "ast_hash": "41ec926d8ae1bacb11c34250c7ea9e5d",
+    "semantic_hash": "41ec926d8ae1bacb11c34250c7ea9e5d"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\picks-for-you-ai.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "7194f369a025cc4d1b940f272cd287b6",
+    "semantic_hash": "7194f369a025cc4d1b940f272cd287b6"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\picks-for-you-cache.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "404e5c7b397f9fb57500687e6d232db5",
+    "semantic_hash": "404e5c7b397f9fb57500687e6d232db5"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\picks-for-you-logic.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "3a07bf03f815efb6b4870d3ef5225b8b",
+    "semantic_hash": "3a07bf03f815efb6b4870d3ef5225b8b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\plan-stats.ts": {
+    "mtime": 1779900188.9972122,
+    "ast_hash": "f3850d65581f8da81f557b0bc87cf5cc",
+    "semantic_hash": "f3850d65581f8da81f557b0bc87cf5cc"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\preference-options.ts": {
+    "mtime": 1779892735.6078477,
+    "ast_hash": "45db23f18dc5f3e9cfefa5a6c0267212",
+    "semantic_hash": "45db23f18dc5f3e9cfefa5a6c0267212"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\quick-add-logic.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "c8f630d1476cf666323b31aab66d3aaf",
+    "semantic_hash": "c8f630d1476cf666323b31aab66d3aaf"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\rate-limit-store.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "84e2027cc16b3867344a558b0d98f9d4",
+    "semantic_hash": "84e2027cc16b3867344a558b0d98f9d4"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\recipe-cache.ts": {
+    "mtime": 1778690763.9840264,
+    "ast_hash": "3e10dc36c80cbde0f7e24e3068ae27a0",
+    "semantic_hash": "3e10dc36c80cbde0f7e24e3068ae27a0"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\recipe-reclassifier.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "7fce219f187e1af8915d812dfd30ee24",
+    "semantic_hash": "7fce219f187e1af8915d812dfd30ee24"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\recipeImport.ts": {
+    "mtime": 1778684968.7765992,
+    "ast_hash": "3eec56adc8afde3c45586db67e1ae44e",
+    "semantic_hash": "3eec56adc8afde3c45586db67e1ae44e"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\revenuecatClient.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "3029454d0b85a31ebba4b8b92ddacc94",
+    "semantic_hash": "3029454d0b85a31ebba4b8b92ddacc94"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\skip-reason-handler.ts": {
+    "mtime": 1779885927.4559157,
+    "ast_hash": "f659bad6c0d9a6f93027bd018e291ebb",
+    "semantic_hash": "f659bad6c0d9a6f93027bd018e291ebb"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\store.ts": {
+    "mtime": 1779902729.3044972,
+    "ast_hash": "12dd249d4a9767521c2ec68f122b4c61",
+    "semantic_hash": "12dd249d4a9767521c2ec68f122b4c61"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\subscription-store.ts": {
+    "mtime": 1779761592.479458,
+    "ast_hash": "bff760b27e8d25fd622b2106154535e8",
+    "semantic_hash": "bff760b27e8d25fd622b2106154535e8"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\supabase-image-library.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "bcd597947467aef4c80d9878ee740456",
+    "semantic_hash": "bcd597947467aef4c80d9878ee740456"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\supabase.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "2e303e60c47a2d55e787e7041d18003e",
+    "semantic_hash": "2e303e60c47a2d55e787e7041d18003e"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\taste-profile.ts": {
+    "mtime": 1779889735.7755477,
+    "ast_hash": "5a2f47c80b1a289a26d9fb8508ad4530",
+    "semantic_hash": "5a2f47c80b1a289a26d9fb8508ad4530"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\unit-conversion.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "ebe6300f0a88690332d391d277a8404d",
+    "semantic_hash": "ebe6300f0a88690332d391d277a8404d"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\UNIT_CONVERSION_EXAMPLES.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "db1ac668dbda487bd1f11d97c7aef5f1",
+    "semantic_hash": "db1ac668dbda487bd1f11d97c7aef5f1"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\upload.ts": {
+    "mtime": 1778684967.742256,
+    "ast_hash": "c5ca797bb5124a4061aa2135ffb6699a",
+    "semantic_hash": "c5ca797bb5124a4061aa2135ffb6699a"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\use-optimized-generation.ts": {
+    "mtime": 1779442451.2245598,
+    "ast_hash": "e693e0137a5efcad1d4f5425ec35721e",
+    "semantic_hash": "e693e0137a5efcad1d4f5425ec35721e"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\use-picks-for-you.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "1a8a88adb8100f38eb9f7bdd7706c1cd",
+    "semantic_hash": "1a8a88adb8100f38eb9f7bdd7706c1cd"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\use-timer-chime.ts": {
+    "mtime": 1780033985.201763,
+    "ast_hash": "6154fa18580afc82e7175f9744e60f89",
+    "semantic_hash": "6154fa18580afc82e7175f9744e60f89"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\useClientOnlyValue.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "1cac2ad5842f4258c04fde5f72d99a06",
+    "semantic_hash": "1cac2ad5842f4258c04fde5f72d99a06"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\useClientOnlyValue.web.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "89b7d949967750bf9187d0a2c68dd525",
+    "semantic_hash": "89b7d949967750bf9187d0a2c68dd525"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\useColorScheme.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "6f3444fcb9c7013a839a7832be518831",
+    "semantic_hash": "6f3444fcb9c7013a839a7832be518831"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\useColorScheme.web.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "114ae1ab68038f77c94c9353ba8f706f",
+    "semantic_hash": "114ae1ab68038f77c94c9353ba8f706f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\vibe-inference.ts": {
+    "mtime": 1779597802.7244573,
+    "ast_hash": "c0c0a40bcdd3c913587ac6b3930763b9",
+    "semantic_hash": "c0c0a40bcdd3c913587ac6b3930763b9"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\vibe-theme.ts": {
+    "mtime": 1779775422.0520842,
+    "ast_hash": "c7fa8965aaeb4cc28c0f8accbfe32e95",
+    "semantic_hash": "c7fa8965aaeb4cc28c0f8accbfe32e95"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\state\\example-state.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "5c55beff25e03858d9582447f1deb25e",
+    "semantic_hash": "5c55beff25e03858d9582447f1deb25e"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\__tests__\\canonical-unit.test.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "05a8b536c8a2f30b8cf2b9012d498b6c",
+    "semantic_hash": "05a8b536c8a2f30b8cf2b9012d498b6c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\__tests__\\count-unit-plurals.test.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "01dfc3232d71e9482adf46ad3114c1ef",
+    "semantic_hash": "01dfc3232d71e9482adf46ad3114c1ef"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\__tests__\\intelligent-aggregation.test.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "36a3091f55d42f16a124b2ea34245e4a",
+    "semantic_hash": "36a3091f55d42f16a124b2ea34245e4a"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\src\\lib\\__tests__\\unit-conversion-volume.test.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "810bfdd6cb23f05095718bcf4e459b68",
+    "semantic_hash": "810bfdd6cb23f05095718bcf4e459b68"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\.temp\\linked-project.json": {
+    "mtime": 1778681549.6676059,
+    "ast_hash": "b5ec677251e48ca2a18dec608a2b030e",
+    "semantic_hash": "b5ec677251e48ca2a18dec608a2b030e"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\deno.json": {
+    "mtime": 1778373856.0,
+    "ast_hash": "8ded00916e0cff77ed958468ed1ce5f4",
+    "semantic_hash": "8ded00916e0cff77ed958468ed1ce5f4"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\ai-chat\\index.ts": {
+    "mtime": 1778686627.037422,
+    "ast_hash": "0b40f6c14d6b73d3b02a5f64d452ba43",
+    "semantic_hash": "0b40f6c14d6b73d3b02a5f64d452ba43"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\auth-delete\\index.ts": {
+    "mtime": 1778685618.5576055,
+    "ast_hash": "e61801213c56e1a444ad36bf29f7a4b4",
+    "semantic_hash": "e61801213c56e1a444ad36bf29f7a4b4"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\email-send\\index.ts": {
+    "mtime": 1778685618.5023358,
+    "ast_hash": "ad2f9d7026576504c991acf8ad2766f4",
+    "semantic_hash": "ad2f9d7026576504c991acf8ad2766f4"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\openai-chat\\index.mjs": {
+    "mtime": 1778373856.0,
+    "ast_hash": "9e2152e86d7f5d60175bcf1c5e615a58",
+    "semantic_hash": "9e2152e86d7f5d60175bcf1c5e615a58"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\openai-transcribe\\index.ts": {
+    "mtime": 1779529598.141858,
+    "ast_hash": "ec7bd55b53c84c60d23d9c6047587793",
+    "semantic_hash": "ec7bd55b53c84c60d23d9c6047587793"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\upload-file\\index.ts": {
+    "mtime": 1778686528.9634588,
+    "ast_hash": "90f9a59d1a40b241931aba81e4d1daa1",
+    "semantic_hash": "90f9a59d1a40b241931aba81e4d1daa1"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\_shared\\auth.ts": {
+    "mtime": 1778688767.767944,
+    "ast_hash": "be1c6d2a42a341596b3102a1f2377661",
+    "semantic_hash": "be1c6d2a42a341596b3102a1f2377661"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\_shared\\cors.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "32cdb14ab26137052f8f42d72c0a982f",
+    "semantic_hash": "32cdb14ab26137052f8f42d72c0a982f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\functions\\_shared\\rate-limit.ts": {
+    "mtime": 1778373856.0,
+    "ast_hash": "f8add3a6b69f15e7289e3a2f01757620",
+    "semantic_hash": "f8add3a6b69f15e7289e3a2f01757620"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20240101000000_create_api_rate_limits.sql": {
+    "mtime": 1778373856.0,
+    "ast_hash": "83223770480a160efd23179f64b25f09",
+    "semantic_hash": "83223770480a160efd23179f64b25f09"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20240102000000_add_user_profile_fields.sql": {
+    "mtime": 1778373856.0,
+    "ast_hash": "aec1e10d026149c2d4a57cc085049233",
+    "semantic_hash": "aec1e10d026149c2d4a57cc085049233"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20240103000000_add_curated_plan_tracking.sql": {
+    "mtime": 1778373856.0,
+    "ast_hash": "1a35ae8e7b8712a8220ee560269c1c55",
+    "semantic_hash": "1a35ae8e7b8712a8220ee560269c1c55"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20240104000000_create_storage_buckets.sql": {
+    "mtime": 1778685212.981972,
+    "ast_hash": "68cd7fa960b64de11201d25d48dfc651",
+    "semantic_hash": "68cd7fa960b64de11201d25d48dfc651"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20240104000001_add_policies_to_existing_buckets.sql": {
+    "mtime": 1778686503.8537023,
+    "ast_hash": "eb7fc4dbd05d4bddd8beff2feb6b60ba",
+    "semantic_hash": "eb7fc4dbd05d4bddd8beff2feb6b60ba"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20240104000002_storage_rls_policies.sql": {
+    "mtime": 1778687060.0772662,
+    "ast_hash": "1c256bcf44defb2222ef41661b742b9f",
+    "semantic_hash": "1c256bcf44defb2222ef41661b742b9f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20240105000000_create_recipe_cache_table.sql": {
+    "mtime": 1778689903.3623557,
+    "ast_hash": "4f6c0df1e78cfe20e236c73132145465",
+    "semantic_hash": "4f6c0df1e78cfe20e236c73132145465"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20260520_nudge_engine.sql": {
+    "mtime": 1779284314.4685283,
+    "ast_hash": "d369d558bdc10377da4a39942ee4592f",
+    "semantic_hash": "d369d558bdc10377da4a39942ee4592f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20260521162743_planning_events.sql": {
+    "mtime": 1779380880.950788,
+    "ast_hash": "ec5619f2328e528eab62c1cd26cc3293",
+    "semantic_hash": "ec5619f2328e528eab62c1cd26cc3293"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20260522000000_add_persona_columns.sql": {
+    "mtime": 1779468303.6109288,
+    "ast_hash": "09fe42a5c3d76432e25c7259a69a1434",
+    "semantic_hash": "09fe42a5c3d76432e25c7259a69a1434"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\supabase\\migrations\\20260527223000_add_meal_plan_ratings.sql": {
+    "mtime": 1779901031.855227,
+    "ast_hash": "28b8d0054a9ad117f7f3604eb7713df8",
+    "semantic_hash": "28b8d0054a9ad117f7f3604eb7713df8"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\AGENTS.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "adf0a15fb8c975580c4aef23656668be",
+    "semantic_hash": "adf0a15fb8c975580c4aef23656668be"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\AUTH_DEBUG_GUIDE.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "df6129106aa8e2ea59c40437d711b8e3",
+    "semantic_hash": "df6129106aa8e2ea59c40437d711b8e3"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\AUTH_IMPLEMENTATION.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "673b694b086239d9815f754c1d1ba62c",
+    "semantic_hash": "673b694b086239d9815f754c1d1ba62c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\CLAUDE.md": {
+    "mtime": 1779890050.8906608,
+    "ast_hash": "43cf93484a92bc5bb3e1c56a848ede06",
+    "semantic_hash": "43cf93484a92bc5bb3e1c56a848ede06"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\DEBUG_SUMMARY.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "bde224c45c1bd33e5a2553e4a5a996e5",
+    "semantic_hash": "bde224c45c1bd33e5a2553e4a5a996e5"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\DISPLAY_FIX_ROOT_CAUSE.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "efda4d95d16d2be6e38d2e2e9eab175d",
+    "semantic_hash": "efda4d95d16d2be6e38d2e2e9eab175d"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\DISPLAY_FORMATTING_FIX.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "19a9e1ec7715b2e4d09839982fab41ce",
+    "semantic_hash": "19a9e1ec7715b2e4d09839982fab41ce"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\eas_log.txt": {
+    "mtime": 1779989757.3201795,
+    "ast_hash": "4a601af78296f0770d9893478195f3be",
+    "semantic_hash": "4a601af78296f0770d9893478195f3be"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\eas_log3.txt": {
+    "mtime": 1779986680.6291165,
+    "ast_hash": "fdec47695c8e490a260452aa1059dc71",
+    "semantic_hash": "fdec47695c8e490a260452aa1059dc71"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\EDGE_FUNCTION_FIX.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "f516513fabca3355404dc7c12a47b70d",
+    "semantic_hash": "f516513fabca3355404dc7c12a47b70d"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\exclude.txt": {
+    "mtime": 1778373856.0,
+    "ast_hash": "1690161e8f0ed1e04ab2916ff4250735",
+    "semantic_hash": "1690161e8f0ed1e04ab2916ff4250735"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\FORMATTING_VERIFICATION.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "b4a82c162204195613e374f7d00dcc2b",
+    "semantic_hash": "b4a82c162204195613e374f7d00dcc2b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\INTELLIGENT_AGGREGATION_COMPLETION.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "35f92421dfacd2a7f5515d35ddfba8cc",
+    "semantic_hash": "35f92421dfacd2a7f5515d35ddfba8cc"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\README.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "192d3eecd5da14e91214fd070e6f4fc5",
+    "semantic_hash": "192d3eecd5da14e91214fd070e6f4fc5"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\SETTINGS_UI_MOCKUPS.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "46af5b7d681d99851d51817368eeadd0",
+    "semantic_hash": "46af5b7d681d99851d51817368eeadd0"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\SETTINGS_UI_SUGGESTIONS.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "c99eff7b04933ec8e83d65551cde99a5",
+    "semantic_hash": "c99eff7b04933ec8e83d65551cde99a5"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\STRICT_UNIT_RULES_FIX.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "88229549b885e7fc902e93163e60084c",
+    "semantic_hash": "88229549b885e7fc902e93163e60084c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\STRICT_UNIT_RULES_VERIFICATION.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "f55c8bc5c321799a87cab2893264b726",
+    "semantic_hash": "f55c8bc5c321799a87cab2893264b726"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\SUPABASE_MIGRATION_PERSONA.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "6355f8d05eb8e64662eb60c4cd261f79",
+    "semantic_hash": "6355f8d05eb8e64662eb60c4cd261f79"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\UNIT_NORMALIZATION_FIX.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "849b82326a5bc1ee78e478ce0172a64f",
+    "semantic_hash": "849b82326a5bc1ee78e478ce0172a64f"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\UNIT_RULES_FIX_COMPLETE.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "5493e5974600862c38ba7172c57ea01a",
+    "semantic_hash": "5493e5974600862c38ba7172c57ea01a"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\UNIT_RULES_VERIFICATION_COMPLETE.md": {
+    "mtime": 1778373856.0,
+    "ast_hash": "40e25b49f8e556ea3c7660171434ea36",
+    "semantic_hash": "40e25b49f8e556ea3c7660171434ea36"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\sounds\\SOURCES.md": {
+    "mtime": 1779930994.57115,
+    "ast_hash": "08b65d00c6a648f3ec5247d8f9d7e79c",
+    "semantic_hash": "08b65d00c6a648f3ec5247d8f9d7e79c"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\icon.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "da589c31944abf63ad642211b3c9c481",
+    "semantic_hash": "da589c31944abf63ad642211b3c9c481"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\Screenshot 2026-01-01 at 9.05.29\u202fAM-1767218917426-0.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "4e816248e60745d529dace094cba3b6b",
+    "semantic_hash": "4e816248e60745d529dace094cba3b6b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\Screenshot 4_51_02 PM.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "017918fac888ac88f47db82a45ada276",
+    "semantic_hash": "017918fac888ac88f47db82a45ada276"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\Screenshot 4_58_45 PM.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "017918fac888ac88f47db82a45ada276",
+    "semantic_hash": "017918fac888ac88f47db82a45ada276"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\images\\plannplate-logo.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "a1b79b7f05783ffd56c6868463ccf3f0",
+    "semantic_hash": "a1b79b7f05783ffd56c6868463ccf3f0"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\images\\MoodBoardVibecook\\Adventurous Cook \u2014 Try a cuisine you don't usually do.png": {
+    "mtime": 1779598057.837906,
+    "ast_hash": "8e34e4ee1af43dd0175e74207db5f7fa",
+    "semantic_hash": "8e34e4ee1af43dd0175e74207db5f7fa"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\images\\MoodBoardVibecook\\Comfort Blanket \u2014 Slow, warming, familiar..png": {
+    "mtime": 1779598057.9738362,
+    "ast_hash": "315951f87e333581d7cb3b18a5f4476b",
+    "semantic_hash": "315951f87e333581d7cb3b18a5f4476b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\images\\MoodBoardVibecook\\Date Night \u2014 Romantic, shareable, indulgent..png": {
+    "mtime": 1779598058.12465,
+    "ast_hash": "8f0052e4f61c68ce9bed1c37e4b720f7",
+    "semantic_hash": "8f0052e4f61c68ce9bed1c37e4b720f7"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\images\\MoodBoardVibecook\\Energy Reboot \u2014 Quick protein + smart carbs..png": {
+    "mtime": 1779598058.316624,
+    "ast_hash": "d65a981c34ca06ea6d563ca4d30ff39a",
+    "semantic_hash": "d65a981c34ca06ea6d563ca4d30ff39a"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\images\\MoodBoardVibecook\\Glow-up Bowl \u2014 Bright, nutrient-dense, photogenic..png": {
+    "mtime": 1779598058.4459298,
+    "ast_hash": "c0e5fec17d20a3df0adc51c3408ac904",
+    "semantic_hash": "c0e5fec17d20a3df0adc51c3408ac904"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\images\\MoodBoardVibecook\\Hangover Healer \u2014 Greasy, salty, soothing..png": {
+    "mtime": 1779598058.5653398,
+    "ast_hash": "586020e45f33e16f38d9644b05bc513e",
+    "semantic_hash": "586020e45f33e16f38d9644b05bc513e"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\images\\MoodBoardVibecook\\Showoff Plate \u2014 Restaurant-level for an audience..png": {
+    "mtime": 1779598058.7512238,
+    "ast_hash": "061c28475824fb67bc774ef42a9e3678",
+    "semantic_hash": "061c28475824fb67bc774ef42a9e3678"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\images\\MoodBoardVibecook\\Tired but Hungry \u2014 15 minutes, max payoff..png": {
+    "mtime": 1779598058.9435558,
+    "ast_hash": "73071a9b671f6cd4402e093db9e3e985",
+    "semantic_hash": "73071a9b671f6cd4402e093db9e3e985"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\image-1.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "2f424f2197bb3bc2d8a8502d36594af3",
+    "semantic_hash": "2f424f2197bb3bc2d8a8502d36594af3"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\image-2.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "a1aae31b573f33c226235cda0208946b",
+    "semantic_hash": "a1aae31b573f33c226235cda0208946b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\image-3.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "56115e652519333510c2539969fb5d00",
+    "semantic_hash": "56115e652519333510c2539969fb5d00"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\image-4.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "7fe40675f2f651a77144a37abbca3003",
+    "semantic_hash": "7fe40675f2f651a77144a37abbca3003"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\image-5.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "946add790b720a9ae3b18461932b763b",
+    "semantic_hash": "946add790b720a9ae3b18461932b763b"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\image-6.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "b2cab83133e40637839f9f2b94162f94",
+    "semantic_hash": "b2cab83133e40637839f9f2b94162f94"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\image-7.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "9a1ebdf45bc33d2a0e987e82f53f8b97",
+    "semantic_hash": "9a1ebdf45bc33d2a0e987e82f53f8b97"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\image-8.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "f4da126f5bbcf3235013aa36cf9efd22",
+    "semantic_hash": "f4da126f5bbcf3235013aa36cf9efd22"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\image.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "2f424f2197bb3bc2d8a8502d36594af3",
+    "semantic_hash": "2f424f2197bb3bc2d8a8502d36594af3"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\photo-2026-01-23-15-20-42.jpeg": {
+    "mtime": 1778373856.0,
+    "ast_hash": "a6d88035ae9a5d968ec2789358b805aa",
+    "semantic_hash": "a6d88035ae9a5d968ec2789358b805aa"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\Screenshot 4_08_09 PM.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "017918fac888ac88f47db82a45ada276",
+    "semantic_hash": "017918fac888ac88f47db82a45ada276"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\public\\untitled-design---2026-01-09t100756.png": {
+    "mtime": 1778373856.0,
+    "ast_hash": "1f1f9fd1960e82df238e387db5484029",
+    "semantic_hash": "1f1f9fd1960e82df238e387db5484029"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PnP_Android_iOS\\mobile\\assets\\sounds\\chef-bell.mp3": {
+    "mtime": 1779932097.1465278,
+    "ast_hash": "4541ee1e26288741a617226d3a1207db",
+    "semantic_hash": "4541ee1e26288741a617226d3a1207db"
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\SUPABASE_SCHEMA.sql": {
+    "mtime": 1781329287.3287208,
+    "ast_hash": "7b6413ba6816b5e79d4376f19260e14c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\package.json": {
+    "mtime": 1781329287.5716288,
+    "ast_hash": "f78a6ef1e39a62d85c51597e0df6735c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\tsconfig.json": {
+    "mtime": 1781329287.58517,
+    "ast_hash": "cdac2d015ffcddaf6c236f0cfec5879a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\scripts\\env.sh": {
+    "mtime": 1781329287.675889,
+    "ast_hash": "62b125f6db569753d732751f5aadc84a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\scripts\\start": {
+    "mtime": 1781329287.6532876,
+    "ast_hash": "14d086e731c2ceb32ed09e3c61139014",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\scripts\\studio": {
+    "mtime": 1781329287.6410718,
+    "ast_hash": "8358c475d7a42b2e245ff9213f20b160",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\src\\env.ts": {
+    "mtime": 1781329287.750684,
+    "ast_hash": "7e4732f458459c2c6e7fc5000dfa203a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\src\\index.ts": {
+    "mtime": 1781329287.7351012,
+    "ast_hash": "b41ac15b4962762aa05d54676ca1293d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\src\\lib\\email.ts": {
+    "mtime": 1781329287.7717466,
+    "ast_hash": "cba3d12853fcf5cb7b0d0dafc41b2206",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\src\\lib\\vibecode.ts": {
+    "mtime": 1781329287.783567,
+    "ast_hash": "99ad4e02f519ebae927ab8ada5397b50",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\src\\routes\\auth.ts": {
+    "mtime": 1781329287.8571234,
+    "ast_hash": "445e978f5951bd201db88f465f88e676",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\src\\routes\\email.ts": {
+    "mtime": 1781329287.8131976,
+    "ast_hash": "3d1a9488d15b8d46d99305b413a71ecd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\src\\routes\\openai.ts": {
+    "mtime": 1781329287.825205,
+    "ast_hash": "a82b49f092f70094b455acba6e688bec",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\src\\routes\\sample.ts": {
+    "mtime": 1781329287.8007202,
+    "ast_hash": "1b387d879693b6fb18111b2453f355ee",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\src\\routes\\upload.ts": {
+    "mtime": 1781329287.8487594,
+    "ast_hash": "1e7d8bb2e4320008894d9297a04b3497",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\app.json": {
+    "mtime": 1781329288.9776735,
+    "ast_hash": "93a94dcc3dd23e5f56519663fb297996",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\babel.config.js": {
+    "mtime": 1781329289.195472,
+    "ast_hash": "43944086ea7e911b17f0fcee86660fbb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\decode_log.py": {
+    "mtime": 1781329289.4730885,
+    "ast_hash": "d9ef7c806ca83830df9d10d353c6f322",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\deploy-fix.sh": {
+    "mtime": 1781329289.3396459,
+    "ast_hash": "8d50d293184c6172d113a3d2ed6e6779",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\eas.json": {
+    "mtime": 1781329289.0850804,
+    "ast_hash": "e2f62223c841ccb72ec8a6ce7c4d3d03",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\eslint.config.js": {
+    "mtime": 1781329289.3819351,
+    "ast_hash": "1133c84262b5a574d3d185c2da07a5a5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\expo-env.d.ts": {
+    "mtime": 1781356631.7515295,
+    "ast_hash": "0dd9dccdb4b08595bc83df70d6a154d3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\fetch_logs.mjs": {
+    "mtime": 1781329289.0719807,
+    "ast_hash": "0498615c1dbef48d2f62a93348b243da",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\fetch_logs.py": {
+    "mtime": 1781329288.8887424,
+    "ast_hash": "d937a1d76f90e96a5cf4e7322a5fa153",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\index.ts": {
+    "mtime": 1781329289.3618333,
+    "ast_hash": "5202c02cc701223dd222414479f91834",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\metro.config.js": {
+    "mtime": 1781329289.174124,
+    "ast_hash": "ec28f71274c0d7dd077aa0dad2ce0b4f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\nativewind-env.d.ts": {
+    "mtime": 1781329289.154528,
+    "ast_hash": "a10be861c8004b7ba8702798711b3dd6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\package.json": {
+    "mtime": 1781329289.2477186,
+    "ast_hash": "97da0b89c7b4230c155fe3b096c6b558",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase-auto-user-creation.sql": {
+    "mtime": 1781329288.9334989,
+    "ast_hash": "02563bde8245b8c75c1de5e6c6a28582",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase-schema.sql": {
+    "mtime": 1781329289.1434474,
+    "ast_hash": "5462c216e60ca26ce9a2ab16cde2091a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\tailwind.config.js": {
+    "mtime": 1781329288.9462538,
+    "ast_hash": "da9cf6fefbe3975c68325fb904452cf1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\tsconfig.json": {
+    "mtime": 1781329289.315596,
+    "ast_hash": "218a95e1f9adda85a3ac3ab1c2c17697",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\scripts\\supabase-sync.ps1": {
+    "mtime": 1781330377.133244,
+    "ast_hash": "58336e1708334823ca9f5d467bc2d189",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\+html.tsx": {
+    "mtime": 1781330377.629525,
+    "ast_hash": "56b602b5b9492c68c88388d86508e841",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\+not-found.tsx": {
+    "mtime": 1781330377.5601196,
+    "ast_hash": "058c875d5085d194f3b6cbd1e5b38667",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\add-recipe.tsx": {
+    "mtime": 1781330377.4068809,
+    "ast_hash": "e6c81ded5da0cd183fa4fcc9599c4f70",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\combine-ingredients.tsx": {
+    "mtime": 1781330377.6400816,
+    "ast_hash": "06d87544a910eea2fab36620e4e13a6e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\curated-meal-plan.tsx": {
+    "mtime": 1781330377.5369627,
+    "ast_hash": "e49a77119c6fafca99e3397da48d28ea",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\curated-plan-browse.tsx": {
+    "mtime": 1781330377.4441617,
+    "ast_hash": "d4d9441cf0591192b458f8b53dc4a140",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\curated-plan-detail.tsx": {
+    "mtime": 1781330377.3941462,
+    "ast_hash": "fac2bfa9547e5d2dbd70d33de6412e22",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\curated-plan-setup.tsx": {
+    "mtime": 1781330377.4887404,
+    "ast_hash": "be62e40b4ffc16431e41b4f9adb0e045",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\email-verification.tsx": {
+    "mtime": 1781330377.419497,
+    "ast_hash": "4b1afe7ac3e30bb195aef0bf553ab769",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\generate-recipe.tsx": {
+    "mtime": 1781330377.5133357,
+    "ast_hash": "d1cb05f2d5f8602f96ed496c59dd1ea4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\import-recipe.tsx": {
+    "mtime": 1781330377.466221,
+    "ast_hash": "505073c7a11c14001e6e6e7baeeca083",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\import-review.tsx": {
+    "mtime": 1781330377.5703526,
+    "ast_hash": "71faadc31c50b10edd8f31ac6cd339df",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\login.tsx": {
+    "mtime": 1781330377.4552093,
+    "ast_hash": "78bc0d1053b48cf7e8d3dfb222715d68",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\modal.tsx": {
+    "mtime": 1781330377.6187322,
+    "ast_hash": "861106211ec56bbde81bf7cfb6bab1e3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\onboarding.tsx": {
+    "mtime": 1781330377.583879,
+    "ast_hash": "c28a3ac178800abc24fae0455b1874a3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\paywall.tsx": {
+    "mtime": 1781330377.5258906,
+    "ast_hash": "2b8710393a13c9cdb16212e11cc22c91",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\plan-meals.tsx": {
+    "mtime": 1781349207.8364947,
+    "ast_hash": "5b47ef2680e6bd972f1c491971644cef",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\recipe-detail.tsx": {
+    "mtime": 1781330377.4300756,
+    "ast_hash": "cdcc926e2539ebf85dd6071c9e44196a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\select-recipe.tsx": {
+    "mtime": 1781330377.6608326,
+    "ast_hash": "273676c969615bcaa737b9314d8dcf2f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\signup.tsx": {
+    "mtime": 1781330377.5480795,
+    "ast_hash": "91e17b550d7040db253982d2fd55b3fb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\verify-otp.tsx": {
+    "mtime": 1781330377.650298,
+    "ast_hash": "ed5c3d15f57c39d1e5a12897f06af16b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\vibe-cooking.tsx": {
+    "mtime": 1781330377.4777708,
+    "ast_hash": "f2d465a323db0b7a9fdfd7e676ed5520",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\_layout.tsx": {
+    "mtime": 1781330377.60767,
+    "ast_hash": "91b8db47e5aeebdb93a499e2034be545",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\(tabs)\\grocery.tsx": {
+    "mtime": 1781349233.1408997,
+    "ast_hash": "6bd4aa49402d20642a45d21adbffa1a0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\(tabs)\\index.tsx": {
+    "mtime": 1781349262.3591156,
+    "ast_hash": "75d6a954cd160e17d79e7f7a87d1e6e5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\(tabs)\\preferences.tsx": {
+    "mtime": 1781330377.7251022,
+    "ast_hash": "9d125e90fc7ac4fcec8a5162fcfd4247",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\(tabs)\\recipes.tsx": {
+    "mtime": 1781330377.6922913,
+    "ast_hash": "2a5f240c5133b975c74cbad7f61e3d5e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\app\\(tabs)\\_layout.tsx": {
+    "mtime": 1781330377.701825,
+    "ast_hash": "3d98c79c4cacaa1679b7258a6231e1a7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\AccountManagementModal.tsx": {
+    "mtime": 1781330378.1344664,
+    "ast_hash": "2cf1a541d129080cb77acaa6a89f067d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\BrandLogo.tsx": {
+    "mtime": 1781330377.8647916,
+    "ast_hash": "0ef5ea8a7e4c1c340b63641e67b7ca4f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\ConfirmDialog.tsx": {
+    "mtime": 1781330377.7685556,
+    "ast_hash": "00adf7b058380cd09d326ec5d15a071c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\CookConfirmSheet.tsx": {
+    "mtime": 1781330377.8351128,
+    "ast_hash": "8187a310a65506de8bc633d1579e7705",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\CookStepCard.tsx": {
+    "mtime": 1781330377.8252509,
+    "ast_hash": "d7cb48ea7977c940ab584312733586a1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\DuplicateIngredientModal.tsx": {
+    "mtime": 1781330377.9261863,
+    "ast_hash": "c4bd28493c7002fb4eb22bc89214156f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\DuplicateRecipeModal.tsx": {
+    "mtime": 1781330378.065895,
+    "ast_hash": "5f9f3cd7535ea7f049cd224d3f05a16f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\EditProfileModal.tsx": {
+    "mtime": 1781330378.1455371,
+    "ast_hash": "860b8ce2a720eb2fa8a0b75dc8f5b0b8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\HomeHeader.tsx": {
+    "mtime": 1781330378.1244237,
+    "ast_hash": "bfc0c4150569c83820c2ddaaa4342a67",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\InferredFridgeChips.tsx": {
+    "mtime": 1781330378.0542753,
+    "ast_hash": "8d8c580dc804e81a98c8f9b88b6799ad",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\IngredientCheckRow.tsx": {
+    "mtime": 1781330377.9591637,
+    "ast_hash": "30a0009d8a8a97c2bfe3585d4055fae5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\MealCard.tsx": {
+    "mtime": 1781330377.8124852,
+    "ast_hash": "bbbdec4e8c570f7e674963a15f12c69c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\MealSlotSheet.tsx": {
+    "mtime": 1781330377.7476537,
+    "ast_hash": "adbb6387925da5de72e3296bdea3c7f0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\MonthYearPicker.tsx": {
+    "mtime": 1781330377.8456802,
+    "ast_hash": "5ea0b2ad4883762f86bf418c5505f855",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\NudgeCard.tsx": {
+    "mtime": 1781330378.1664367,
+    "ast_hash": "301a2fbedeb80cec1dbba441dedbc104",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PagerSheet.tsx": {
+    "mtime": 1781330377.9161413,
+    "ast_hash": "b9f63736b9d979894ce1fd63c426871e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PausedAccountOverlay.tsx": {
+    "mtime": 1781330377.936383,
+    "ast_hash": "434dcfd4f631e86ce0c2baff8e8e14c7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PausedFeatureBanner.tsx": {
+    "mtime": 1781330377.8552432,
+    "ast_hash": "984f3111f591d60802dceb743de3430c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PaywallSheet.tsx": {
+    "mtime": 1781330377.8017454,
+    "ast_hash": "b6d54f4c3e56dbeee16f32ea02dd2526",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PendingGenerationBanner.tsx": {
+    "mtime": 1781330378.0244682,
+    "ast_hash": "631fb198f589ed24efde888856ddb258",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PicksForYou.tsx": {
+    "mtime": 1781330378.033448,
+    "ast_hash": "fabb6f2e65fadf4ecb9cf72b40b32272",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PlanRatingPrompt.tsx": {
+    "mtime": 1781330378.1987865,
+    "ast_hash": "d698e278a5c9fd636492f03c86694f3b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PlanTuneSheet.tsx": {
+    "mtime": 1781330378.0910215,
+    "ast_hash": "9388af8d72d4115f9dc036b4e2c456b9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PnPFavorites.tsx": {
+    "mtime": 1781330378.0033321,
+    "ast_hash": "043c26087ceee0e87b59338b54bf6223",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PnPSpecials.tsx": {
+    "mtime": 1781330378.1559896,
+    "ast_hash": "552c5a47398885bb13b09c5da58a169d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\PremiumFeatureBanner.tsx": {
+    "mtime": 1781330377.885895,
+    "ast_hash": "0dfe0fbd177413aee93491c4e12739ab",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\ProfileSetupModal.tsx": {
+    "mtime": 1781330377.9818833,
+    "ast_hash": "33830577cec25f238a4df53c9891a958",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\ProgressCircle.tsx": {
+    "mtime": 1781330377.7587404,
+    "ast_hash": "444249f22c973577b925d62bae844020",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\QuickActions.tsx": {
+    "mtime": 1781330378.0439324,
+    "ast_hash": "9f7924fd4c7996e474b8a5f0bc5b011f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\ServingAdjustmentModal.tsx": {
+    "mtime": 1781330377.9932897,
+    "ast_hash": "0713ab91d5db4595d2885ac1f0bc94d3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\ShoppingListCompletionModal.tsx": {
+    "mtime": 1781330378.0143564,
+    "ast_hash": "18da29e946ed4c2bf6daaff0409d07fe",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\SimilarIngredientsModal.tsx": {
+    "mtime": 1781330378.1889546,
+    "ast_hash": "23bafc8e4d4465d6bc38d393a254f8bf",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\StoreHydration.tsx": {
+    "mtime": 1781330377.7892172,
+    "ast_hash": "0f23aa2d1a65422ece3dc37d1170b420",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\SuccessToast.tsx": {
+    "mtime": 1781330378.1123495,
+    "ast_hash": "715aa2d2c583db4f44e5a3628e13e610",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\Themed.tsx": {
+    "mtime": 1781330377.7800972,
+    "ast_hash": "9535d839e7b1c1271c5a84df6469dbc1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\TrialStatusBanner.tsx": {
+    "mtime": 1781330378.1010609,
+    "ast_hash": "eca1559c7250d818a28bf5c2aca21583",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\VibeDeck.tsx": {
+    "mtime": 1781330377.8959813,
+    "ast_hash": "f3dc41a1e441ebffa91095d7644e66d0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\VibeEndState.tsx": {
+    "mtime": 1781330377.9490924,
+    "ast_hash": "f67dbeb493b90657d2cf3f7fb4f7ca63",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\VibeHero.tsx": {
+    "mtime": 1781330378.1769547,
+    "ast_hash": "4fd1e41aed2bf5b619c17f1bf07435c3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\VibeSlider.tsx": {
+    "mtime": 1781330377.9060264,
+    "ast_hash": "5866f1287c8e7a11cfec1f68cc8e4268",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\VibeTimerCompleteSheet.tsx": {
+    "mtime": 1781330377.8743043,
+    "ast_hash": "149bafd905dbfb6341970423f5904067",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\WeeklyRatingSheet.tsx": {
+    "mtime": 1781330378.0779648,
+    "ast_hash": "2df8d975fd37cd4bea8619f82053e18a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\WeekStrip.tsx": {
+    "mtime": 1781330377.9702828,
+    "ast_hash": "dcbf8c8d7d40bf973d00d08591b1d2ba",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\components\\icons\\VibeHeartIcon.tsx": {
+    "mtime": 1781330378.2145727,
+    "ast_hash": "5d75590d80b56afe4a3187278c15805c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\hooks\\useActiveNudge.ts": {
+    "mtime": 1781330378.251534,
+    "ast_hash": "4996f3a871c336cc7bd0f8095069268d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\hooks\\useBehaviorInsights.ts": {
+    "mtime": 1781330378.2422664,
+    "ast_hash": "22a0940b95d0027735964d61ce94458c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\hooks\\useRecipeFeatureGate.ts": {
+    "mtime": 1781330378.2321463,
+    "ast_hash": "9eb8f91b4bf2d3cd7191263726b37b6d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\allergy-checker.ts": {
+    "mtime": 1781330378.2775722,
+    "ast_hash": "a27ee02db8a1f2ed2c735dc561b6e816",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\api-router.ts": {
+    "mtime": 1781348286.5367427,
+    "ast_hash": "927ccf8ee7272cafe921c3f3b57a6fa5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\auth-store.ts": {
+    "mtime": 1781347307.2258065,
+    "ast_hash": "35c24936db94b384d1ec1da3362f0d5e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\average-weight-lookup-au.ts": {
+    "mtime": 1781330378.3352146,
+    "ast_hash": "40de7e80c337c4069de1278e53001741",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\behavior-insights.ts": {
+    "mtime": 1781330378.5152416,
+    "ast_hash": "aa45ceeae7f97497143049b395210c27",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\cn.ts": {
+    "mtime": 1781330378.4019387,
+    "ast_hash": "d9837f38cc05303254571985e3164050",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\conversion-metadata.ts": {
+    "mtime": 1781330378.4178889,
+    "ast_hash": "4055e8a300da7dfad648d92c63331004",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\curated-meal-plans.ts": {
+    "mtime": 1781330378.750358,
+    "ast_hash": "07ee436964594cc6413e2d832c5e9496",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\database.ts": {
+    "mtime": 1781330378.6131585,
+    "ast_hash": "0449f92c17cd1e409e8cb60692b7f27f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\date-restrictions.ts": {
+    "mtime": 1781330378.5491092,
+    "ast_hash": "d355d75da2cb55ee4c66bff0731be932",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\duplicate-ingredient-finder.ts": {
+    "mtime": 1781330378.4818947,
+    "ast_hash": "3140b41f373efe6c3ccf9c528189f1a6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\email.ts": {
+    "mtime": 1781330378.4672585,
+    "ast_hash": "2c1871b4683798745b5fc14eb45ce853",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\family-budget-plan.ts": {
+    "mtime": 1781330378.6313016,
+    "ast_hash": "67065d8d18ce08e840231839fe5b1811",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\high-protein-plan.ts": {
+    "mtime": 1781330378.2861173,
+    "ast_hash": "712a0e90efeb5eae48e1e2eb16aa1ba1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\ingredient-aggregation.ts": {
+    "mtime": 1781330378.3782725,
+    "ast_hash": "127769570c6fe2a06059e050dfb27616",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\ingredient-aliases.ts": {
+    "mtime": 1781330378.5243118,
+    "ast_hash": "0c000085aaa3531e71fe59f07a92a616",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\ingredient-category-mapper.ts": {
+    "mtime": 1781330378.6944778,
+    "ast_hash": "631bc66f2517ae04f4e2c9fe90ffa09b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\ingredient-combiner.ts": {
+    "mtime": 1781330378.575202,
+    "ast_hash": "bd7242b8770342f3f7ab89714bf003fd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\ingredient-normalizer.ts": {
+    "mtime": 1781330378.3125503,
+    "ast_hash": "06ecd6be0372d21a4dd2b30aaa8c43db",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\ingredient-unit-rules.ts": {
+    "mtime": 1781330378.4103577,
+    "ast_hash": "6abf217dc16de6cf5f41b7f64119a466",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\ingredient-validator.ts": {
+    "mtime": 1781330378.7110455,
+    "ast_hash": "e2d5e01c0dafe317ceb18cbb5b0e6a41",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\intelligent-aggregation.ts": {
+    "mtime": 1781330378.558122,
+    "ast_hash": "e4e8b51dc26d2a39ea82ee9425550035",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\light-easy-plan.ts": {
+    "mtime": 1781330378.6500165,
+    "ast_hash": "ec964616fa93f2f1a4118dd054e4c7b1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\meal-type-validator.ts": {
+    "mtime": 1781330378.5076568,
+    "ast_hash": "89e85fae77c229d0101f75b3e0a9051e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\nudge-engine.ts": {
+    "mtime": 1781330378.4991329,
+    "ast_hash": "9762e11428489b14100d8892ecbc3b27",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\openai.ts": {
+    "mtime": 1781330378.4910238,
+    "ast_hash": "ef2cfe94f2574d95f6de46051d49682c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\optimized-recipe-generation.ts": {
+    "mtime": 1781330378.3433416,
+    "ast_hash": "41ec926d8ae1bacb11c34250c7ea9e5d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\picks-for-you-ai.ts": {
+    "mtime": 1781330378.641461,
+    "ast_hash": "7194f369a025cc4d1b940f272cd287b6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\picks-for-you-cache.ts": {
+    "mtime": 1781330378.7343109,
+    "ast_hash": "404e5c7b397f9fb57500687e6d232db5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\picks-for-you-logic.ts": {
+    "mtime": 1781330378.7685068,
+    "ast_hash": "3a07bf03f815efb6b4870d3ef5225b8b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\plan-engine.ts": {
+    "mtime": 1781330378.3959348,
+    "ast_hash": "2df65a9b5b48fe0e9ec9a0e344619c5f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\plan-stats.ts": {
+    "mtime": 1781330378.657681,
+    "ast_hash": "f3850d65581f8da81f557b0bc87cf5cc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\preference-options.ts": {
+    "mtime": 1781330378.3587432,
+    "ast_hash": "ef0337e9b1029c6e366adc1e92867dee",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\quick-add-logic.ts": {
+    "mtime": 1781330378.4752717,
+    "ast_hash": "c8f630d1476cf666323b31aab66d3aaf",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\rate-limit-store.ts": {
+    "mtime": 1781330378.3507586,
+    "ast_hash": "84e2027cc16b3867344a558b0d98f9d4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\recipe-cache.ts": {
+    "mtime": 1781330378.3858168,
+    "ast_hash": "3e10dc36c80cbde0f7e24e3068ae27a0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\recipe-identity.ts": {
+    "mtime": 1781330378.4251764,
+    "ast_hash": "32f20f94139d14f8ba5d832bf49a1dcb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\recipe-reclassifier.ts": {
+    "mtime": 1781330378.7019935,
+    "ast_hash": "7fce219f187e1af8915d812dfd30ee24",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\recipeImport.ts": {
+    "mtime": 1781330378.622232,
+    "ast_hash": "3eec56adc8afde3c45586db67e1ae44e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\revenuecatClient.ts": {
+    "mtime": 1781330378.3276174,
+    "ast_hash": "3029454d0b85a31ebba4b8b92ddacc94",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\skip-reason-handler.ts": {
+    "mtime": 1781330378.304212,
+    "ast_hash": "f659bad6c0d9a6f93027bd018e291ebb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\solo-active-plan.ts": {
+    "mtime": 1781330378.4331863,
+    "ast_hash": "1038d138c12bef30ec669427a140a8a1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\store.ts": {
+    "mtime": 1781330378.7604365,
+    "ast_hash": "0b1c65d9ccf33335892567ec64e91ed1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\subscription-store.ts": {
+    "mtime": 1781330378.7191763,
+    "ast_hash": "bff760b27e8d25fd622b2106154535e8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\supabase-image-library.ts": {
+    "mtime": 1781330378.4517846,
+    "ast_hash": "bcd597947467aef4c80d9878ee740456",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\supabase.ts": {
+    "mtime": 1781330378.665745,
+    "ast_hash": "db3096ed6fbe3de02eb81742a8b30bc9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\taste-profile.ts": {
+    "mtime": 1781330378.3695369,
+    "ast_hash": "5a2f47c80b1a289a26d9fb8508ad4530",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\unit-conversion.ts": {
+    "mtime": 1781330378.4416175,
+    "ast_hash": "ebe6300f0a88690332d391d277a8404d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\UNIT_CONVERSION_EXAMPLES.ts": {
+    "mtime": 1781330378.2956362,
+    "ast_hash": "db1ac668dbda487bd1f11d97c7aef5f1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\upload.ts": {
+    "mtime": 1781330378.6743124,
+    "ast_hash": "c5ca797bb5124a4061aa2135ffb6699a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\use-optimized-generation.ts": {
+    "mtime": 1781330378.2682788,
+    "ast_hash": "e693e0137a5efcad1d4f5425ec35721e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\use-picks-for-you.ts": {
+    "mtime": 1781330378.775507,
+    "ast_hash": "1a8a88adb8100f38eb9f7bdd7706c1cd",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\use-timer-chime.ts": {
+    "mtime": 1781330378.5951068,
+    "ast_hash": "5e562653af6a925d0959326ad0f66131",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\useClientOnlyValue.ts": {
+    "mtime": 1781330378.5324082,
+    "ast_hash": "1cac2ad5842f4258c04fde5f72d99a06",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\useClientOnlyValue.web.ts": {
+    "mtime": 1781330378.7272837,
+    "ast_hash": "89b7d949967750bf9187d0a2c68dd525",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\useColorScheme.ts": {
+    "mtime": 1781330378.5410283,
+    "ast_hash": "6f3444fcb9c7013a839a7832be518831",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\useColorScheme.web.ts": {
+    "mtime": 1781330378.4598162,
+    "ast_hash": "114ae1ab68038f77c94c9353ba8f706f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\vegetarian-plan.ts": {
+    "mtime": 1781330378.6854131,
+    "ast_hash": "04f70e8aa232484ea4713b08fd861f77",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\vibe-inference.ts": {
+    "mtime": 1781332252.4549892,
+    "ast_hash": "c2acc437dd4878a2af4399e0f513cc95",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\vibe-theme.ts": {
+    "mtime": 1781330378.743379,
+    "ast_hash": "c7fa8965aaeb4cc28c0f8accbfe32e95",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\state\\example-state.ts": {
+    "mtime": 1781330378.78889,
+    "ast_hash": "5c55beff25e03858d9582447f1deb25e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\__tests__\\canonical-unit.test.ts": {
+    "mtime": 1781330378.8045776,
+    "ast_hash": "05a8b536c8a2f30b8cf2b9012d498b6c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\__tests__\\count-unit-plurals.test.ts": {
+    "mtime": 1781330378.8116841,
+    "ast_hash": "01dfc3232d71e9482adf46ad3114c1ef",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\__tests__\\intelligent-aggregation.test.ts": {
+    "mtime": 1781330378.8203435,
+    "ast_hash": "36a3091f55d42f16a124b2ea34245e4a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\src\\lib\\__tests__\\unit-conversion-volume.test.ts": {
+    "mtime": 1781330378.8283336,
+    "ast_hash": "810bfdd6cb23f05095718bcf4e459b68",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\deno.json": {
+    "mtime": 1781330376.6594708,
+    "ast_hash": "8ded00916e0cff77ed958468ed1ce5f4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\ai-chat\\index.ts": {
+    "mtime": 1781330376.6934817,
+    "ast_hash": "0b40f6c14d6b73d3b02a5f64d452ba43",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\auth-delete\\index.ts": {
+    "mtime": 1781330376.7942643,
+    "ast_hash": "e61801213c56e1a444ad36bf29f7a4b4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\email-send\\index.ts": {
+    "mtime": 1781330376.7306032,
+    "ast_hash": "ad2f9d7026576504c991acf8ad2766f4",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\openai-chat\\index.mjs": {
+    "mtime": 1781330376.7133749,
+    "ast_hash": "9e2152e86d7f5d60175bcf1c5e615a58",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\openai-transcribe\\index.ts": {
+    "mtime": 1781330376.6760373,
+    "ast_hash": "ec7bd55b53c84c60d23d9c6047587793",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\upload-file\\index.ts": {
+    "mtime": 1781330376.7455301,
+    "ast_hash": "90f9a59d1a40b241931aba81e4d1daa1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\_shared\\auth.ts": {
+    "mtime": 1781330376.7776906,
+    "ast_hash": "be1c6d2a42a341596b3102a1f2377661",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\_shared\\cors.ts": {
+    "mtime": 1781330376.7610984,
+    "ast_hash": "32cdb14ab26137052f8f42d72c0a982f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\functions\\_shared\\rate-limit.ts": {
+    "mtime": 1781330376.7685719,
+    "ast_hash": "f8add3a6b69f15e7289e3a2f01757620",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20240101000000_create_api_rate_limits.sql": {
+    "mtime": 1781330376.5420015,
+    "ast_hash": "83223770480a160efd23179f64b25f09",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20240102000000_add_user_profile_fields.sql": {
+    "mtime": 1781330376.5781236,
+    "ast_hash": "aec1e10d026149c2d4a57cc085049233",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20240103000000_add_curated_plan_tracking.sql": {
+    "mtime": 1781330376.555296,
+    "ast_hash": "1a35ae8e7b8712a8220ee560269c1c55",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20240104000000_create_storage_buckets.sql": {
+    "mtime": 1781330376.5670664,
+    "ast_hash": "68cd7fa960b64de11201d25d48dfc651",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20240104000001_add_policies_to_existing_buckets.sql": {
+    "mtime": 1781330376.618106,
+    "ast_hash": "eb7fc4dbd05d4bddd8beff2feb6b60ba",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20240104000002_storage_rls_policies.sql": {
+    "mtime": 1781330376.6261992,
+    "ast_hash": "1c256bcf44defb2222ef41661b742b9f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20240105000000_create_recipe_cache_table.sql": {
+    "mtime": 1781330376.5854268,
+    "ast_hash": "4f6c0df1e78cfe20e236c73132145465",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20260520_nudge_engine.sql": {
+    "mtime": 1781330376.6109607,
+    "ast_hash": "d369d558bdc10377da4a39942ee4592f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20260521162743_planning_events.sql": {
+    "mtime": 1781330376.6416018,
+    "ast_hash": "ec5619f2328e528eab62c1cd26cc3293",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20260522000000_add_persona_columns.sql": {
+    "mtime": 1781330376.5943658,
+    "ast_hash": "09fe42a5c3d76432e25c7259a69a1434",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20260527223000_add_meal_plan_ratings.sql": {
+    "mtime": 1781330376.633186,
+    "ast_hash": "28b8d0054a9ad117f7f3604eb7713df8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\supabase\\migrations\\20260601000000_add_recipe_curated_source_id.sql": {
+    "mtime": 1781330376.6018853,
+    "ast_hash": "49fa388fe2f728ebbe9aa6ddcc15c58f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\changelog.txt": {
+    "mtime": 1781329287.4297597,
+    "ast_hash": "7851e8bd4f6e3cd223b2b7712bb98018",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\DUPLICATE_DETECTION.md": {
+    "mtime": 1781329287.4020905,
+    "ast_hash": "3361c08f8c93742aa04ce3aa9ca932fa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\EXISTING_RECIPES_RECLASSIFICATION.md": {
+    "mtime": 1781329287.3057935,
+    "ast_hash": "550b9d0fd9aa3213ab75d5f3e54a15b7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\FIX_SUMMARY.md": {
+    "mtime": 1781329287.201105,
+    "ast_hash": "58b65d23da0b0b9f360059b5636038fe",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\IMPLEMENTATION_CHECKLIST.md": {
+    "mtime": 1781329287.163575,
+    "ast_hash": "8879e3bd20f7314c1e88aa7585c3a2cc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\IMPLEMENTATION_COMPLETE.md": {
+    "mtime": 1781329287.2644987,
+    "ast_hash": "e1b1ff8f54e836868dc64828d273db27",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\MEAL_TYPE_CLASSIFICATION_EXPLANATION.md": {
+    "mtime": 1781329287.390579,
+    "ast_hash": "692c0dbb88da182c5685f02dfaf202f3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\MEAL_TYPE_FIX_IMPLEMENTATION.md": {
+    "mtime": 1781329287.1885743,
+    "ast_hash": "f9bba59142e2a85a23e7e311893c52e1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\MEAL_TYPE_FIX_SUMMARY.md": {
+    "mtime": 1781329287.2972105,
+    "ast_hash": "6c13da47dece7fbad65a7be751b0ed52",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\OPTIMIZATION_STATUS.md": {
+    "mtime": 1781329287.4150944,
+    "ast_hash": "e417a2e57f4a3e22830ba277279c40e9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\QUICK_ADD_LOGIC.md": {
+    "mtime": 1781329287.2735577,
+    "ast_hash": "559e0c376ddf8133213de213d48b42b2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\QUICK_REFERENCE.md": {
+    "mtime": 1781329287.469862,
+    "ast_hash": "3341c1b4b43b1892d0d59367ced1294b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\README_FIXES.md": {
+    "mtime": 1781329287.3435144,
+    "ast_hash": "560e320813d6c52bf1a16247c86a064b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\RECIPE_FILTERING_FIX.md": {
+    "mtime": 1781329287.2856328,
+    "ast_hash": "4118cf4598738f1344d268be3e080b8f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\RECIPE_GENERATION_OPTIMIZATION.md": {
+    "mtime": 1781329287.458835,
+    "ast_hash": "bb846016e4f495a58003098cf13edce2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\SETUP_INSTRUCTIONS.md": {
+    "mtime": 1781329287.1811132,
+    "ast_hash": "a0cf0ae758a4b77b6fc13d105baab23c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\TEST_PLAN.md": {
+    "mtime": 1781329287.3186483,
+    "ast_hash": "0bc0d6cd2261b6e617c23c49c8214537",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\UNDERSTANDING_MEAL_TYPE_CLASSIFICATION.md": {
+    "mtime": 1781329287.2534552,
+    "ast_hash": "e000f76f508675975e86b590af068516",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\backend\\CLAUDE.md": {
+    "mtime": 1781329287.616817,
+    "ast_hash": "41654abee6251e71c5fd60b3e773822c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\AGENTS.md": {
+    "mtime": 1781329289.403278,
+    "ast_hash": "adf0a15fb8c975580c4aef23656668be",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\AUTH_DEBUG_GUIDE.md": {
+    "mtime": 1781329289.3296845,
+    "ast_hash": "df6129106aa8e2ea59c40437d711b8e3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\AUTH_IMPLEMENTATION.md": {
+    "mtime": 1781329289.095645,
+    "ast_hash": "673b694b086239d9815f754c1d1ba62c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\CLAUDE.md": {
+    "mtime": 1781329289.4592087,
+    "ast_hash": "43cf93484a92bc5bb3e1c56a848ede06",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\DEBUG_SUMMARY.md": {
+    "mtime": 1781329289.047859,
+    "ast_hash": "bde224c45c1bd33e5a2553e4a5a996e5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\DISPLAY_FIX_ROOT_CAUSE.md": {
+    "mtime": 1781329289.005468,
+    "ast_hash": "efda4d95d16d2be6e38d2e2e9eab175d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\DISPLAY_FORMATTING_FIX.md": {
+    "mtime": 1781329288.985831,
+    "ast_hash": "19a9e1ec7715b2e4d09839982fab41ce",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\eas_log.txt": {
+    "mtime": 1781329289.353217,
+    "ast_hash": "4a601af78296f0770d9893478195f3be",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\eas_log3.txt": {
+    "mtime": 1781329289.2959921,
+    "ast_hash": "fdec47695c8e490a260452aa1059dc71",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\EDGE_FUNCTION_FIX.md": {
+    "mtime": 1781329289.415246,
+    "ast_hash": "f516513fabca3355404dc7c12a47b70d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\exclude.txt": {
+    "mtime": 1781329289.2768621,
+    "ast_hash": "e205ac09aff5663353b8b61e8baeb6b1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\FORMATTING_VERIFICATION.md": {
+    "mtime": 1781329289.3050482,
+    "ast_hash": "b4a82c162204195613e374f7d00dcc2b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\INTELLIGENT_AGGREGATION_COMPLETION.md": {
+    "mtime": 1781329289.120357,
+    "ast_hash": "35f92421dfacd2a7f5515d35ddfba8cc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\README.md": {
+    "mtime": 1781329289.1334136,
+    "ast_hash": "192d3eecd5da14e91214fd070e6f4fc5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\SETTINGS_UI_MOCKUPS.md": {
+    "mtime": 1781329289.3718874,
+    "ast_hash": "46af5b7d681d99851d51817368eeadd0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\SETTINGS_UI_SUGGESTIONS.md": {
+    "mtime": 1781329288.9954014,
+    "ast_hash": "c99eff7b04933ec8e83d65551cde99a5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\STRICT_UNIT_RULES_FIX.md": {
+    "mtime": 1781329288.9696286,
+    "ast_hash": "88229549b885e7fc902e93163e60084c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\STRICT_UNIT_RULES_VERIFICATION.md": {
+    "mtime": 1781329289.1841567,
+    "ast_hash": "f55c8bc5c321799a87cab2893264b726",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\SUPABASE_MIGRATION_PERSONA.md": {
+    "mtime": 1781329288.9589682,
+    "ast_hash": "6355f8d05eb8e64662eb60c4cd261f79",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\UNIT_NORMALIZATION_FIX.md": {
+    "mtime": 1781329289.1053023,
+    "ast_hash": "849b82326a5bc1ee78e478ce0172a64f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\UNIT_RULES_FIX_COMPLETE.md": {
+    "mtime": 1781329289.1640623,
+    "ast_hash": "5493e5974600862c38ba7172c57ea01a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\UNIT_RULES_VERIFICATION_COMPLETE.md": {
+    "mtime": 1781329289.4277954,
+    "ast_hash": "40e25b49f8e556ea3c7660171434ea36",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\sounds\\SOURCES.md": {
+    "mtime": 1781330377.3519473,
+    "ast_hash": "08b65d00c6a648f3ec5247d8f9d7e79c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\stitch-plannplate-frame.png": {
+    "mtime": 1781329287.4458022,
+    "ast_hash": "990c722ff199aadaf1eae600ab9cc68f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\stitch-plannplate-home.png": {
+    "mtime": 1781329287.3569016,
+    "ast_hash": "4c3d40f60332c07e6ea7cc02ffe7e459",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\icon.png": {
+    "mtime": 1781329288.9254649,
+    "ast_hash": "da589c31944abf63ad642211b3c9c481",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\Screenshot 2026-01-01 at 9.05.29\u0393\u00c7\u00bbAM-1767218917426-0.png": {
+    "mtime": 1781330377.1935866,
+    "ast_hash": "4e816248e60745d529dace094cba3b6b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\Screenshot 4_51_02 PM.png": {
+    "mtime": 1781330377.1611564,
+    "ast_hash": "017918fac888ac88f47db82a45ada276",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\Screenshot 4_58_45 PM.png": {
+    "mtime": 1781330377.1752725,
+    "ast_hash": "017918fac888ac88f47db82a45ada276",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\images\\plannplate-logo.png": {
+    "mtime": 1781330377.21314,
+    "ast_hash": "a1b79b7f05783ffd56c6868463ccf3f0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\images\\MoodBoardVibecook\\Adventurous Cook - Try a cuisine you don't usually do.png": {
+    "mtime": 1781330377.264558,
+    "ast_hash": "8e34e4ee1af43dd0175e74207db5f7fa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\images\\MoodBoardVibecook\\Comfort Blanket - Slow, warming, familiar..png": {
+    "mtime": 1781330377.2336226,
+    "ast_hash": "315951f87e333581d7cb3b18a5f4476b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\images\\MoodBoardVibecook\\Date Night - Romantic, shareable, indulgent..png": {
+    "mtime": 1781330377.3074398,
+    "ast_hash": "8f0052e4f61c68ce9bed1c37e4b720f7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\images\\MoodBoardVibecook\\Energy Reboot - Quick protein + smart carbs..png": {
+    "mtime": 1781330377.3213363,
+    "ast_hash": "d65a981c34ca06ea6d563ca4d30ff39a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\images\\MoodBoardVibecook\\Glow-up Bowl - Bright, nutrient-dense, photogenic..png": {
+    "mtime": 1781330377.334272,
+    "ast_hash": "c0e5fec17d20a3df0adc51c3408ac904",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\images\\MoodBoardVibecook\\Hangover Healer - Greasy, salty, soothing..png": {
+    "mtime": 1781330377.248497,
+    "ast_hash": "586020e45f33e16f38d9644b05bc513e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\images\\MoodBoardVibecook\\Showoff Plate - Restaurant-level for an audience..png": {
+    "mtime": 1781330377.294322,
+    "ast_hash": "061c28475824fb67bc774ef42a9e3678",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\images\\MoodBoardVibecook\\Tired but Hungry - 15 minutes, max payoff..png": {
+    "mtime": 1781330377.2801526,
+    "ast_hash": "73071a9b671f6cd4402e093db9e3e985",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\image-1.png": {
+    "mtime": 1781330376.976931,
+    "ast_hash": "2f424f2197bb3bc2d8a8502d36594af3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\image-2.png": {
+    "mtime": 1781330377.0380552,
+    "ast_hash": "a1aae31b573f33c226235cda0208946b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\image-3.png": {
+    "mtime": 1781330377.0119133,
+    "ast_hash": "56115e652519333510c2539969fb5d00",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\image-4.png": {
+    "mtime": 1781330377.1206634,
+    "ast_hash": "7fe40675f2f651a77144a37abbca3003",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\image-5.png": {
+    "mtime": 1781330377.1019785,
+    "ast_hash": "946add790b720a9ae3b18461932b763b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\image-6.png": {
+    "mtime": 1781330377.051128,
+    "ast_hash": "b2cab83133e40637839f9f2b94162f94",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\image-7.png": {
+    "mtime": 1781330377.072466,
+    "ast_hash": "9a1ebdf45bc33d2a0e987e82f53f8b97",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\image-8.png": {
+    "mtime": 1781330376.9343524,
+    "ast_hash": "f4da126f5bbcf3235013aa36cf9efd22",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\image.png": {
+    "mtime": 1781330377.0835614,
+    "ast_hash": "2f424f2197bb3bc2d8a8502d36594af3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\photo-2026-01-23-15-20-42.jpeg": {
+    "mtime": 1781330377.0245,
+    "ast_hash": "a6d88035ae9a5d968ec2789358b805aa",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\Screenshot 4_08_09 PM.png": {
+    "mtime": 1781330376.960345,
+    "ast_hash": "017918fac888ac88f47db82a45ada276",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\public\\untitled-design---2026-01-09t100756.png": {
+    "mtime": 1781330376.9479961,
+    "ast_hash": "1f1f9fd1960e82df238e387db5484029",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\pdf_images\\page1_image0.png": {
+    "mtime": 1781330385.0977845,
+    "ast_hash": "baa9e93a4b7afe968a46c67cec79418e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\pdf_images\\page1_image1.png": {
+    "mtime": 1781330385.112477,
+    "ast_hash": "a9a079d9faaa174137f72a3d1bfc0401",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\pdf_images\\page1_image2.png": {
+    "mtime": 1781330385.1281323,
+    "ast_hash": "619e1d406f620f6ebffaccb98892efd2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\pradi\\Downloads\\Antigravity_applications\\PNP-Mousami\\PlanNplate-App-main\\mobile\\assets\\sounds\\chef-bell.mp3": {
+    "mtime": 1781330377.3661528,
+    "ast_hash": "4541ee1e26288741a617226d3a1207db",
+    "semantic_hash": ""
+  }
+}

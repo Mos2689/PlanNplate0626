@@ -1,0 +1,76 @@
+{
+  "expo": {
+    "name": "PlanNplate",
+    "slug": "plannplate",
+    "version": "1.0.18",
+    "scheme": "plannplate",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vibecode.planplate.8ctfq2",
+      "buildNumber": "34",
+      "infoPlist": {
+        "NSCameraUsageDescription": "PlanNplate uses the camera to capture photos inside the app before you publish them.",
+        "NSPhotoLibraryUsageDescription": "PlanNplate accesses your photo library to let you choose media that appears in the app.",
+        "NSMicrophoneUsageDescription": "PlanNplate uses the microphone to record audio tracks that the app attaches to your creations.",
+        "NSUserTrackingUsageDescription": "PlanNplate uses tracking data to personalize recipe suggestions and measure ad performance.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": [
+          "fbapi",
+          "fb-messenger-share-api",
+          "fbauth2",
+          "fbshareextension"
+        ]
+      }
+    },
+    "android": {
+      "package": "ycom.plannplate.app",
+      "versionCode": 8,
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.1.0",
+            "minSdkVersion": 24,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
+          }
+        }
+      ],
+      [
+        "react-native-fbsdk-next",
+        {
+          "appID": "986931690923533",
+          "clientToken": "5938fbffd345bc485d7f6be76d0d9982",
+          "displayName": "PlanNplate",
+          "scheme": "fb986931690923533",
+          "advertiserIDCollectionEnabled": true,
+          "autoLogAppEventsEnabled": true,
+          "isAutoInitEnabled": true
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "PlanNplate uses tracking data to personalize recipe suggestions and measure ad performance."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "bfd56b37-eb5f-4ea1-bfbc-162a06547f44"
+      }
+    },
+    "icon": "./icon.png"
+  }
+}
