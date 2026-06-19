@@ -2,7 +2,7 @@
   "expo": {
     "name": "PlanNplate",
     "slug": "plannplate",
-    "version": "1.0.18",
+    "version": "1.0.15",
     "scheme": "plannplate",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "ycom.plannplate.app",
-      "versionCode": 8,
+      "versionCode": 5,
       "edgeToEdgeEnabled": true
     },
     "plugins": [
