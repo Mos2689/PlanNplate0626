@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "ycom.plannplate.app",
-      "versionCode": 8,
+      "versionCode": 5,
       "edgeToEdgeEnabled": true
     },
     "plugins": [
