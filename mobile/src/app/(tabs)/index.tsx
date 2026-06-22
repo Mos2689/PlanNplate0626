@@ -17,6 +17,7 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { useMealPlanStore, isStockPlaceholderImage, type MealSlot, type Recipe } from '@/lib/store';
+import { useReviewStore } from '@/lib/review-store';
 import { VIBES } from '@/lib/vibe-inference';
 import { useActiveNudge } from '@/hooks/useActiveNudge';
 import { useAuthStore } from '@/lib/auth-store';
@@ -144,6 +145,9 @@ type DisplayMeal = {
     servings?: string;
   };
   tag?: { label: string; tone?: 'olive' };
+  // For recipe-less placeholder slots — drives the icon shown in place of the
+  // (absent) recipe image: skip / grab&go / buy-out / leftovers.
+  placeholderKind?: 'skip' | 'grab' | 'buy' | 'leftover';
   recipeId?: string;
   slotId?: string;
   recipeCount: number;
@@ -458,18 +462,30 @@ export default function HomeScreen() {
       const { slots, recipes: rs } = mealTypeData[mt.key];
       const placeholderSlot = slots.find((s) => !s.recipeId && s.customMealName);
 
-      // Recipe-less placeholder (e.g. "Grab & go") — show the label, no recipe.
+      // Recipe-less placeholder (Skipped / Grab & go / Buy out / Leftovers)
+      // — show the label + a matching symbol, no recipe image.
       if (rs.length === 0 && placeholderSlot) {
         const isCookedP = cookingLogs.some(
           (l) => l.slotId === placeholderSlot.id && l.status === 'cooked',
         );
+        const label = placeholderSlot.customMealName ?? '';
+        const placeholderKind: DisplayMeal['placeholderKind'] = label.startsWith('Leftovers')
+          ? 'leftover'
+          : label === 'Grab & go'
+            ? 'grab'
+            : label === 'Buy out'
+              ? 'buy'
+              : label === 'Skipped'
+                ? 'skip'
+                : undefined;
         return {
           slot: mt.label,
           mealTypeKey: mt.key,
           state: isCookedP ? 'cooked' : mt.key === 'snack' ? 'planned-mini' : 'planned',
-          title: placeholderSlot.customMealName,
+          title: label,
           meta: { time: mt.time },
           tag: isCookedP ? { label: 'Done' } : undefined,
+          placeholderKind,
           slotId: placeholderSlot.id,
           recipeCount: slots.length,
           hasAllergens: false,
@@ -1057,6 +1073,7 @@ export default function HomeScreen() {
                     meta={meal.meta}
                     state={meal.state}
                     tag={meal.tag}
+                    placeholderKind={meal.placeholderKind}
                     recipeCount={meal.recipeCount}
                     hasAllergens={meal.hasAllergens}
                     isRestricted={isPaused}
@@ -1496,6 +1513,11 @@ export default function HomeScreen() {
           );
           setLastWeeklyPromptAt(ratedAt);
           setNudgeSheet(null);
+          // Positive moment — if the user loved at least one meal this week,
+          // ask for an app review (self-gates on snooze / already-reviewed).
+          if (ratings.some((r) => r.stars >= 4)) {
+            setTimeout(() => useReviewStore.getState().maybePrompt(), 700);
+          }
         }}
       />
     </View>

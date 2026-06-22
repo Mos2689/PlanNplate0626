@@ -12,9 +12,21 @@ import {
   Check,
   AlertTriangle,
   Lock,
+  Ban,
+  Sandwich,
+  Microwave,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { TakeoutBagIcon } from '@/components/icons/TakeoutBagIcon';
+
+// Any icon usable on a placeholder card — Lucide icons and our custom SVG
+// icons all accept this prop shape.
+type PlaceholderIcon = React.ComponentType<{
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+}>;
 
 export type MealCardState = 'planned' | 'planned-mini' | 'empty' | 'cooked';
 
@@ -37,6 +49,9 @@ interface MealCardProps {
   meta?: MealCardMeta;
   state: MealCardState;
   tag?: MealTag;
+  /** For recipe-less placeholder slots — shows a matching symbol in place of
+   *  the recipe image (skip / grab&go / buy-out / leftovers). */
+  placeholderKind?: 'skip' | 'grab' | 'buy' | 'leftover';
   /** When > 1, render a sage "+N" chip showing additional recipes beyond the first. */
   recipeCount?: number;
   /** Whether the first recipe triggers user's allergies. */
@@ -79,6 +94,7 @@ export function MealCard({
   meta,
   state,
   tag,
+  placeholderKind,
   recipeCount = 0,
   hasAllergens = false,
   isRestricted = false,
@@ -257,6 +273,120 @@ export function MealCard({
             </Text>
           </View>
         ) : null}
+      </Pressable>
+    );
+  }
+
+  // ── Non-cooked placeholder (Skip / Grab & go / Buy out / Leftovers) ──
+  // A lighter, compact row — clearly secondary to a real cooked meal. Colour-
+  // coded by kind; leftovers lead with the reheated dish + a "Leftovers" pill.
+  if ((state === 'planned' || state === 'cooked') && placeholderKind) {
+    const KIND: Record<
+      NonNullable<MealCardProps['placeholderKind']>,
+      { Icon: PlaceholderIcon; accent: string; tint: string; label: string }
+    > = {
+      leftover: {
+        Icon: Microwave,
+        accent: designTokens.colors.brand,
+        tint: 'rgba(84,100,69,0.10)',
+        label: 'Leftovers',
+      },
+      grab: {
+        Icon: Sandwich,
+        accent: designTokens.colors.olive,
+        tint: 'rgba(228,109,70,0.10)',
+        label: 'Grab & go',
+      },
+      buy: {
+        Icon: TakeoutBagIcon,
+        accent: designTokens.colors.ink2,
+        tint: colors.hair2,
+        label: 'Buy out',
+      },
+      skip: {
+        Icon: Ban,
+        accent: designTokens.colors.ink3,
+        tint: colors.hair2,
+        label: 'Skipped',
+      },
+    };
+    const k = KIND[placeholderKind];
+    const Icon = k.Icon;
+    // Leftovers store "Leftovers · <dish>" — pull the dish out to feature it.
+    const leftoverDish =
+      placeholderKind === 'leftover' && title?.startsWith('Leftovers · ')
+        ? title.slice('Leftovers · '.length)
+        : null;
+
+    return (
+      <Pressable
+        onPress={onPress}
+        onLongPress={handleLongPress}
+        delayLongPress={500}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: colors.hair,
+          backgroundColor: colors.bg,
+          opacity: placeholderKind === 'skip' ? 0.85 : 1,
+        }}
+      >
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            backgroundColor: k.tint,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Icon size={20} color={k.accent} strokeWidth={1.8} />
+        </View>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={eyebrowStyle}>
+            {meta?.time ? `${slot} · ${meta.time}` : slot}
+          </Text>
+          <Text
+            style={{
+              fontFamily: designTokens.font.medium,
+              fontSize: 14.5,
+              color: leftoverDish ? colors.ink : colors.ink2,
+              marginTop: 2,
+              letterSpacing: -0.1,
+            }}
+            numberOfLines={1}
+          >
+            {leftoverDish ?? k.label}
+          </Text>
+        </View>
+
+        {/* Kind pill — names the treatment (and the leftover source for clarity) */}
+        <View
+          style={{
+            paddingHorizontal: 9,
+            paddingVertical: 4,
+            borderRadius: 999,
+            backgroundColor: k.tint,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: designTokens.font.medium,
+              fontSize: 11,
+              color: k.accent,
+              letterSpacing: -0.05,
+            }}
+          >
+            {k.label}
+          </Text>
+        </View>
       </Pressable>
     );
   }

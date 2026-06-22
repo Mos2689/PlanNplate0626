@@ -4,12 +4,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as db from './database';
 import { useAuthStore } from './auth-store';
+import { useReviewStore } from './review-store';
 import { normalizeIngredientName, getCanonicalIngredientName, shouldCombineIngredients, normalizeUnit } from './ingredient-aliases';
 import { convertToBaseUnit, formatFromBaseUnit, canCombineIngredients, getCanonicalUnit } from './unit-conversion';
 import { getAverageWeightWithConfidence, shouldConvertCountToWeight } from './average-weight-lookup-au';
 import { validateIngredient, validateIngredients } from './ingredient-validator';
 import { generateRecipesOptimized } from './optimized-recipe-generation';
-import { generateRecipeImage, type MealType } from './openai';
+import { generateRecipeImage, type MealType, type GeneratedRecipeResponse } from './openai';
 import {
   computeTasteProfile as deriveTasteProfile,
   composeTasteSignalsForGeneration,
@@ -565,6 +566,11 @@ export interface UserPreferences {
     period: string;
   } & Partial<Record<MonthlyFeature, number>>;
 
+  // ── Review-prompt signal ──
+  // Lifetime count of successfully completed plan generations. Used to fire the
+  // in-app review prompt after the user has felt the value a few times.
+  plansCompletedCount?: number;
+
   // ── DEPRECATED — dormant trial window ──
   // The 30-day client-side trial has been removed. This field is kept in
   // the persisted shape to avoid a migration for existing installs; nothing
@@ -702,6 +708,27 @@ interface MealPlanStore {
     // selected, pass the chosen start date here and the engine will
     // slot recipes into those exact dates.
     startDate?: Date;
+    // Per-meal cook style chosen on the Plan-My-Meals screen. Cooked meals
+    // are generated as recipes (they're in selectedMealTypes); every other
+    // meal type gets a labelled placeholder slot reflecting the choice
+    // (Skipped / Grab & go / Leftovers · <dish> / Buy out). Placeholders carry
+    // no recipe, so they never reach the grocery list.
+    mealHabits?: MealHabits;
+    // Existing-recipe ids the user picked from their favourites — each is
+    // dropped into the earliest matching-meal-type slot in the plan window,
+    // replacing the AI recipe there. The AI still fills every other slot.
+    presetFavoriteIds?: string[];
+    // Cooking rhythm from the Plan-My-Meals screen.
+    //   'daily' (default) → the per-day streaming flow: one fresh recipe per
+    //     cooked meal slot per day, leftovers handled via mealHabits.
+    //   'batch' → mirror the curated batch scheduler: cook N distinct mains on
+    //     each cook day (stacked into that day's lunch slot) and fill every
+    //     other main slot in the block with a "Leftovers · <dish>" placeholder,
+    //     scaling each cook's serving size to cover the meals it feeds.
+    cookStyle?: 'daily' | 'batch';
+    // Only read when cookStyle === 'batch': which weekdays to cook on
+    // (0 = Sun … 6 = Sat) and how many distinct recipes to cook each cook day.
+    batch?: { cookDays: number[]; recipesPerCookDay: number };
   }) => void;
 
   // ───── Vibe Cooking hand-off (ephemeral) ─────
@@ -747,48 +774,87 @@ interface MealPlanStore {
 // Helper to generate unique IDs
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
-// When a batch-cooked recipe is removed from the calendar, the "Leftover <name>"
-// slots it produced no longer make sense (no cook → no leftovers). This returns
-// the ids of those leftover slots so they can be removed alongside the recipe.
-// Leftover slots now point to a dedicated "Leftover <name>" variant recipe
-// (minted by plan-engine.leftoverRecipe with empty ingredients), so we match
-// on that variant's id and scope to the window between THIS cook and the next
-// time the original is cooked again.
-function leftoverPlaceholderCascade(
+// When a meal is removed from the calendar, other slots that DEPEND on it no
+// longer make sense and should be cleared alongside it. This returns the ids of
+// those dependent slots (excluding the removed slot itself):
+//   • BATCH / REPEATS — every other slot that uses the SAME recipe. Deleting a
+//     recipe clears every occurrence of it on the plan.
+//   • LEFTOVERS — slots that reheat this recipe: the AI flow's recipe-less
+//     "Leftovers · <name>" placeholders, and the curated flow's "Leftover
+//     <name>" variant recipe slots (minted with empty ingredients).
+// No cook → no leftovers, so they go too.
+function mealRemovalCascadeIds(
   mealSlots: MealSlot[],
   recipes: Recipe[],
   removed: MealSlot | undefined,
 ): string[] {
   if (!removed || !removed.recipeId) return [];
   const recipe = recipes.find((r) => r.id === removed.recipeId);
-  if (!recipe) return [];
-  const leftoverName = `Leftover ${recipe.name}`;
-  const leftoverRecipeId = recipes.find((r) => r.name === leftoverName)?.id;
+  const ids = new Set<string>();
 
-  // The earliest later date the SAME ORIGINAL is cooked again. Exclude the
-  // leftover variant id so its appearances don't count as "the next cook".
-  const nextCookDate = mealSlots
-    .filter(
-      (s) =>
-        s.recipeId === removed.recipeId &&
-        s.id !== removed.id &&
-        s.date > removed.date,
-    )
-    .map((s) => s.date)
-    .sort()[0];
+  // Batch / repeats — the same recipe used in any other slot.
+  for (const s of mealSlots) {
+    if (s.id !== removed.id && s.recipeId === removed.recipeId) ids.add(s.id);
+  }
 
-  return mealSlots
-    .filter((s) => {
-      if (s.date < removed.date) return false;
-      if (nextCookDate !== undefined && s.date >= nextCookDate) return false;
-      // New shape: leftover slots reference the leftover-variant recipe id.
-      if (leftoverRecipeId && s.recipeId === leftoverRecipeId) return true;
-      // Backwards-compatibility: existing installs may still have legacy
-      // placeholder-style leftover slots (recipeId null + custom name).
-      if (s.recipeId == null && s.customMealName === leftoverName) return true;
-      return false;
-    })
-    .map((s) => s.id);
+  // Leftovers that depend on this recipe by name.
+  if (recipe) {
+    const aiLabel = `Leftovers · ${recipe.name}`; // AI placeholder leftovers
+    const curatedLabel = `Leftover ${recipe.name}`; // curated variant naming
+    const curatedLeftoverId = recipes.find((r) => r.name === curatedLabel)?.id;
+    for (const s of mealSlots) {
+      if (s.id === removed.id) continue;
+      if (
+        s.recipeId == null &&
+        (s.customMealName === aiLabel || s.customMealName === curatedLabel)
+      ) {
+        ids.add(s.id);
+      } else if (curatedLeftoverId && s.recipeId === curatedLeftoverId) {
+        ids.add(s.id);
+      }
+    }
+  }
+
+  return [...ids];
+}
+
+// Reverse of the leftover serving-scale. When a "Leftovers · <dish>" placeholder
+// is removed, the dinner it reheated no longer needs to feed that extra meal, so
+// we shrink that cook back down. Returns the source dinner's slot id + its new
+// servingOverride (undefined → drop the override once no leftovers remain). The
+// source dinner is the night BEFORE the leftover, matched by recipe name.
+function leftoverServingAdjustment(
+  mealSlots: MealSlot[],
+  recipes: Recipe[],
+  removed: MealSlot | undefined,
+): { slotId: string; servingOverride: number | undefined } | null {
+  const prefix = 'Leftovers · ';
+  if (!removed || removed.recipeId || !removed.customMealName) return null;
+  if (!removed.customMealName.startsWith(prefix)) return null;
+  const dish = removed.customMealName.slice(prefix.length);
+
+  // The night before this leftover (local-date math, YYYY-MM-DD).
+  const [y, m, d] = removed.date.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const prevDate = new Date(y, m - 1, d);
+  prevDate.setDate(prevDate.getDate() - 1);
+  const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+
+  const dinnerSlot = mealSlots.find(
+    (s) =>
+      s.date === prevKey &&
+      s.mealType === 'dinner' &&
+      s.recipeId &&
+      recipes.find((r) => r.id === s.recipeId)?.name === dish,
+  );
+  if (!dinnerSlot || !dinnerSlot.recipeId) return null;
+  const base = recipes.find((r) => r.id === dinnerSlot.recipeId)?.servings;
+  if (!base || base <= 0) return null;
+
+  const current = dinnerSlot.servingOverride ?? base;
+  const next = current - base;
+  // Back at (or below) a single cook → drop the override entirely.
+  return { slotId: dinnerSlot.id, servingOverride: next > base ? next : undefined };
 }
 
 // Generate proper UUID for grocery items (Supabase requires UUID format)
@@ -1132,7 +1198,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
       //   3. pendingGeneration drives the top-of-tab progress banner —
       //      the only place the user sees the work happening.
       // ─────────────────────────────────────────────────────────────────
-      startBackgroundGeneration: ({ selectedMealTypes, days, enrichedInstructions, startDate: startDateParam }) => {
+      startBackgroundGeneration: ({ selectedMealTypes, days, enrichedInstructions, startDate: startDateParam, mealHabits: planMealHabits, presetFavoriteIds, cookStyle, batch: batchConfig }) => {
         // Guard: never let two generations run concurrently. The screen
         // disables its CTA when pendingGeneration.active is true, but
         // double-guard here in case anything slips through.
@@ -1153,9 +1219,13 @@ export const useMealPlanStore = create<MealPlanStore>()(
         // Conservative default: if the field is missing, treat as 'cook fresh'.
         const lunchHabit = preferences.mealHabits?.lunch;
         const wantsLeftovers = lunchHabit === 'leftovers';
-        const allowRepeats = wantsLeftovers && lunchDinnerCount >= 3;
+        // Item 1: repetition is duration-driven, not habit-driven.
+        //   ≤ 7 days → every lunch/dinner recipe is unique (no repeats).
+        //   > 7 days → repeats allowed (the engine still caps each at 2).
+        // The engine re-applies the same >7-day gate, so this stays in sync.
+        const allowRepeats = days > 7 && lunchDinnerCount >= 3;
         console.log(
-          `[BG-GEN] lunch habit=${lunchHabit ?? 'unset'} → allowRepeats=${allowRepeats}, crossMealRepeats=${wantsLeftovers}`
+          `[BG-GEN] days=${days}, lunch habit=${lunchHabit ?? 'unset'} → allowRepeats=${allowRepeats}, crossMealRepeats=${wantsLeftovers}`
         );
         const startedAt = new Date().toISOString();
 
@@ -1247,13 +1317,17 @@ export const useMealPlanStore = create<MealPlanStore>()(
               })),
             );
 
-            const placeholderImage = pickStock();
+            // Curated recipes ship with a real hero image — use it directly.
+            // AI recipes get a stock placeholder now and an AI image later.
+            const hasCuratedImage = typeof r.imageUrl === 'string' && r.imageUrl.length > 0;
+            const placeholderImage = hasCuratedImage ? r.imageUrl : pickStock();
 
             const recipe: Recipe = {
               id: '',
               name: r.name,
               description: r.description,
               imageUrl: placeholderImage,
+              ...(r.blurhash ? { blurhash: r.blurhash } : {}),
               cookTime: r.cookTime,
               prepTime: r.prepTime,
               servings: r.servings,
@@ -1292,19 +1366,22 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
             // Fire image gen in PARALLEL — non-blocking. Stock image
             // shows immediately; AI image swaps in via updateRecipe
-            // when its promise resolves.
-            const imageJob = generateRecipeImage(
-              recipe.name,
-              recipe.description,
-              recipe.ingredients,
-            )
-              .then((url) => {
-                if (url) get().updateRecipe(recipeId, { imageUrl: url });
-              })
-              .catch(() => {
-                /* stock image stays — graceful degradation */
-              });
-            pendingImageJobs.push(imageJob);
+            // when its promise resolves. Curated recipes already carry their
+            // real hero image, so we skip generation entirely for them.
+            if (!hasCuratedImage) {
+              const imageJob = generateRecipeImage(
+                recipe.name,
+                recipe.description,
+                recipe.ingredients,
+              )
+                .then((url) => {
+                  if (url) get().updateRecipe(recipeId, { imageUrl: url });
+                })
+                .catch(() => {
+                  /* stock image stays — graceful degradation */
+                });
+              pendingImageJobs.push(imageJob);
+            }
 
             // Update banner state — bump per-day count, recompute the
             // total completed and the count of fully-completed days.
@@ -1331,6 +1408,46 @@ export const useMealPlanStore = create<MealPlanStore>()(
           } catch (err) {
             console.error('[BG-GEN] handleRecipeReady failed for one recipe:', err);
           }
+        };
+
+        // Shared completion — runs for both the daily and batch paths. Marks
+        // the banner done, bumps the lifetime plan counter (and asks for a
+        // review once the user has felt the value a few times), then clears the
+        // banner after a brief "Plan ready ✓" hold.
+        const finishGeneration = (completedCount: number) => {
+          set((state) =>
+            state.pendingGeneration
+              ? {
+                  pendingGeneration: {
+                    ...state.pendingGeneration,
+                    stage: 'done',
+                    completed: completedCount,
+                    completedDays: days,
+                  },
+                }
+              : {},
+          );
+          set((state) => ({
+            preferences: {
+              ...state.preferences,
+              plansCompletedCount: (state.preferences.plansCompletedCount ?? 0) + 1,
+            },
+          }));
+          const planCount = get().preferences.plansCompletedCount ?? 0;
+          const uid = getCurrentUserId();
+          if (uid) {
+            db.upsertUserPreferences(uid, get().preferences).catch(() => {});
+          }
+          if (planCount > 2) {
+            setTimeout(() => useReviewStore.getState().maybePrompt(), 1200);
+          }
+          setTimeout(() => {
+            set((state) =>
+              state.pendingGeneration?.stage === 'done'
+                ? { pendingGeneration: null }
+                : {},
+            );
+          }, 1800);
         };
 
         // Kick off the engine — completion handlers below run in the
@@ -1368,6 +1485,293 @@ export const useMealPlanStore = create<MealPlanStore>()(
               .filter((s) => s && s.trim().length > 0)
               .join('\n\n');
 
+            // ═══════════════════════════════════════════════════════════════
+            // BATCH COOKING FLOW
+            // ───────────────────────────────────────────────────────────────
+            // Mirror the curated batch scheduler: cook N distinct mains on each
+            // cook day (all stacked into that day's LUNCH slot as real recipes),
+            // and fill every other main slot in the block with a recipe-less
+            // "Leftovers · <dish>" placeholder. Each cook's serving size scales
+            // to the number of meals it feeds (fresh lunch + its leftovers), so
+            // the grocery list buys enough and nothing is double-counted (the
+            // leftover slots carry no ingredients).
+            if (cookStyle === 'batch') {
+              const cfg = batchConfig ?? { cookDays: [0, 3], recipesPerCookDay: 2 };
+              const recipesN = Math.max(1, Math.floor(cfg.recipesPerCookDay || 1));
+              const startWeekday = startDate.getDay(); // 0 = Sun … 6 = Sat
+
+              // Batch blocks: day 0 is always a cook day; add each chosen weekday
+              // that falls in range. Each block feeds until the next cook day.
+              const chosenDays = cfg.cookDays && cfg.cookDays.length ? cfg.cookDays : [0, 3];
+              const offsets = new Set<number>([0]);
+              for (let d = 0; d < days; d++) {
+                if (chosenDays.includes((startWeekday + d) % 7)) offsets.add(d);
+              }
+              const sorted = [...offsets].sort((a, b) => a - b);
+              const blocks = sorted
+                .map((off, i) => ({ cookOffset: off, days: (sorted[i + 1] ?? days) - off }))
+                .filter((b) => Math.min(b.days, days - b.cookOffset) > 0);
+
+              const breakfastCooked = selectedMealTypes.includes('breakfast');
+              const totalMains = blocks.length * recipesN;
+
+              // ── Favourites ──
+              // The user's picked favourites become cooked dishes first; the
+              // engine generates only the remainder. Each favourite's meal type
+              // is read from its tags: lunch/dinner (or untagged) → a batch MAIN
+              // (cooked in a lunch slot, since batch cooks at lunch); breakfast →
+              // a breakfast slot. Snacks have no batch slot and are skipped. Each
+              // favourite is used at most once.
+              const favMealTypeOf = (recipe: Recipe): MealType | null =>
+                (['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).find((mt) =>
+                  (recipe.tags || []).map((t) => t.toLowerCase()).includes(mt),
+                ) ?? null;
+              const favRecipes: Recipe[] = [];
+              const seenFav = new Set<string>();
+              for (const id of presetFavoriteIds ?? []) {
+                if (seenFav.has(id)) continue;
+                seenFav.add(id);
+                const r = get().recipes.find((x) => x.id === id);
+                if (r) favRecipes.push(r);
+              }
+              const mainFavs = favRecipes
+                .filter((r) => {
+                  const mt = favMealTypeOf(r);
+                  return mt === 'lunch' || mt === 'dinner' || mt === null;
+                })
+                .slice(0, totalMains);
+              const breakfastFavs = breakfastCooked
+                ? favRecipes.filter((r) => favMealTypeOf(r) === 'breakfast').slice(0, days)
+                : [];
+
+              const mainsToGenerate = Math.max(0, totalMains - mainFavs.length);
+              const genTotal = (breakfastCooked ? days : 0) + mainsToGenerate;
+
+              // Banner counts only the recipes we actually generate (cooked mains
+              // still needed + cooked breakfasts) — favourites + leftovers aren't.
+              set((state) =>
+                state.pendingGeneration
+                  ? { pendingGeneration: { ...state.pendingGeneration, total: genTotal } }
+                  : {},
+              );
+
+              // Generate the remaining cooked mains (as dinners) + any cooked
+              // breakfasts. allowRepeats off → every generated main is distinct.
+              const batchMealTypes: MealType[] = breakfastCooked
+                ? ['breakfast', 'dinner']
+                : ['dinner'];
+              const generated =
+                genTotal > 0
+                  ? await generateRecipesOptimized(
+                      {
+                        mealTypes: batchMealTypes,
+                        preferences,
+                        recipesToGenerate: genTotal,
+                        useCache: true,
+                        optimizeGrocery: true,
+                        allowRepeats: false,
+                        crossMealRepeats: false,
+                        additionalInstructions: undefined,
+                        customCookingInstructions: finalInstructions,
+                        numberOfDays: days,
+                        startDate: formatDateKey(startDate),
+                      },
+                      {
+                        onProgress: (p) =>
+                          set((state) =>
+                            state.pendingGeneration
+                              ? { pendingGeneration: { ...state.pendingGeneration, completed: p.completed } }
+                              : {},
+                          ),
+                      },
+                    )
+                  : [];
+
+              const breakfasts = generated.filter((r) => r.mealType === 'breakfast');
+              const generatedMains = generated.filter((r) => r.mealType !== 'breakfast');
+
+              // Build a Recipe row from a generated recipe; returns its id.
+              // Curated picks keep their hero image; AI picks get a stock image
+              // now + a generated image swapped in later.
+              let matIdx = 0;
+              const materialize = (r: GeneratedRecipeResponse, slotMealType: MealType): string => {
+                const idx = matIdx++;
+                const validated = validateIngredients(
+                  (r.ingredients || []).map((ing) => ({
+                    name: ing.name,
+                    quantity: ing.quantity,
+                    unit: ing.unit,
+                    category: ing.category as Ingredient['category'],
+                  })),
+                );
+                const hasCuratedImage =
+                  typeof r.imageUrl === 'string' && r.imageUrl.length > 0;
+                const recipe: Recipe = {
+                  id: '',
+                  name: r.name,
+                  description: r.description,
+                  imageUrl: hasCuratedImage ? (r.imageUrl as string) : pickStock(),
+                  ...(r.blurhash ? { blurhash: r.blurhash } : {}),
+                  cookTime: r.cookTime,
+                  prepTime: r.prepTime,
+                  servings: r.servings,
+                  ingredients: validated.map((ing, i) => ({
+                    id: `gen-b-${idx}-${i}`,
+                    name: ing.name,
+                    quantity: ing.quantity,
+                    unit: ing.unit,
+                    category: ing.category,
+                  })),
+                  instructions: r.instructions,
+                  tags: [...(r.tags || []), slotMealType],
+                  calories: r.calories,
+                  isAIGenerated: true,
+                  isSaved: false,
+                  createdAt: new Date().toISOString(),
+                };
+                const recipeId = get().addRecipe(recipe);
+                if (!hasCuratedImage) {
+                  const job = generateRecipeImage(
+                    recipe.name,
+                    recipe.description,
+                    recipe.ingredients,
+                  )
+                    .then((url) => {
+                      if (url) get().updateRecipe(recipeId, { imageUrl: url });
+                    })
+                    .catch(() => {});
+                  pendingImageJobs.push(job);
+                }
+                return recipeId;
+              };
+
+              // Unified cooked-dish list: favourites first (existing recipe rows,
+              // reused as-is — never re-materialized, so no duplicate rows), then
+              // the freshly generated mains (materialized into recipe rows).
+              type BatchDish = { recipeId: string; name: string; servings: number };
+              const resolvedDishes: BatchDish[] = [];
+              for (const fav of mainFavs) {
+                resolvedDishes.push({ recipeId: fav.id, name: fav.name, servings: fav.servings });
+              }
+              for (const gm of generatedMains) {
+                resolvedDishes.push({
+                  recipeId: materialize(gm, 'lunch'),
+                  name: gm.name,
+                  servings: gm.servings,
+                });
+              }
+
+              // Breakfast favourites take the earliest cooked-breakfast days (in
+              // order); the rest of the days use the generated breakfasts.
+              const breakfastFavQueue = [...breakfastFavs];
+              let genBfastPtr = 0;
+              const breakfastHabit = planMealHabits?.breakfast ?? 'cook';
+              const placeBreakfast = (dk: string) => {
+                if (breakfastHabit === 'skip') return;
+                if (breakfastHabit === 'grab') {
+                  get().addMealToSlot({
+                    id: '', date: dk, mealType: 'breakfast', recipeId: null, customMealName: 'Grab & go',
+                  });
+                  return;
+                }
+                const fav = breakfastFavQueue.shift();
+                if (fav) {
+                  get().addMealToSlot({ id: '', date: dk, mealType: 'breakfast', recipeId: fav.id });
+                  return;
+                }
+                const b = breakfasts[genBfastPtr++];
+                if (!b) return;
+                const rid = materialize(b, 'breakfast');
+                get().addMealToSlot({ id: '', date: dk, mealType: 'breakfast', recipeId: rid });
+              };
+
+              // Lay out each block.
+              let dishPtr = 0;
+              for (const block of blocks) {
+                const blockDays = Math.min(block.days, days - block.cookOffset);
+                const dishes = resolvedDishes.slice(dishPtr, dishPtr + recipesN);
+                dishPtr += dishes.length;
+
+                // No cooked dish available (generation came up short) — still
+                // place breakfasts so the days aren't blank, then move on.
+                if (dishes.length === 0) {
+                  for (let k = 0; k < blockDays; k++) {
+                    const d = block.cookOffset + k;
+                    const date = new Date(startDate);
+                    date.setDate(date.getDate() + d);
+                    placeBreakfast(formatDateKey(date));
+                  }
+                  continue;
+                }
+
+                // The household eats exactly 2 × blockDays main meals this block
+                // (one lunch + one dinner per day). The cooked dishes collectively
+                // cover those — and ONLY those — so the sum of their serving sizes
+                // equals the block's real need. Distribute the meals round-robin
+                // across the dishes; each dish's serving = base × meals it covers.
+                // (Previously each dish also counted a "+1 fresh lunch", so N
+                // dishes over-counted the cook-day lunch by N−1 meals.)
+                const totalMainMeals = 2 * blockDays;
+                const mealsByDish = new Array(dishes.length).fill(0);
+                for (let i = 0; i < totalMainMeals; i++) mealsByDish[i % dishes.length]++;
+
+                const dishNames = dishes.map((dish) => dish.name);
+                let leftIdx = 0;
+                const nextLeftoverName = () => {
+                  const n = dishNames[leftIdx % dishNames.length];
+                  leftIdx++;
+                  return n;
+                };
+
+                for (let k = 0; k < blockDays; k++) {
+                  const d = block.cookOffset + k;
+                  const date = new Date(startDate);
+                  date.setDate(date.getDate() + d);
+                  const dk = formatDateKey(date);
+
+                  placeBreakfast(dk);
+
+                  if (k === 0) {
+                    // Cook day — every distinct dish lands in the lunch slot as a
+                    // real recipe, sized to cover its fresh meal + its leftovers.
+                    dishes.forEach((dish, di) => {
+                      const base =
+                        dish.servings && dish.servings > 0
+                          ? dish.servings
+                          : preferences.servingSize || 1;
+                      get().addMealToSlot({
+                        id: '', date: dk, mealType: 'lunch', recipeId: dish.recipeId,
+                        servingOverride: base * mealsByDish[di],
+                      });
+                    });
+                    // Cook-day dinner reheats one of today's cooks.
+                    get().addMealToSlot({
+                      id: '', date: dk, mealType: 'dinner', recipeId: null,
+                      customMealName: `Leftovers · ${nextLeftoverName()}`,
+                    });
+                  } else {
+                    // Gap days — lunch + dinner are both leftovers.
+                    get().addMealToSlot({
+                      id: '', date: dk, mealType: 'lunch', recipeId: null,
+                      customMealName: `Leftovers · ${nextLeftoverName()}`,
+                    });
+                    get().addMealToSlot({
+                      id: '', date: dk, mealType: 'dinner', recipeId: null,
+                      customMealName: `Leftovers · ${nextLeftoverName()}`,
+                    });
+                  }
+                }
+              }
+
+              // Wait for image jobs (capped) so cards have art, then finish.
+              await Promise.race([
+                Promise.allSettled(pendingImageJobs),
+                new Promise((resolve) => setTimeout(resolve, 60000)),
+              ]);
+              finishGeneration(genTotal);
+              return; // batch flow complete — skip the daily path below
+            }
+
             await generateRecipesOptimized(
               {
                 mealTypes: selectedMealTypes as MealType[],
@@ -1379,6 +1783,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 crossMealRepeats: wantsLeftovers,
                 additionalInstructions: undefined,
                 customCookingInstructions: finalInstructions,
+                // Item 1 & 2: the engine needs the true plan length (repeat
+                // policy) and the window's anchor date (breakfast weekday vs
+                // weekend no-cook/cooked rules).
+                numberOfDays: days,
+                startDate: formatDateKey(startDate),
               },
               {
                 onProgress: (p) => {
@@ -1423,6 +1832,206 @@ export const useMealPlanStore = create<MealPlanStore>()(
               mealTypes: selectedMealTypes,
             });
 
+            // ── Drop user-picked favourites into the plan ──
+            // Each favourite is placed in a slot of ITS OWN meal type
+            // (breakfast → breakfast, lunch → lunch, dinner → dinner) so dishes
+            // land in the right place, and at most ONCE in the window. Done
+            // BEFORE the leftover placeholders below so a favourite that lands on
+            // a dinner is the one a leftover reheats.
+            try {
+              if (presetFavoriteIds && presetFavoriteIds.length) {
+                const MEAL_ORDER: Array<'breakfast' | 'lunch' | 'dinner' | 'snack'> = [
+                  'breakfast',
+                  'lunch',
+                  'dinner',
+                  'snack',
+                ];
+                // The meal type a recipe belongs to, read from its tags.
+                const mealTypeOf = (
+                  recipe: Recipe,
+                ): 'breakfast' | 'lunch' | 'dinner' | 'snack' | null => {
+                  const tags = (recipe.tags || []).map((t) => t.toLowerCase());
+                  return MEAL_ORDER.find((mt) => tags.includes(mt)) ?? null;
+                };
+                const windowStartKey = formatDateKey(startDate);
+                const windowEnd = new Date(startDate);
+                windowEnd.setDate(windowEnd.getDate() + days);
+                const windowEndKey = formatDateKey(windowEnd);
+                const usedSlotIds = new Set<string>();
+                const placedFav = new Set<string>();
+                for (const favId of presetFavoriteIds) {
+                  if (placedFav.has(favId)) continue; // one placement per favourite
+                  const fav = get().recipes.find((r) => r.id === favId);
+                  if (!fav) continue;
+                  const recipeMt = mealTypeOf(fav);
+                  // Route to the recipe's own meal type when that meal is cooked
+                  // in this plan; a tagless recipe falls back to the first cooked
+                  // meal type; a recipe whose meal type isn't cooked is skipped
+                  // (e.g. a breakfast favourite when breakfast is set to Skip).
+                  let mt: 'breakfast' | 'lunch' | 'dinner' | undefined;
+                  if (recipeMt && recipeMt !== 'snack' && selectedMealTypes.includes(recipeMt)) {
+                    mt = recipeMt;
+                  } else if (!recipeMt) {
+                    mt = selectedMealTypes.find((m) => m !== 'snack') as
+                      | 'breakfast'
+                      | 'lunch'
+                      | 'dinner'
+                      | undefined;
+                  } else {
+                    continue;
+                  }
+                  if (!mt) continue;
+                  const slot = get()
+                    .mealSlots.filter(
+                      (s) =>
+                        s.mealType === mt &&
+                        !!s.recipeId &&
+                        !usedSlotIds.has(s.id) &&
+                        s.date >= windowStartKey &&
+                        s.date < windowEndKey,
+                    )
+                    .sort((a, b) => a.date.localeCompare(b.date))[0];
+                  if (!slot) continue; // no free slot of this meal type left
+                  usedSlotIds.add(slot.id);
+                  placedFav.add(favId);
+                  get().updateMealSlot(slot.id, { recipeId: favId });
+                }
+              }
+            } catch (e) {
+              console.warn('[BG-GEN] favourite placement failed', e);
+            }
+
+            // ── Non-cooked meals → labelled placeholder slots ──
+            // All recipe slots are placed by now (handleRecipeReady ran for
+            // every generated recipe). Cooked meals exist as recipe slots; for
+            // every OTHER meal type the user configured, drop a RECIPE-LESS
+            // placeholder slot (no recipeId) carrying just a label, so the
+            // choice shows on the planning calendar:
+            //   • skip → "Skipped"   • grab → "Grab & go"   • buy → "Buy out"
+            //   • leftovers → "Leftovers · <last night's dinner>" (names the
+            //     dish; no image). If there's no prior dinner (e.g. day 1), the
+            //     slot is left blank — no placeholder.
+            // Because placeholders carry no recipeId, the grocery generator
+            // (which only reads slots with a recipeId) never adds ingredients —
+            // a leftover can never double-count the dinner it reheats.
+            try {
+              if (planMealHabits) {
+                const dinnerSlotOn = (dk: string) =>
+                  get().mealSlots.find(
+                    (x) => x.date === dk && x.mealType === 'dinner' && x.recipeId,
+                  );
+                // Dinner DATE → how many leftover meals reheat it. Keyed by date
+                // (not slot id) so it survives any async slot-id remaps before
+                // we scale the cook at the end.
+                const leftoverDeps = new Map<string, number>();
+
+                for (let i = 0; i < days; i++) {
+                  const d = new Date(startDate);
+                  d.setDate(d.getDate() + i);
+                  const dk = formatDateKey(d);
+                  const prev = new Date(startDate);
+                  prev.setDate(prev.getDate() + i - 1);
+                  const prevDk = formatDateKey(prev);
+                  const prevDinnerSlot = i > 0 ? dinnerSlotOn(prevDk) : undefined;
+                  const prevDinnerName = prevDinnerSlot
+                    ? get().recipes.find((r) => r.id === prevDinnerSlot.recipeId)?.name ?? null
+                    : null;
+
+                  (['breakfast', 'lunch', 'dinner'] as const).forEach((mt) => {
+                    // Cooked meals already have a real recipe slot.
+                    if (selectedMealTypes.includes(mt)) return;
+                    // Don't stack a duplicate on top of an existing slot.
+                    if (get().mealSlots.some((s) => s.date === dk && s.mealType === mt)) return;
+
+                    const habit =
+                      mt === 'breakfast'
+                        ? planMealHabits.breakfast
+                        : mt === 'lunch'
+                          ? planMealHabits.lunch
+                          : planMealHabits.dinner;
+
+                    let label: string | null = null;
+                    if (habit === 'leftovers') {
+                      // No prior dinner to reheat → leave the slot blank.
+                      if (!prevDinnerSlot || !prevDinnerName) return;
+                      label = `Leftovers · ${prevDinnerName}`;
+                      // This leftover reheats the previous night's dinner — bump
+                      // its dependent-meal count so we scale that cook below.
+                      leftoverDeps.set(prevDk, (leftoverDeps.get(prevDk) ?? 0) + 1);
+                    } else if (habit === 'skip') {
+                      label = 'Skipped';
+                    } else if (habit === 'grab') {
+                      label = 'Grab & go';
+                    } else if (habit === 'buy') {
+                      label = 'Buy out';
+                    }
+                    if (!label) return;
+
+                    get().addMealToSlot({
+                      id: '',
+                      date: dk,
+                      mealType: mt,
+                      recipeId: null,
+                      customMealName: label,
+                    });
+                  });
+                }
+
+                // Last day spills over: when the user eats dinner-leftovers for
+                // lunch, the FINAL night's dinner is still batched for the next
+                // day's lunch — which falls just outside the plan window. Place
+                // that leftover lunch on the following day and register the
+                // dependency so it's scaled (and shrinks on delete) exactly like
+                // any in-window leftover.
+                if (
+                  planMealHabits.lunch === 'leftovers' &&
+                  selectedMealTypes.includes('dinner')
+                ) {
+                  const lastDate = new Date(startDate);
+                  lastDate.setDate(lastDate.getDate() + (days - 1));
+                  const lastKey = formatDateKey(lastDate);
+                  const lastDinnerSlot = dinnerSlotOn(lastKey);
+                  const lastDinnerName = lastDinnerSlot
+                    ? get().recipes.find((r) => r.id === lastDinnerSlot.recipeId)?.name ?? null
+                    : null;
+                  const nextDate = new Date(startDate);
+                  nextDate.setDate(nextDate.getDate() + days); // day after the window
+                  const nextKey = formatDateKey(nextDate);
+                  if (
+                    lastDinnerSlot &&
+                    lastDinnerName &&
+                    !get().mealSlots.some((s) => s.date === nextKey && s.mealType === 'lunch')
+                  ) {
+                    get().addMealToSlot({
+                      id: '',
+                      date: nextKey,
+                      mealType: 'lunch',
+                      recipeId: null,
+                      customMealName: `Leftovers · ${lastDinnerName}`,
+                    });
+                    leftoverDeps.set(lastKey, (leftoverDeps.get(lastKey) ?? 0) + 1);
+                  }
+                }
+
+                // Scale every dinner that feeds leftovers: a cook for N people
+                // that also covers tomorrow's lunch must yield N × (1 + leftovers)
+                // servings, so the recipe's grocery quantities double up. The home
+                // card then shows the larger serving count, and generateGroceryList
+                // multiplies ingredients by servingOverride / recipe.servings.
+                leftoverDeps.forEach((count, dinnerDate) => {
+                  const slot = dinnerSlotOn(dinnerDate);
+                  if (!slot || !slot.recipeId) return;
+                  const base = get().recipes.find((r) => r.id === slot.recipeId)?.servings;
+                  const perMeal = base && base > 0 ? base : get().preferences.servingSize || 1;
+                  get().updateMealSlot(slot.id, {
+                    servingOverride: perMeal * (1 + count),
+                  });
+                });
+              }
+            } catch (e) {
+              console.warn('[BG-GEN] placeholder slot creation failed', e);
+            }
+
             // Wait for image jobs to settle (with a 60s safety cap so we
             // never leave the banner stuck).
             await Promise.race([
@@ -1430,27 +2039,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
               new Promise((resolve) => setTimeout(resolve, 60000)),
             ]);
 
-            set((state) =>
-              state.pendingGeneration
-                ? {
-                    pendingGeneration: {
-                      ...state.pendingGeneration,
-                      stage: 'done',
-                      completed: streamSlotIndex,
-                      completedDays: days,
-                    },
-                  }
-                : {},
-            );
-
-            // Hold "Plan ready ✓" briefly, then clear the banner.
-            setTimeout(() => {
-              set((state) =>
-                state.pendingGeneration?.stage === 'done'
-                  ? { pendingGeneration: null }
-                  : {},
-              );
-            }, 1800);
+            finishGeneration(streamSlotIndex);
           } catch (err: any) {
             console.error('[BG-GEN] Generation failed:', err);
             set((state) =>
@@ -1745,6 +2334,15 @@ export const useMealPlanStore = create<MealPlanStore>()(
           }
         }
 
+        // Loving a recipe — if this save brings the library to 3+ saved
+        // recipes, nudge for a review (self-gates on snooze/session).
+        if (newRecipe.isSaved) {
+          const savedCount = get().recipes.filter((r) => r.isSaved).length;
+          if (savedCount >= 3) {
+            setTimeout(() => useReviewStore.getState().maybePrompt(), 800);
+          }
+        }
+
         return tempId;
       },
 
@@ -1811,6 +2409,14 @@ export const useMealPlanStore = create<MealPlanStore>()(
         if (userId && isValidUUID(resolvedSaveId)) {
           db.updateRecipe(userId, resolvedSaveId, { isSaved: newIsSaved });
         }
+
+        // Loving a recipe — once the library hits 3+ saved, nudge for a review.
+        if (newIsSaved) {
+          const savedCount = get().recipes.filter((r) => r.isSaved).length;
+          if (savedCount >= 3) {
+            setTimeout(() => useReviewStore.getState().maybePrompt(), 800);
+          }
+        }
       },
 
       hasRecipeWithSourceUrl: (sourceUrl) => {
@@ -1858,10 +2464,18 @@ export const useMealPlanStore = create<MealPlanStore>()(
           return { mealSlots: [...state.mealSlots, slotWithId] };
         });
 
-        // Only sync to database if recipeId is a valid UUID
-        // If recipeId is a temp ID, the addRecipe callback will sync when it gets the real UUID
+        // Sync to database when the slot is in a syncable state:
+        //   • recipe-less placeholder (Skipped / Grab & go / Buy out /
+        //     Leftovers) — recipeId is null, persist it now so it survives the
+        //     next DB sync instead of being wiped as a local-only row.
+        //   • real recipe slot with a valid UUID.
+        // A temp (non-UUID) recipeId is the one case we defer — the addRecipe
+        // callback re-syncs that slot once the real UUID lands.
         const userId = getCurrentUserId();
-        if (userId && slotWithId.recipeId && isValidUUID(slotWithId.recipeId)) {
+        if (
+          userId &&
+          (!slotWithId.recipeId || isValidUUID(slotWithId.recipeId))
+        ) {
           db.upsertMealSlot(userId, slotWithId).then((dbId) => {
             if (dbId && dbId !== slotWithId.id) {
               console.log(`Meal slot ID updated in DB: ${slotWithId.id} -> ${dbId}`);
@@ -1878,12 +2492,20 @@ export const useMealPlanStore = create<MealPlanStore>()(
       removeMealFromSlot: (slotId: string) => {
         const { mealSlots, recipes } = get();
         const removed = mealSlots.find((s) => s.id === slotId);
-        const cascadeIds = leftoverPlaceholderCascade(mealSlots, recipes, removed);
+        const cascadeIds = mealRemovalCascadeIds(mealSlots, recipes, removed);
         const idsToRemove = new Set([slotId, ...cascadeIds]);
+        // Removing a leftover → shrink the dinner that fed it back down.
+        const servingAdj = leftoverServingAdjustment(mealSlots, recipes, removed);
 
         set((state) => ({
           mealSlots: state.mealSlots.filter((s) => !idsToRemove.has(s.id)),
         }));
+
+        if (servingAdj) {
+          get().updateMealSlot(servingAdj.slotId, {
+            servingOverride: servingAdj.servingOverride,
+          });
+        }
 
         // Sync to database (async, fire-and-forget is OK for UI responsiveness)
         const userId = getCurrentUserId();
@@ -1900,12 +2522,20 @@ export const useMealPlanStore = create<MealPlanStore>()(
       removeMealFromSlotAsync: async (slotId: string) => {
         const { mealSlots, recipes } = get();
         const removed = mealSlots.find((s) => s.id === slotId);
-        const cascadeIds = leftoverPlaceholderCascade(mealSlots, recipes, removed);
+        const cascadeIds = mealRemovalCascadeIds(mealSlots, recipes, removed);
         const idsToRemove = new Set([slotId, ...cascadeIds]);
+        // Removing a leftover → shrink the dinner that fed it back down.
+        const servingAdj = leftoverServingAdjustment(mealSlots, recipes, removed);
 
         set((state) => ({
           mealSlots: state.mealSlots.filter((s) => !idsToRemove.has(s.id)),
         }));
+
+        if (servingAdj) {
+          get().updateMealSlot(servingAdj.slotId, {
+            servingOverride: servingAdj.servingOverride,
+          });
+        }
 
         // Sync to database and wait for completion
         const userId = getCurrentUserId();
@@ -1985,6 +2615,10 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const { mealSlots, recipes } = get();
 
         const slotsInRange = mealSlots.filter((s) => {
+          // Only slots with a real recipe contribute ingredients. Placeholder
+          // slots (Skipped / Grab & go / Buy out / Leftovers) carry no
+          // recipeId, so they're naturally excluded — a leftover never
+          // re-adds the dinner it reheats.
           return s.date >= startDate && s.date <= endDate && s.recipeId;
         });
 
@@ -3121,6 +3755,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 // would zero the month's counts and hand out fresh allowances.
                 monthlyFeatureUsage:
                   data.preferences.monthlyFeatureUsage ?? localPrefs.monthlyFeatureUsage,
+                // Completed-plan counter (drives the review prompt) — keep the
+                // higher of remote/local so a sync can't rewind it.
+                plansCompletedCount: Math.max(
+                  data.preferences.plansCompletedCount ?? 0,
+                  localPrefs.plansCompletedCount ?? 0,
+                ),
               }
             : defaultPreferences;
 

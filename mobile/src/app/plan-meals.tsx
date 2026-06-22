@@ -41,9 +41,12 @@ import {
   Minus,
   Plus,
   SlidersHorizontal,
+  Heart,
+  Star,
   X,
   type LucideIcon,
 } from 'lucide-react-native';
+import { Image } from 'expo-image';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -463,6 +466,54 @@ export default function PlanMealsScreen() {
   const [cookStyle, setCookStyle] = useState<CookStyle>('daily');
   const [batch, setBatch] = useState<BatchConfig>(DEFAULT_BATCH_CONFIG);
 
+  // ── Favourites the user can drop straight into the plan ──
+  // Qualifies a recipe the user has cooked in the LAST MONTH that they also
+  // either saved (hearted) or rated 5★. Selected favourites are placed into the
+  // plan on build; the AI fills the remaining slots.
+  const allRecipes = useMealPlanStore((s) => s.recipes);
+  const recipeRatings = useMealPlanStore((s) => s.recipeRatings);
+  const cookingLogs = useMealPlanStore((s) => s.cookingLogs);
+  const [selectedFavoriteIds, setSelectedFavoriteIds] = useState<string[]>([]);
+
+  // Latest "cooked" timestamp per recipe (used to flag + sort recently-cooked
+  // favourites first). Kept as a sort/flag signal rather than a hard gate, so a
+  // user who hasn't logged a cook recently still sees the recipes they love.
+  const cookedAtById = useMemo(() => {
+    const m = new Map<string, number>();
+    cookingLogs.forEach((l) => {
+      if (l.status !== 'cooked' || !l.recipeId || !l.cookedAt) return;
+      const at = new Date(l.cookedAt).getTime();
+      if (!Number.isNaN(at)) m.set(l.recipeId, Math.max(m.get(l.recipeId) ?? 0, at));
+    });
+    return m;
+  }, [cookingLogs]);
+
+  const fiveStarById = useMemo(
+    () =>
+      new Set<string>([
+        ...recipeRatings.filter((r) => r.stars >= 5).map((r) => r.recipeId),
+        ...cookingLogs
+          .filter((l) => (l.vibeRating ?? 0) >= 5 && l.recipeId)
+          .map((l) => l.recipeId as string),
+      ]),
+    [recipeRatings, cookingLogs],
+  );
+
+  const favoriteRecipes = useMemo(() => {
+    // Favourite = saved (hearted) OR rated 5★. Recently-cooked ones float up.
+    return allRecipes
+      .filter((r) => r.isSaved || fiveStarById.has(r.id))
+      .sort((a, b) => (cookedAtById.get(b.id) ?? 0) - (cookedAtById.get(a.id) ?? 0))
+      .slice(0, 12);
+  }, [allRecipes, fiveStarById, cookedAtById]);
+
+  const toggleFavorite = useCallback((id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedFavoriteIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }, []);
+
   // ── Per-plan overrides (ephemeral) — Tune sheet ──
   const [overrides, setOverrides] = useState<Partial<UserPreferences>>({});
   const [oneTimeNote, setOneTimeNote] = useState<string>('');
@@ -644,6 +695,15 @@ export default function PlanMealsScreen() {
       days,
       enrichedInstructions,
       startDate: rangeStart,
+      // Drives the labelled placeholder slots (skip / grab&go / leftovers /
+      // buy-out) for the meals the user chose not to cook.
+      mealHabits,
+      // User-picked favourites to drop straight into the plan.
+      presetFavoriteIds: selectedFavoriteIds,
+      // Cooking rhythm — batch mode cooks N mains per cook day and fills the
+      // gaps with leftovers (mirrors the curated batch scheduler).
+      cookStyle,
+      batch: cookStyle === 'batch' ? batch : undefined,
     });
 
     if (isAnonymous) markFreeGatedAction('plan');
@@ -672,6 +732,7 @@ export default function PlanMealsScreen() {
     currentUserId,
     openPaywallSheet,
     recordMonthlyFeatureUse,
+    selectedFavoriteIds,
   ]);
 
   // ── Token-driven style helpers ──
@@ -1079,6 +1140,174 @@ export default function PlanMealsScreen() {
                 </>
               )}
             </View>
+          </Animated.View>
+
+          {/* ── Your favourites — add loved / 5★ recipes to the plan ── */}
+          <Animated.View
+            entering={FadeInDown.delay(160).springify()}
+            style={{ marginTop: 26 }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 24,
+                marginBottom: 6,
+              }}
+            >
+              <Heart size={12} color={inkTertiary} strokeWidth={1.8} />
+              <Text style={sectionEyebrow}>Include Any Favorites?</Text>
+              {selectedFavoriteIds.length > 0 && (
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 11,
+                    color: designTokens.colors.brand,
+                  }}
+                >
+                  · {selectedFavoriteIds.length} added
+                </Text>
+              )}
+            </View>
+            <Text
+              style={{
+                fontFamily: designTokens.font.regular,
+                fontSize: 12.5,
+                lineHeight: 17,
+                color: inkTertiary,
+                paddingHorizontal: 24,
+                marginBottom: 12,
+              }}
+            >
+              Recipes you saved or rated 5★ — tap to drop into this plan.
+            </Text>
+
+            {favoriteRecipes.length === 0 ? (
+              <View
+                style={{
+                  marginHorizontal: 16,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  borderColor: cardBorder,
+                  paddingVertical: 20,
+                  paddingHorizontal: 18,
+                  alignItems: 'center',
+                  backgroundColor: isDark ? '#1a1a1a' : designTokens.colors.cream,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 12.5,
+                    lineHeight: 18,
+                    color: inkTertiary,
+                    textAlign: 'center',
+                  }}
+                >
+                  Save recipes you love or rate a cooked meal 5★, and they'll show here to add to your plans.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ flexGrow: 0 }}
+                contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
+              >
+                {favoriteRecipes.map((r) => {
+                  const sel = selectedFavoriteIds.includes(r.id);
+                  const fiveStar = fiveStarById.has(r.id);
+                  return (
+                    <Pressable key={r.id} onPress={() => toggleFavorite(r.id)}>
+                      <View
+                        style={{
+                          width: 144,
+                          borderRadius: 16,
+                          borderWidth: sel ? 1.5 : 1,
+                          borderColor: sel ? designTokens.colors.brand : cardBorder,
+                          backgroundColor: cardBg,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <View style={{ width: '100%', aspectRatio: 4 / 3, backgroundColor: '#F4F0E8' }}>
+                          {r.imageUrl ? (
+                            <Image
+                              source={{ uri: r.imageUrl }}
+                              style={{ width: '100%', height: '100%' }}
+                              contentFit="cover"
+                              transition={150}
+                            />
+                          ) : null}
+                          {/* Signal badge */}
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: 7,
+                              left: 7,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 3,
+                              paddingHorizontal: 6,
+                              paddingVertical: 3,
+                              borderRadius: 999,
+                              backgroundColor: 'rgba(0,0,0,0.55)',
+                            }}
+                          >
+                            {fiveStar ? (
+                              <Star size={10} color="#F4C76A" fill="#F4C76A" strokeWidth={0} />
+                            ) : (
+                              <Heart size={10} color="#F6F2E9" fill="#F6F2E9" strokeWidth={0} />
+                            )}
+                            <Text
+                              style={{
+                                fontFamily: designTokens.font.medium,
+                                fontSize: 10,
+                                color: '#F6F2E9',
+                              }}
+                            >
+                              {fiveStar ? '5.0' : 'Loved'}
+                            </Text>
+                          </View>
+                          {/* Selected check */}
+                          {sel && (
+                            <View
+                              style={{
+                                position: 'absolute',
+                                top: 7,
+                                right: 7,
+                                width: 22,
+                                height: 22,
+                                borderRadius: 999,
+                                backgroundColor: designTokens.colors.brand,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Check size={13} color={designTokens.colors.cream} strokeWidth={2.6} />
+                            </View>
+                          )}
+                        </View>
+                        <Text
+                          style={{
+                            fontFamily: designTokens.font.semibold,
+                            fontSize: 13,
+                            color: inkPrimary,
+                            letterSpacing: -0.15,
+                            paddingHorizontal: 10,
+                            paddingVertical: 8,
+                          }}
+                          numberOfLines={2}
+                        >
+                          {r.name}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
           </Animated.View>
         </ScrollView>
 

@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase';
 import { initializeCacheTable } from '@/lib/recipe-cache';
 import { PaywallSheet } from '@/components/PaywallSheet';
 import { PostSignupWelcome } from '@/components/PostSignupWelcome';
+import { ReviewPromptModal } from '@/components/ReviewPromptModal';
 import {
   useFonts,
   Geist_400Regular,
@@ -379,6 +380,10 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           links their account, then auto-opens the onboarding paywall.
           Rendered AFTER the paywall so it stacks above during the cross-fade. */}
       <PostSignupWelcome />
+      {/* Global review prompt — fired from positive moments via
+          useReviewStore.getState().maybePrompt(). Self-gates on
+          already-reviewed / snooze / don't-ask-again. */}
+      <ReviewPromptModal isDark={colorScheme === 'dark'} />
     </ThemeProvider>
   );
 }

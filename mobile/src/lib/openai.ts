@@ -48,6 +48,7 @@ export interface GenerateRecipeParams {
   recipeIndex?: number; // Position in generation sequence (0-indexed) for protein diversity rules
   mealCount?: number; // Total unique recipes being generated for protein diversity rules
   customCookingInstructions?: string; // Free-text user instructions that override preferences (but not allergies)
+  breakfastStyle?: 'no-cook' | 'cooked'; // For breakfast only: weekday = no-cook, weekend = cooked
 }
 
 // Parse fridge ingredients from user's "What's in your Fridge" specification
@@ -460,6 +461,11 @@ export interface GeneratedRecipeResponse {
   tags: string[];
   calories: number;
   violations?: string[]; // Allergen and preference violations for display
+  // Set only for recipes sourced from the curated "Get Inspired" bank — carries
+  // the curated hero image (and its blurhash) so the meal card shows the real
+  // photo instead of a fetched stock/AI image. Undefined for AI-generated recipes.
+  imageUrl?: string;
+  blurhash?: string;
 }
 
 interface OpenAIChatResponse {
@@ -482,7 +488,7 @@ export function getDurationDays(duration: PlanDuration): number {
 }
 
 // Validate recipe against user preferences (allergies, dietary restrictions, cuisine preferences, prep time)
-function validateRecipeAgainstPreferences(
+export function validateRecipeAgainstPreferences(
   recipe: GeneratedRecipeResponse,
   preferences: UserPreferences,
   hasSpecialRequest: boolean = false,
@@ -688,6 +694,19 @@ function validateRecipeAgainstPreferences(
           if (foundMeatProduct) {
             violations.push(`DIETARY VIOLATION: Not suitable for ${restriction} diet — contains meat/fish`);
           }
+        } else if (restrictionLower.includes('pescatarian') || restrictionLower.includes('pescetarian')) {
+          // Pescatarian: no meat or poultry, but fish/seafood, eggs and dairy
+          // are all fine. (Note: 'pescatarian' is NOT a substring of
+          // 'vegetarian', so it correctly falls through to here.)
+          const meatProducts = [
+            'meat', 'chicken', 'beef', 'pork', 'lamb', 'turkey', 'duck', 'bacon',
+            'ham', 'sausage', 'veal', 'goat', 'venison', 'prosciutto', 'salami',
+            'pepperoni', 'lard', 'suet',
+          ];
+          const foundMeat = meatProducts.some(product => matchesWord(recipeText, product));
+          if (foundMeat) {
+            violations.push(`DIETARY VIOLATION: Not suitable for ${restriction} diet — contains meat/poultry`);
+          }
         } else if (restrictionLower.includes('halal')) {
           const halalProhibited = ['pork', 'pig', 'bacon', 'ham', 'lard', 'alcohol', 'wine', 'beer', 'rum'];
           if (halalProhibited.some(item => matchesWord(recipeText, item))) {
@@ -797,7 +816,8 @@ function buildSingleRecipePrompt(
   previousTechniques: string[] = [],
   assignedFridgeIngredient?: string, // NEW: specific ingredient this recipe MUST use
   mealCount?: number, // NEW: actual total meal count (different from uniqueRecipes when repeats allowed)
-  customCookingInstructions?: string // NEW: free-text user instructions that override preferences
+  customCookingInstructions?: string, // NEW: free-text user instructions that override preferences
+  breakfastStyle?: 'no-cook' | 'cooked' // NEW: breakfast only — weekday no-cook vs weekend cooked
 ): string {
   // ============================================================
   // RULE PRIORITY (strictly enforced top to bottom):
@@ -964,6 +984,33 @@ PREP TIME: ${preferences.mealPrepTime}.`;
     prompt += ` Total cook + prep time MUST be ≤ 60 minutes.`;
   } else {
     prompt += ` No time limit.`;
+  }
+
+  // 3f. Breakfast style (weekday = no-cook, weekend = cooked).
+  // Only applies to breakfasts; the orchestrator decides which style this
+  // slot needs from its day-of-week. Never overrides allergies/dietary rules.
+  if (mealType === 'breakfast' && breakfastStyle) {
+    if (breakfastStyle === 'no-cook') {
+      prompt += `
+
+═══ BREAKFAST STYLE — NO-COOK (WEEKDAY) ═══
+This breakfast is for a busy WEEKDAY morning. It MUST require ZERO cooking — no
+stovetop, oven, grill, toaster, or any applied heat. Make it a fast assemble-and-go
+dish such as: overnight oats, bircher muesli, yogurt & granola parfait, smoothie or
+smoothie bowl, chia pudding, cottage-cheese bowl, or a fruit-and-nut bowl.
+- cookTime MUST be 0 and prepTime should be small (≤ 10 minutes).
+- Do NOT include any step that fries, bakes, boils, simmers, scrambles, toasts, or
+  otherwise applies heat. Assembly/mixing/chilling only.`;
+    } else {
+      prompt += `
+
+═══ BREAKFAST STYLE — COOKED (WEEKEND) ═══
+This breakfast is for a relaxed WEEKEND morning — a proper HOT, cooked breakfast.
+Use real cooking such as: pancakes, waffles, omelette, scrambled or fried eggs,
+shakshuka, breakfast hash, or French toast.
+- Include at least one genuine cooking step (pan, oven, or griddle) and a realistic
+  cookTime of at least 8 minutes.`;
+    }
   }
 
   // ── #4  GROCERY OPTIMISATION & REPEAT RULES ───────────────────
@@ -2205,7 +2252,8 @@ export async function regenerateSingleRecipe(
       params.previousTechniques ?? [], // previousTechniques
       params.assignedFridgeIngredient, // Pass assigned fridge ingredient
       params.mealCount, // mealCount for protein diversity rules
-      params.customCookingInstructions // User's free-text custom instructions
+      params.customCookingInstructions, // User's free-text custom instructions
+      params.breakfastStyle // Breakfast no-cook (weekday) vs cooked (weekend)
     );
 
     console.log(`Regenerating single recipe (attempt ${attempt}/${MAX_PREFERENCE_RETRIES}, optimizeGrocery=${params.optimizeGrocery})...`);

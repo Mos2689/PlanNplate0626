@@ -1,5 +1,6 @@
 import { generateRecipe, regenerateSingleRecipe, parseFridgeIngredientsWithQuantity, extractProteinsFromRecipe, type GenerateRecipeParams, type GeneratedRecipeResponse, type MealType } from './openai';
 import { getCachedRecipes, cacheRecipe, generatePreferencesHash } from './recipe-cache';
+import { createCuratedMatcher, type CuratedMatcher } from './curated-recipe-source';
 import type { UserPreferences } from './store';
 
 interface BatchGenerationOptions {
@@ -20,6 +21,20 @@ interface BatchGenerationOptions {
   crossMealRepeats?: boolean;
   additionalInstructions?: string;
   customCookingInstructions?: string;
+  /**
+   * Plan length in days. Drives the duration-based repetition policy
+   * (lunch/dinner): < 7 days → all unique; ≥ 7 days → repeats allowed
+   * (still capped at 2 per recipe). Also used by the breakfast pass to map
+   * each breakfast slot to a calendar day. When omitted it is inferred from
+   * recipesToGenerate / mealTypes.length for legacy callers.
+   */
+  numberOfDays?: number;
+  /**
+   * Anchor date of the plan window as 'YYYY-MM-DD' (or any Date-parseable
+   * string). The breakfast pass uses it to tell weekdays (no-cook) from
+   * weekends (cooked). Defaults to today when omitted.
+   */
+  startDate?: string;
 }
 
 interface GenerationProgress {
@@ -144,18 +159,47 @@ export async function generateRecipesOptimized(
   const onProgress = callbacks.onProgress;
   const onRecipeReady = callbacks.onRecipeReady;
   const {
-    mealTypes,
+    mealTypes: requestedMealTypes,
     preferences,
-    recipesToGenerate,
+    recipesToGenerate: requestedTotal,
     useCache = true,
     optimizeGrocery = false,
-    allowRepeats = true,
+    allowRepeats: requestedAllowRepeats = true,
     crossMealRepeats = false,
     additionalInstructions,
     customCookingInstructions,
+    numberOfDays,
+    startDate,
   } = options;
 
-  const preferencesHash = generatePreferencesHash(preferences, mealTypes);
+  // Plan length in days — supplied by the caller, or inferred from the
+  // recipe/meal-type ratio for legacy callers.
+  const planDays =
+    numberOfDays ??
+    Math.max(1, Math.round(requestedTotal / Math.max(requestedMealTypes.length, 1)));
+
+  // ── Item 1: duration-based repeat policy (lunch/dinner) ──
+  // ≤ 7 days → every lunch/dinner recipe is unique (force repeats off).
+  // > 7 days → repeats permitted, still capped at 2 per recipe (the cap is
+  //            enforced by calculateMaxRepeats + the usedForRepeat set).
+  const allowRepeats = requestedAllowRepeats && planDays > 7;
+  if (requestedAllowRepeats && !allowRepeats) {
+    console.log(
+      `[OptimizedGeneration] Plan is ${planDays} day(s) (≤ 7) — forcing all lunch/dinner recipes unique.`
+    );
+  }
+
+  // ── Item 2: breakfast is produced by a dedicated pass (no-cook weekday /
+  // cooked weekend, plus the < 5-day "2 variations" cap), so the core
+  // lunch/dinner/snack pipeline below operates on the NON-breakfast subset.
+  const hasBreakfast = requestedMealTypes.includes('breakfast');
+  const breakfastSlots = hasBreakfast ? planDays : 0;
+  const mealTypes: MealType[] = requestedMealTypes.filter((mt) => mt !== 'breakfast');
+  const recipesToGenerate = requestedTotal - breakfastSlots;
+
+  // Cache key uses the FULL requested meal-type set so lunch/dinner cache
+  // hits stay identical to the pre-breakfast-split behaviour.
+  const preferencesHash = generatePreferencesHash(preferences, requestedMealTypes);
   const results: GeneratedRecipeResponse[] = [];
   let cachedCount = 0;
   let generatedCount = 0;
@@ -173,6 +217,177 @@ export async function generateRecipesOptimized(
   const usedProteins: string[] = [];
   const usedFormats: string[] = [];
   const usedTechniques: string[] = [];
+
+  // Item 3: curated-first sourcing. Pre-validate the "Get Inspired" bank
+  // against the user's allergies + dietary restrictions once; every slot below
+  // tries this before falling back to an OpenAI call. `curatedCount` is folded
+  // into `generatedCount` for progress, and tracked separately just for logs.
+  const curatedMatcher: CuratedMatcher = createCuratedMatcher(preferences);
+  let curatedCount = 0;
+  console.log(
+    `[OptimizedGeneration] Curated bank available: breakfast=${curatedMatcher.countFor('breakfast')}, lunch=${curatedMatcher.countFor('lunch')}, dinner=${curatedMatcher.countFor('dinner')}, snack=${curatedMatcher.countFor('snack')} (after preference filter)`
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // BREAKFAST PASS (Item 2)
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Breakfast follows its own rules, independent of the lunch/dinner repeat
+  // machinery:
+  //   • WEEKDAY (Mon–Fri) breakfasts are NO-COOK (overnight oats, parfait,
+  //     smoothie, …); WEEKEND (Sat/Sun) breakfasts are COOKED (pancakes,
+  //     omelette, hash, …). Day-of-week comes from `startDate`.
+  //   • Windows < 5 days use at most 2 unique breakfasts, rotated across the
+  //     days; ≥ 5 days gets one unique breakfast per day.
+  // Each breakfast is pushed into `results` and streamed via onRecipeReady in
+  // day order, so the store assigns breakfast #i → breakfast day #i.
+  if (breakfastSlots > 0) {
+    // Parse the anchor date as a LOCAL calendar date so day-of-week is
+    // timezone-stable (avoid UTC-midnight rolling back a day).
+    const parseLocalDate = (s?: string): Date => {
+      if (s) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+        if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) return d;
+      }
+      return new Date();
+    };
+    const anchor = parseLocalDate(startDate);
+    anchor.setHours(0, 0, 0, 0);
+
+    const styleForDay = (dayIndex: number): 'no-cook' | 'cooked' => {
+      const d = new Date(anchor);
+      d.setDate(d.getDate() + dayIndex);
+      const dow = d.getDay(); // 0 = Sunday … 6 = Saturday
+      return dow === 0 || dow === 6 ? 'cooked' : 'no-cook';
+    };
+
+    const styleByDay: ('no-cook' | 'cooked')[] = [];
+    for (let d = 0; d < breakfastSlots; d++) styleByDay.push(styleForDay(d));
+
+    // Variation cap by window length (each variation still respects its
+    // weekday/weekend style):
+    //   < 5 days → 2     5–9 days → 4     10–14 days → 5
+    const variationCap = planDays < 5 ? 2 : planDays < 10 ? 4 : 5;
+    const noCookDays = styleByDay.filter((s) => s === 'no-cook').length;
+    const cookedDays = styleByDay.filter((s) => s === 'cooked').length;
+    const target = Math.min(variationCap, breakfastSlots);
+
+    // Split the variation budget across the two styles, proportional to how
+    // many days each covers — with ≥ 1 per style that appears, and never more
+    // variations of a style than it has days in the window.
+    const uniqueByStyle: Record<'no-cook' | 'cooked', number> = { 'no-cook': 0, cooked: 0 };
+    if (noCookDays > 0) uniqueByStyle['no-cook'] = 1;
+    if (cookedDays > 0) uniqueByStyle['cooked'] = 1;
+    let remaining = target - (uniqueByStyle['no-cook'] + uniqueByStyle['cooked']);
+    while (remaining > 0) {
+      const canNoCook = uniqueByStyle['no-cook'] < noCookDays;
+      const canCooked = uniqueByStyle['cooked'] < cookedDays;
+      if (!canNoCook && !canCooked) break;
+      // Top up whichever style is currently the least "filled" relative to its
+      // day count, so the rotation spreads evenly.
+      const noCookFill = canNoCook ? uniqueByStyle['no-cook'] / noCookDays : Infinity;
+      const cookedFill = canCooked ? uniqueByStyle['cooked'] / cookedDays : Infinity;
+      if (canNoCook && (noCookFill <= cookedFill || !canCooked)) uniqueByStyle['no-cook']++;
+      else uniqueByStyle['cooked']++;
+      remaining--;
+    }
+
+    const poolStyles: ('no-cook' | 'cooked')[] = [
+      ...(Array(uniqueByStyle['no-cook']).fill('no-cook') as 'no-cook'[]),
+      ...(Array(uniqueByStyle['cooked']).fill('cooked') as 'cooked'[]),
+    ];
+
+    console.log(
+      `[OptimizedGeneration] Breakfast pass: ${breakfastSlots} slot(s), ${poolStyles.length} unique [${poolStyles.join(', ')}], style/day=[${styleByDay.join(', ')}]`
+    );
+
+    // Generate the unique pool (tagged with the style it was generated for).
+    const pool: { recipe: GeneratedRecipeResponse; style: 'no-cook' | 'cooked' }[] = [];
+    for (let p = 0; p < poolStyles.length; p++) {
+      const style = poolStyles[p];
+      const excludeNames = [...usedRecipeNames];
+      const threshold = optimizeGrocery ? 0.8 : 0.6;
+      let made: GeneratedRecipeResponse | null = null;
+
+      // Curated-first: a breakfast from the Get Inspired bank matching the
+      // required style (no-cook = no applied heat → cookTime 0; cooked → > 0).
+      const curated = curatedMatcher.take('breakfast', usedRecipeNames, {
+        predicate: (r) => (style === 'no-cook' ? r.cookTime === 0 : r.cookTime > 0),
+        similarityThreshold: threshold,
+      });
+      let madeFromCurated = false;
+      if (curated) {
+        made = curated;
+        madeFromCurated = true;
+        curatedCount++;
+        console.log(`[OptimizedGeneration] Breakfast from Get Inspired bank (${style}): "${curated.name}"`);
+      }
+
+      // Fall back to OpenAI only when nothing in the bank qualified.
+      for (let attempt = 0; !made && attempt < 5; attempt++) {
+        try {
+          const recipe = await regenerateSingleRecipe(
+            {
+              mealTypes: ['breakfast'],
+              preferences,
+              recipesToGenerate: Math.max(poolStyles.length, 1),
+              optimizeGrocery,
+              allowRepeats: false,
+              breakfastStyle: style,
+              customCookingInstructions,
+            },
+            excludeNames
+          );
+          if (usedRecipeNames.some((n) => areRecipeNamesTooSimilar(recipe.name, n, threshold))) {
+            excludeNames.push(recipe.name);
+            continue;
+          }
+          made = recipe;
+          break;
+        } catch (error: any) {
+          console.error(
+            `[OptimizedGeneration] Breakfast generation failed (attempt ${attempt + 1}): ${error?.message}`
+          );
+        }
+      }
+      if (made) {
+        made.mealType = 'breakfast';
+        usedRecipeNames.push(made.name);
+        pool.push({ recipe: made, style });
+        // Don't pollute the AI recipe cache with curated picks.
+        if (useCache && !madeFromCurated) await cacheRecipe(preferencesHash, 'breakfast', made);
+        console.log(`[OptimizedGeneration] Breakfast pool +1 (${style}): "${made.name}"`);
+      } else {
+        failedCount++;
+        console.error(`[OptimizedGeneration] Failed to generate a ${style} breakfast after 5 attempts`);
+      }
+    }
+
+    // Assign pool recipes to days (round-robin within matching style) and
+    // stream them in day order so each lands on its calendar day.
+    if (pool.length > 0) {
+      const rotation: Record<'no-cook' | 'cooked', number> = { 'no-cook': 0, cooked: 0 };
+      for (let d = 0; d < breakfastSlots; d++) {
+        const style = styleByDay[d];
+        let candidates = pool.filter((p) => p.style === style);
+        if (candidates.length === 0) candidates = pool; // graceful fallback
+        const pick = candidates[rotation[style] % candidates.length].recipe;
+        rotation[style]++;
+        const dayRecipe: GeneratedRecipeResponse = { ...pick, mealType: 'breakfast' };
+        results.push(dayRecipe);
+        generatedCount++;
+        onRecipeReady?.(dayRecipe, streamIndex++);
+      }
+      onProgress?.({
+        total: requestedTotal,
+        completed: cachedCount + generatedCount + failedCount,
+        cached: cachedCount,
+        generated: generatedCount,
+        failed: failedCount,
+      });
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // FRIDGE INGREDIENTS PARSING AND DISTRIBUTION
@@ -354,6 +569,8 @@ export async function generateRecipesOptimized(
       cachedCount += takenRecipes.length;
       cachedCountPerType[mealType] = takenRecipes.length;
       takenRecipes.forEach(r => usedRecipeNames.push(r.name));
+      // Count cached picks toward the pescatarian composition target too.
+      takenRecipes.forEach(r => curatedMatcher.record(r, mealType));
       // Stream each cached recipe to the caller so the UI can render
       // it before any LLM call even fires.
       if (onRecipeReady) {
@@ -370,7 +587,7 @@ export async function generateRecipesOptimized(
     if (cachedCount > 0) {
       console.log(`[OptimizedGeneration] Retrieved ${cachedCount} recipes from cache: ${Object.entries(cachedCountPerType).map(([mt, c]) => `${mt}=${c}`).join(', ')}`);
       onProgress?.({
-        total: recipesToGenerate,
+        total: requestedTotal,
         completed: cachedCount,
         cached: cachedCount,
         generated: 0,
@@ -531,6 +748,51 @@ export async function generateRecipesOptimized(
         computedExcludeProteins = [...uniqueProteinsUsed];
       }
 
+      // Curated-first (Item 3): pull from the Get Inspired bank before any
+      // OpenAI call. Skip when this slot must feature a specific fridge
+      // ingredient — curated recipes can't honour that, so those generate.
+      if (!assignedFridgeIngredient) {
+        const curated = curatedMatcher.take(mealType, excludeNames, {
+          similarityThreshold: optimizeGrocery ? 0.8 : 0.6,
+        });
+        if (curated) {
+          curatedCount++;
+          generatedCount++;
+          usedRecipeNames.push(curated.name);
+          results.push(curated);
+          onRecipeReady?.(curated, streamIndex++);
+          // Feed diversity trackers so later OpenAI recipes vary against it.
+          const proteins = extractProteinsFromRecipe(curated);
+          usedProteins.push(...proteins);
+          const format = extractCookingFormat(curated);
+          if (format) usedFormats.push(format);
+          const technique = extractCookingTechnique(curated);
+          if (technique) usedTechniques.push(technique);
+          console.log(
+            `[OptimizedGeneration] Slot ${i + 1}/${recipesNeeded} from Get Inspired bank: "${curated.name}" (${mealType})`
+          );
+          onProgress?.({
+            total: requestedTotal,
+            completed: cachedCount + generatedCount + failedCount,
+            cached: cachedCount,
+            generated: generatedCount,
+            failed: failedCount,
+          });
+          continue; // slot filled — skip OpenAI entirely
+        }
+      }
+
+      // Pescatarian composition: if the running plan is short of its >60%
+      // seafood target, nudge this OpenAI fallback toward fish (the bank had no
+      // qualifying fish dish left). customCookingInstructions does NOT bypass
+      // dietary validation, so the no-meat rule still holds.
+      const pushFish = curatedMatcher.needsSignature(mealType);
+      const slotCookingInstructions = pushFish
+        ? [customCookingInstructions, 'This dish MUST feature fish or seafood as its main protein.']
+            .filter((s) => s && s.trim().length > 0)
+            .join('\n\n')
+        : customCookingInstructions;
+
       // Retry loop for similarity rejection
       let recipeAccepted = false;
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -548,7 +810,7 @@ export async function generateRecipesOptimized(
             previousTechniques: [...usedTechniques],
             recipeIndex: currentRecipePosition, // Pass position for prompt-side logic
             mealCount: uniqueRecipesToGenerate, // Pass meal count for prompt-side logic
-            customCookingInstructions, // User's free-text custom instructions
+            customCookingInstructions: slotCookingInstructions, // user instructions (+ fish nudge when needed)
           }, excludeNames);
 
           // Check for name similarity with ALL existing recipes (even when allowRepeats=true)
@@ -568,6 +830,8 @@ export async function generateRecipesOptimized(
           generatedCount++;
           usedRecipeNames.push(recipe.name);
           results.push(recipe);
+          // Keep the pescatarian seafood-vs-veg composition accurate.
+          curatedMatcher.record(recipe, mealType);
           // Stream the freshly-accepted recipe out immediately so the UI
           // can render it before the rest of the batch finishes.
           onRecipeReady?.(recipe, streamIndex++);
@@ -600,7 +864,7 @@ export async function generateRecipesOptimized(
       }
 
       onProgress?.({
-        total: recipesToGenerate,
+        total: requestedTotal,
         completed: cachedCount + generatedCount + failedCount,
         cached: cachedCount,
         generated: generatedCount,
@@ -610,7 +874,7 @@ export async function generateRecipesOptimized(
   }
 
   console.log(
-    `[OptimizedGeneration] Generated ${results.length} unique recipes (${cachedCount} cached, ${generatedCount} generated, ${failedCount} failed)`
+    `[OptimizedGeneration] Generated ${results.length} unique recipes (${cachedCount} cached, ${generatedCount} generated [${curatedCount} from Get Inspired bank], ${failedCount} failed)`
   );
 
   // Step 3: Apply repeat logic
@@ -750,24 +1014,47 @@ export async function generateRecipesOptimized(
     console.log(`[OptimizedGeneration] Final order: ${results.map((r, i) => `${i + 1}:${r.name}(${r.mealType})`).join(', ')}`);
   }
 
-  // Safety net: if we still don't have enough recipes, generate the missing ones directly
-  const stillNeeded = recipesToGenerate - results.length;
-  if (stillNeeded > 0) {
-    console.log(`[OptimizedGeneration] Safety net: need ${stillNeeded} more recipes to reach target of ${recipesToGenerate}`);
+  // Safety net: if we still don't have enough recipes, generate the missing ones directly.
+  // `results` already includes the breakfast pass output, so compare against the
+  // FULL requested total. Backfill uses core (non-breakfast) meal types only;
+  // skip entirely for breakfast-only plans (mealTypes is empty there).
+  const stillNeeded = requestedTotal - results.length;
+  if (stillNeeded > 0 && mealTypes.length > 0) {
+    console.log(`[OptimizedGeneration] Safety net: need ${stillNeeded} more recipes to reach target of ${requestedTotal}`);
     const safeBatch: Promise<GeneratedRecipeResponse | null>[] = [];
     for (let i = 0; i < stillNeeded; i++) {
       const mealType = mealTypes[i % mealTypes.length];
+
+      // Curated-first here too — only spend an OpenAI call when the bank is dry.
+      const curated = curatedMatcher.take(mealType, [...usedRecipeNames], {
+        similarityThreshold: optimizeGrocery ? 0.8 : 0.6,
+      });
+      if (curated) {
+        curatedCount++;
+        usedRecipeNames.push(curated.name);
+        safeBatch.push(Promise.resolve(curated));
+        console.log(`[OptimizedGeneration] Safety net slot from Get Inspired bank: "${curated.name}" (${mealType})`);
+        continue;
+      }
+
+      const safePushFish = curatedMatcher.needsSignature(mealType);
+      const safeCookingInstructions = safePushFish
+        ? [customCookingInstructions, 'This dish MUST feature fish or seafood as its main protein.']
+            .filter((s) => s && s.trim().length > 0)
+            .join('\n\n')
+        : customCookingInstructions;
       safeBatch.push(
         regenerateSingleRecipe({
           mealTypes: [mealType],
           preferences,
           additionalInstructions,
-          customCookingInstructions,
+          customCookingInstructions: safeCookingInstructions,
           recipesToGenerate,
           optimizeGrocery,
           allowRepeats,
         }, [...usedRecipeNames]).then(recipe => {
           usedRecipeNames.push(recipe.name);
+          curatedMatcher.record(recipe, mealType);
           if (useCache) cacheRecipe(preferencesHash, mealType, recipe);
           return recipe;
         }).catch(() => null)
@@ -796,7 +1083,7 @@ export async function generateRecipesOptimized(
     console.log(`🛒 [OptimizedGeneration] Grocery optimization ${isEffective ? '✓ EFFECTIVE' : '⚠️ NEEDS IMPROVEMENT'}: Target unique ~${results.length * 5}-${results.length * 6}, Actual=${uniqueIngredientNames.size}`);
   }
 
-  return results.slice(0, recipesToGenerate);
+  return results.slice(0, requestedTotal);
 }
 
 /**
