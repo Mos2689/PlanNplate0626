@@ -2,7 +2,7 @@
   "expo": {
     "name": "PlanNplate",
     "slug": "plannplate",
-    "version": "1.0.19",
+    "version": "1.0.21",
     "scheme": "plannplate",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
