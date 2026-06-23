@@ -4,13 +4,16 @@
 // `useSubscriptionStore.getState().openPaywallSheet(trigger)` to bring
 // it up. Sliding sheet keeps the user's scroll/tab position intact.
 //
-// Design: one clean value pitch, four benefits, a single limited-time
-// monthly offer, and a low-friction "continue free" exit. Deliberately
-// quiet — no social-proof row, testimonials, or dual price anchors.
+// Design: a two-option plan toggle (Free / Monthly). The pane below swaps to
+// show what each tier offers — the free tier lists every feature with its
+// monthly cap, the monthly tier shows everything unlimited at the offer price.
+// A single "Continue" CTA acts on the selected tier: continue free (dismiss)
+// or start the monthly purchase. No separate "not now" exit — the Free tab IS
+// the free path. "Most popular" badge sits on the Monthly tab.
 //
 // Brand rules (locked):
 //   • Olive eyebrow + italic word in the headline.
-//   • Sage brand CTA, no purple/blue.
+//   • Sage brand accents, no purple/blue.
 //   • scale-on-press for every Pressable.
 //   • No Sparkles / ChefHat icons.
 
@@ -27,12 +30,13 @@ import {
 } from 'react-native';
 import {
   Crown,
-  Check,
   X,
   CalendarHeart,
   BookmarkPlus,
   Soup,
   ShoppingBasket,
+  Lightbulb,
+  Download,
   type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -45,31 +49,43 @@ import {
 import { friendlyPurchaseError } from '@/lib/purchase-errors';
 import { useRouter } from 'expo-router';
 import { useSubscriptionStore } from '@/lib/subscription-store';
-import { designTokens, elevation, getThemeColors } from '@/lib/design-tokens';
+import { MONTHLY_FEATURE_LIMITS } from '@/lib/store';
+import { designTokens, getThemeColors } from '@/lib/design-tokens';
 import type { PurchasesPackage } from 'react-native-purchases';
 import { logMetaPurchase } from '@/lib/meta-sdk';
 
-// ── Value props ─────────────────────────────────────────────────────────
-const PREMIUM_BENEFITS: Array<{ title: string; sub: string; Icon: LucideIcon }> = [
+// ── Feature rows ────────────────────────────────────────────────────────────
+// One ordered list of features; each tier supplies its own value per feature.
+// Free caps are sourced from MONTHLY_FEATURE_LIMITS so the sheet never drifts
+// from the actual gating. Get inspired / Get groceries are always unlimited.
+type FeatureRow = { title: string; Icon: LucideIcon; free: string; premium: string };
+
+const FEATURES: FeatureRow[] = [
+  { title: 'Get inspired', Icon: Lightbulb, free: 'Unlimited', premium: 'Unlimited' },
+  { title: 'Get groceries', Icon: ShoppingBasket, free: 'Unlimited', premium: 'Unlimited' },
   {
     title: 'Plan my meals',
-    sub: 'Fresh meal plans whenever you need them.',
     Icon: CalendarHeart,
+    free: `${MONTHLY_FEATURE_LIMITS.planMeals} / month`,
+    premium: 'Unlimited',
   },
   {
-    title: 'Save unlimited recipes',
-    sub: 'Keep the recipes you love, from anywhere.',
+    title: 'Add recipe',
     Icon: BookmarkPlus,
+    free: `${MONTHLY_FEATURE_LIMITS.addRecipe} / month`,
+    premium: 'Unlimited',
   },
   {
-    title: 'Vibe Cooking',
-    sub: 'Create recipes based on your mood and pantry.',
+    title: 'Import recipe',
+    Icon: Download,
+    free: `${MONTHLY_FEATURE_LIMITS.importRecipe} / month`,
+    premium: 'Unlimited',
+  },
+  {
+    title: 'Vibe cooking',
     Icon: Soup,
-  },
-  {
-    title: 'Budget groceries',
-    sub: 'Save on grocery bills — no more food waste.',
-    Icon: ShoppingBasket,
+    free: `${MONTHLY_FEATURE_LIMITS.vibe} / month`,
+    premium: 'Unlimited',
   },
 ];
 
@@ -80,6 +96,8 @@ const PREMIUM_BENEFITS: Array<{ title: string; sub: string; Icon: LucideIcon }> 
 const ORIGINAL_MONTHLY = 'AU$6.99';
 const OFFER_MONTHLY = 'AU$3.99';
 
+type PlanTab = 'free' | 'monthly';
+
 interface PaywallSheetProps {
   isDark?: boolean;
 }
@@ -88,20 +106,23 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
   const router = useRouter();
   const trigger = useSubscriptionStore((s) => s.paywallSheetTrigger);
   const closeSheet = useSubscriptionStore((s) => s.closePaywallSheet);
-  // Onboarding mode: the sheet is the first thing after signup. We keep a
-  // visible exit ("Not now, continue free") and route to the home tab on
-  // either purchase or skip.
   const isOnboarding = trigger === 'onboarding';
 
   const colors = getThemeColors(isDark);
   const sheetBg = isDark ? '#1f1f1f' : '#FFFFFF';
-  const cardBorder = isDark ? '#2a2a2a' : designTokens.colors.hair;
   const visible = trigger !== null;
 
   const [isLoading, setIsLoading] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [monthly, setMonthly] = useState<PurchasesPackage | null>(null);
+  // Lead with the paid plan; the Free tab is one tap away.
+  const [tab, setTab] = useState<PlanTab>('monthly');
+
+  // Reset to the Monthly tab each time the sheet opens.
+  useEffect(() => {
+    if (visible) setTab('monthly');
+  }, [visible]);
 
   // Load the monthly offering whenever the sheet opens. RevenueCat caches the
   // response client-side, so re-firing on each open is cheap.
@@ -206,7 +227,18 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
     }
   }, [closeSheet]);
 
+  // Continue acts on the selected tier.
+  const handleContinue = useCallback(() => {
+    if (tab === 'free') {
+      handleClose();
+    } else {
+      handlePurchase();
+    }
+  }, [tab, handleClose, handlePurchase]);
+
   if (!visible) return null;
+
+  const isMonthly = tab === 'monthly';
 
   return (
     <Modal
@@ -252,7 +284,7 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
             contentContainerStyle={{ paddingBottom: 24 }}
           >
             {/* Header */}
-            <View style={{ paddingHorizontal: 24, paddingTop: 6, paddingBottom: 18 }}>
+            <View style={{ paddingHorizontal: 24, paddingTop: 6, paddingBottom: 16 }}>
               <Text
                 style={{
                   fontFamily: designTokens.font.semibold,
@@ -263,7 +295,7 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
                   marginBottom: 8,
                 }}
               >
-                PlanNplate Premium
+                Membership
               </Text>
               <Text
                 style={{
@@ -288,161 +320,196 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
               </Text>
             </View>
 
-            {/* Benefits list */}
-            <View style={{ paddingHorizontal: 20, marginBottom: 18 }}>
-              {PREMIUM_BENEFITS.map((b, idx) => {
-                const Icon = b.Icon;
-                return (
-                  <View
-                    key={b.title}
+            {/* Plan toggle */}
+            <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 6,
+                  backgroundColor: colors.hair2,
+                  borderRadius: 999,
+                  padding: 4,
+                }}
+              >
+                <PlanTabButton
+                  label="Free"
+                  sub="$0 · always"
+                  active={tab === 'free'}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setTab('free');
+                  }}
+                  colors={colors}
+                />
+                <PlanTabButton
+                  label="Monthly"
+                  sub={`${OFFER_MONTHLY} / mo`}
+                  active={tab === 'monthly'}
+                  badge="Most popular"
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setTab('monthly');
+                  }}
+                  colors={colors}
+                />
+              </View>
+            </View>
+
+            {/* Pane */}
+            <View style={{ paddingHorizontal: 16 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: isMonthly ? designTokens.colors.brand : colors.hair,
+                  borderRadius: 20,
+                  paddingHorizontal: 16,
+                  paddingTop: 14,
+                  paddingBottom: 6,
+                  backgroundColor: isMonthly
+                    ? 'rgba(84, 100, 69, 0.05)'
+                    : colors.bg,
+                }}
+              >
+                {/* Pane header */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'baseline',
+                    justifyContent: 'space-between',
+                    marginBottom: 2,
+                  }}
+                >
+                  <Text
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      paddingVertical: 11,
-                      borderBottomWidth: idx < PREMIUM_BENEFITS.length - 1 ? 1 : 0,
-                      borderBottomColor: colors.hair2,
+                      fontFamily: designTokens.font.semibold,
+                      fontSize: 15,
+                      color: colors.ink,
+                      letterSpacing: -0.2,
                     }}
                   >
-                    <View
-                      style={{
-                        width: 38,
-                        height: 38,
-                        borderRadius: 12,
-                        backgroundColor: isDark
-                          ? 'rgba(84, 100, 69, 0.18)'
-                          : 'rgba(84, 100, 69, 0.10)',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 14,
-                      }}
-                    >
-                      <Icon size={19} color={designTokens.colors.brand} strokeWidth={1.9} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
+                    {isMonthly ? 'Premium' : 'Free plan'}
+                  </Text>
+                  {isMonthly ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                      <Text
+                        style={{
+                          fontFamily: designTokens.font.regular,
+                          fontSize: 13,
+                          color: designTokens.colors.ink3,
+                          textDecorationLine: 'line-through',
+                          marginRight: 6,
+                        }}
+                      >
+                        {ORIGINAL_MONTHLY}
+                      </Text>
                       <Text
                         style={{
                           fontFamily: designTokens.font.semibold,
-                          fontSize: 14.5,
+                          fontSize: 15,
                           color: colors.ink,
-                          letterSpacing: -0.15,
                         }}
                       >
-                        {b.title}
+                        {OFFER_MONTHLY}
                       </Text>
                       <Text
                         style={{
                           fontFamily: designTokens.font.regular,
-                          fontSize: 12.5,
-                          lineHeight: 17,
-                          color: designTokens.colors.ink3,
-                          marginTop: 1,
+                          fontSize: 12,
+                          color: designTokens.colors.ink2,
+                          marginLeft: 2,
                         }}
                       >
-                        {b.sub}
+                        /mo
                       </Text>
                     </View>
-                  </View>
-                );
-              })}
-            </View>
-
-            <View style={{ paddingHorizontal: 16 }}>
-              {/* Offer price card */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingVertical: 16,
-                  paddingHorizontal: 18,
-                  borderRadius: 18,
-                  borderWidth: 1.5,
-                  borderColor: designTokens.colors.brand,
-                  backgroundColor: 'rgba(84, 100, 69, 0.06)',
-                  ...elevation.card,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <View
-                    style={{
-                      alignSelf: 'flex-start',
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 999,
-                      backgroundColor: designTokens.colors.olive,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.semibold,
-                        fontSize: 10,
-                        color: '#F6F2E9',
-                        letterSpacing: 0.4,
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      Limited-time offer
-                    </Text>
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.semibold,
-                      fontSize: 14,
-                      color: colors.ink,
-                      letterSpacing: -0.1,
-                    }}
-                  >
-                    Monthly
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 12,
-                      color: designTokens.colors.ink3,
-                      marginTop: 2,
-                    }}
-                  >
-                    Cancel anytime
-                  </Text>
-                </View>
-
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 14,
-                      color: designTokens.colors.ink3,
-                      textDecorationLine: 'line-through',
-                    }}
-                  >
-                    {ORIGINAL_MONTHLY}
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 2 }}>
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.semibold,
-                        fontSize: 28,
-                        color: colors.ink,
-                        letterSpacing: -0.6,
-                      }}
-                    >
-                      {OFFER_MONTHLY}
-                    </Text>
+                  ) : (
                     <Text
                       style={{
                         fontFamily: designTokens.font.regular,
                         fontSize: 13,
-                        color: designTokens.colors.ink2,
-                        marginLeft: 3,
+                        color: designTokens.colors.ink3,
                       }}
                     >
-                      /mo
+                      $0 forever
                     </Text>
-                  </View>
+                  )}
                 </View>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 12,
+                    color: designTokens.colors.ink3,
+                    marginBottom: 2,
+                  }}
+                >
+                  {isMonthly
+                    ? 'Every feature, no monthly caps'
+                    : 'Generous monthly caps, no card needed'}
+                </Text>
+
+                {/* Feature rows */}
+                {FEATURES.map((f, idx) => {
+                  const value = isMonthly ? f.premium : f.free;
+                  const unlimited = value === 'Unlimited';
+                  const Icon = f.Icon;
+                  return (
+                    <View
+                      key={f.title}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingVertical: 9,
+                        borderTopWidth: 1,
+                        borderTopColor: colors.hair2,
+                      }}
+                    >
+                      <Icon
+                        size={18}
+                        color={
+                          isMonthly ? designTokens.colors.brand : designTokens.colors.ink2
+                        }
+                        strokeWidth={1.8}
+                      />
+                      <Text
+                        style={{
+                          flex: 1,
+                          fontFamily: designTokens.font.medium,
+                          fontSize: 14.5,
+                          color: colors.ink,
+                          letterSpacing: -0.12,
+                          marginLeft: 11,
+                        }}
+                      >
+                        {f.title}
+                      </Text>
+                      <View
+                        style={{
+                          paddingHorizontal: 9,
+                          paddingVertical: 4,
+                          borderRadius: 999,
+                          backgroundColor: unlimited
+                            ? 'rgba(84, 100, 69, 0.12)'
+                            : colors.hair2,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: designTokens.font.semibold,
+                            fontSize: 11.5,
+                            color: unlimited
+                              ? designTokens.colors.brand
+                              : designTokens.colors.ink2,
+                          }}
+                        >
+                          {value}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
 
-              {/* Primary CTA */}
+              {/* CTA */}
               {isLoading ? (
                 <View style={{ paddingVertical: 24, alignItems: 'center' }}>
                   <ActivityIndicator color={designTokens.colors.olive} />
@@ -450,9 +517,9 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
               ) : (
                 <>
                   <Pressable
-                    onPress={handlePurchase}
+                    onPress={handleContinue}
                     disabled={isPurchasing}
-                    style={{ width: '100%', marginTop: 14 }}
+                    style={{ width: '100%', marginTop: 16 }}
                   >
                     {({ pressed }) => (
                       <View
@@ -474,7 +541,13 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
                           <ActivityIndicator color={designTokens.colors.cream} />
                         ) : (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Crown size={18} color={designTokens.colors.cream} strokeWidth={1.9} />
+                            {isMonthly && (
+                              <Crown
+                                size={18}
+                                color={designTokens.colors.cream}
+                                strokeWidth={1.9}
+                              />
+                            )}
                             <Text
                               style={{
                                 fontFamily: designTokens.font.semibold,
@@ -483,7 +556,7 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
                                 letterSpacing: -0.2,
                               }}
                             >
-                              Continue with Premium
+                              Continue
                             </Text>
                           </View>
                         )}
@@ -492,42 +565,21 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
                   </Pressable>
 
                   {/* Auto-renew disclosure — App Store reviewers expect this. */}
-                  <Text
-                    style={{
-                      textAlign: 'center',
-                      marginTop: 10,
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 11,
-                      color: designTokens.colors.ink3,
-                      paddingHorizontal: 8,
-                      lineHeight: 15,
-                    }}
-                  >
-                    {OFFER_MONTHLY}/month after the offer. Auto-renews. Cancel anytime in Settings.
-                  </Text>
-
-                  {/* Low-friction exit */}
-                  <Pressable
-                    onPress={handleClose}
-                    hitSlop={6}
-                    style={{
-                      alignSelf: 'center',
-                      marginTop: 14,
-                      paddingVertical: 8,
-                      paddingHorizontal: 16,
-                    }}
-                  >
+                  {isMonthly && (
                     <Text
                       style={{
-                        fontFamily: designTokens.font.semibold,
-                        fontSize: 14,
-                        color: designTokens.colors.ink2,
-                        letterSpacing: -0.1,
+                        textAlign: 'center',
+                        marginTop: 10,
+                        fontFamily: designTokens.font.regular,
+                        fontSize: 11,
+                        color: designTokens.colors.ink3,
+                        paddingHorizontal: 8,
+                        lineHeight: 15,
                       }}
                     >
-                      Not now, continue free
+                      {OFFER_MONTHLY}/month after the offer. Auto-renews. Cancel anytime in Settings.
                     </Text>
-                  </Pressable>
+                  )}
 
                   {/* Restore link */}
                   <Pressable
@@ -536,7 +588,7 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
                     hitSlop={6}
                     style={{
                       alignSelf: 'center',
-                      marginTop: 2,
+                      marginTop: isMonthly ? 10 : 14,
                       paddingVertical: 6,
                       paddingHorizontal: 12,
                     }}
@@ -559,6 +611,85 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
         </View>
       </View>
     </Modal>
+  );
+}
+
+// ── Plan toggle button ──────────────────────────────────────────────────────
+function PlanTabButton({
+  label,
+  sub,
+  active,
+  badge,
+  onPress,
+  colors,
+}: {
+  label: string;
+  sub: string;
+  active: boolean;
+  badge?: string;
+  onPress: () => void;
+  colors: ReturnType<typeof getThemeColors>;
+}) {
+  return (
+    <Pressable onPress={onPress} style={{ flex: 1 }}>
+      {({ pressed }) => (
+        <View
+          style={{
+            borderRadius: 999,
+            paddingVertical: 9,
+            paddingHorizontal: 8,
+            alignItems: 'center',
+            backgroundColor: active ? designTokens.colors.brand : 'transparent',
+            transform: [{ scale: pressed ? 0.98 : 1 }],
+          }}
+        >
+          {badge ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: -16,
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+                borderRadius: 999,
+                backgroundColor: designTokens.colors.olive,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: designTokens.font.semibold,
+                  fontSize: 9,
+                  letterSpacing: 0.3,
+                  textTransform: 'uppercase',
+                  color: '#F6F2E9',
+                }}
+              >
+                {badge}
+              </Text>
+            </View>
+          ) : null}
+          <Text
+            style={{
+              fontFamily: designTokens.font.semibold,
+              fontSize: 14,
+              letterSpacing: -0.1,
+              color: active ? designTokens.colors.cream : colors.ink,
+            }}
+          >
+            {label}
+          </Text>
+          <Text
+            style={{
+              fontFamily: designTokens.font.regular,
+              fontSize: 11,
+              marginTop: 1,
+              color: active ? 'rgba(246,242,233,0.78)' : designTokens.colors.ink3,
+            }}
+          >
+            {sub}
+          </Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 

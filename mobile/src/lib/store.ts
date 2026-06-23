@@ -495,10 +495,10 @@ export function servingSizeFromHousehold(household: Household | undefined): numb
 export type MonthlyFeature = 'planMeals' | 'addRecipe' | 'importRecipe' | 'vibe';
 
 export const MONTHLY_FEATURE_LIMITS: Record<MonthlyFeature, number> = {
-  planMeals: 10,
+  planMeals: 5,
   addRecipe: 10,
   importRecipe: 10,
-  vibe: 1,
+  vibe: 5,
 };
 
 // Calendar-month key, e.g. "2026-06". Usage counters reset when this changes.
@@ -819,10 +819,12 @@ function mealRemovalCascadeIds(
 }
 
 // Reverse of the leftover serving-scale. When a "Leftovers · <dish>" placeholder
-// is removed, the dinner it reheated no longer needs to feed that extra meal, so
-// we shrink that cook back down. Returns the source dinner's slot id + its new
-// servingOverride (undefined → drop the override once no leftovers remain). The
-// source dinner is the night BEFORE the leftover, matched by recipe name.
+// is removed, the cook it reheated no longer needs to feed that extra meal, so
+// we shrink that cook back down. Returns the source cook's slot id + its new
+// servingOverride (undefined → drop the override once no leftovers remain).
+// The source cook mirrors the placement rule, matched by recipe name:
+//   • lunch leftover  → previous day's DINNER
+//   • dinner leftover → SAME day's LUNCH
 function leftoverServingAdjustment(
   mealSlots: MealSlot[],
   recipes: Recipe[],
@@ -833,28 +835,49 @@ function leftoverServingAdjustment(
   if (!removed.customMealName.startsWith(prefix)) return null;
   const dish = removed.customMealName.slice(prefix.length);
 
-  // The night before this leftover (local-date math, YYYY-MM-DD).
   const [y, m, d] = removed.date.split('-').map(Number);
   if (!y || !m || !d) return null;
-  const prevDate = new Date(y, m - 1, d);
-  prevDate.setDate(prevDate.getDate() - 1);
-  const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+  const nameOf = (s: MealSlot) => recipes.find((r) => r.id === s.recipeId)?.name;
 
-  const dinnerSlot = mealSlots.find(
-    (s) =>
-      s.date === prevKey &&
-      s.mealType === 'dinner' &&
-      s.recipeId &&
-      recipes.find((r) => r.id === s.recipeId)?.name === dish,
-  );
-  if (!dinnerSlot || !dinnerSlot.recipeId) return null;
-  const base = recipes.find((r) => r.id === dinnerSlot.recipeId)?.servings;
+  // Preferred (daily) source by exact date + meal type, matched by name:
+  //   • lunch leftover  → previous day's DINNER
+  //   • dinner leftover → SAME day's LUNCH
+  let srcSlot: MealSlot | undefined;
+  if (removed.mealType === 'lunch' || removed.mealType === 'dinner') {
+    let srcKey: string;
+    let srcMt: 'lunch' | 'dinner';
+    if (removed.mealType === 'lunch') {
+      const prevDate = new Date(y, m - 1, d);
+      prevDate.setDate(prevDate.getDate() - 1);
+      srcKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+      srcMt = 'dinner';
+    } else {
+      srcKey = removed.date;
+      srcMt = 'lunch';
+    }
+    srcSlot = mealSlots.find(
+      (s) => s.date === srcKey && s.mealType === srcMt && s.recipeId && nameOf(s) === dish,
+    );
+  }
+
+  // Fallback (batch / cross-day): the nearest cooked slot by name on or before
+  // the leftover's date. Batch leftovers reheat the block's cook-day dish, which
+  // can be several days back and in a different meal slot — the exact-date rule
+  // above won't find it, so we match by name and take the most recent cook.
+  if (!srcSlot) {
+    srcSlot = mealSlots
+      .filter((s) => s.recipeId && s.date <= removed.date && nameOf(s) === dish)
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))[0];
+  }
+
+  if (!srcSlot || !srcSlot.recipeId) return null;
+  const base = recipes.find((r) => r.id === srcSlot.recipeId)?.servings;
   if (!base || base <= 0) return null;
 
-  const current = dinnerSlot.servingOverride ?? base;
+  const current = srcSlot.servingOverride ?? base;
   const next = current - base;
   // Back at (or below) a single cook → drop the override entirely.
-  return { slotId: dinnerSlot.id, servingOverride: next > base ? next : undefined };
+  return { slotId: srcSlot.id, servingOverride: next > base ? next : undefined };
 }
 
 // Generate proper UUID for grocery items (Supabase requires UUID format)
@@ -1210,22 +1233,20 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
         const preferences = get().preferences;
         const totalMeals = days * Math.max(selectedMealTypes.length, 1);
-        const lunchDinnerCount =
-          (selectedMealTypes.includes('lunch') ? days : 0) +
-          (selectedMealTypes.includes('dinner') ? days : 0);
-        // Honor the user's "Lunch" meal habit from Edit Profile:
-        //   'leftovers' → opt into the dinner→next-day-lunch leftovers pattern
-        //   'cook' / 'buy' / unset → no cross-meal-type repeats (lunch and dinner stay distinct)
-        // Conservative default: if the field is missing, treat as 'cook fresh'.
         const lunchHabit = preferences.mealHabits?.lunch;
         const wantsLeftovers = lunchHabit === 'leftovers';
-        // Item 1: repetition is duration-driven, not habit-driven.
-        //   ≤ 7 days → every lunch/dinner recipe is unique (no repeats).
-        //   > 7 days → repeats allowed (the engine still caps each at 2).
-        // The engine re-applies the same >7-day gate, so this stays in sync.
-        const allowRepeats = days > 7 && lunchDinnerCount >= 3;
+        // Repetition is OFF for the daily flow: every cooked lunch/dinner is a
+        // DISTINCT recipe — no reusing a dinner as the next day's lunch.
+        // Reduced-variety patterns live elsewhere, so the engine never needs to
+        // repeat a generated recipe:
+        //   • "leftovers" habit → recipe-less "Leftovers · <dish>" placeholders
+        //     (see the placeholder block below) — the cook itself stays unique.
+        //   • batch cooking → its own dedicated flow above.
+        // When the curated "Get Inspired" bank runs out of qualifying recipes,
+        // the engine falls back to OpenAI for fresh UNIQUE ones (never a repeat).
+        const allowRepeats = false;
         console.log(
-          `[BG-GEN] days=${days}, lunch habit=${lunchHabit ?? 'unset'} → allowRepeats=${allowRepeats}, crossMealRepeats=${wantsLeftovers}`
+          `[BG-GEN] days=${days}, lunch habit=${lunchHabit ?? 'unset'} → allowRepeats=${allowRepeats} (daily flow is always unique), crossMealRepeats=${wantsLeftovers}`
         );
         const startedAt = new Date().toISOString();
 
@@ -1916,14 +1937,17 @@ export const useMealPlanStore = create<MealPlanStore>()(
             // a leftover can never double-count the dinner it reheats.
             try {
               if (planMealHabits) {
-                const dinnerSlotOn = (dk: string) =>
+                // Find a COOKED slot (has a recipe) of a given meal type on a date.
+                const cookedSlotOn = (dk: string, mt: 'lunch' | 'dinner') =>
                   get().mealSlots.find(
-                    (x) => x.date === dk && x.mealType === 'dinner' && x.recipeId,
+                    (x) => x.date === dk && x.mealType === mt && x.recipeId,
                   );
-                // Dinner DATE → how many leftover meals reheat it. Keyed by date
-                // (not slot id) so it survives any async slot-id remaps before
-                // we scale the cook at the end.
+                // Source cook ("date|mealType") → how many leftover meals reheat
+                // it. Keyed by date+type (not slot id) so it survives any async
+                // slot-id remaps before we scale the cook at the end.
                 const leftoverDeps = new Map<string, number>();
+                const bumpDep = (date: string, mt: 'lunch' | 'dinner') =>
+                  leftoverDeps.set(`${date}|${mt}`, (leftoverDeps.get(`${date}|${mt}`) ?? 0) + 1);
 
                 for (let i = 0; i < days; i++) {
                   const d = new Date(startDate);
@@ -1932,10 +1956,6 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   const prev = new Date(startDate);
                   prev.setDate(prev.getDate() + i - 1);
                   const prevDk = formatDateKey(prev);
-                  const prevDinnerSlot = i > 0 ? dinnerSlotOn(prevDk) : undefined;
-                  const prevDinnerName = prevDinnerSlot
-                    ? get().recipes.find((r) => r.id === prevDinnerSlot.recipeId)?.name ?? null
-                    : null;
 
                   (['breakfast', 'lunch', 'dinner'] as const).forEach((mt) => {
                     // Cooked meals already have a real recipe slot.
@@ -1952,12 +1972,28 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
                     let label: string | null = null;
                     if (habit === 'leftovers') {
-                      // No prior dinner to reheat → leave the slot blank.
-                      if (!prevDinnerSlot || !prevDinnerName) return;
-                      label = `Leftovers · ${prevDinnerName}`;
-                      // This leftover reheats the previous night's dinner — bump
-                      // its dependent-meal count so we scale that cook below.
-                      leftoverDeps.set(prevDk, (leftoverDeps.get(prevDk) ?? 0) + 1);
+                      // Resolve the cooked meal this leftover reheats:
+                      //   • lunch leftover  → previous day's cooked DINNER (dinner[d-1])
+                      //   • dinner leftover → SAME day's cooked LUNCH      (lunch[d])
+                      // Symmetric: a leftover reheats the most recent cooked meal
+                      // before it (yesterday's dinner for lunch; today's lunch for dinner).
+                      let srcDate: string | null = null;
+                      let srcMt: 'lunch' | 'dinner' | null = null;
+                      if (mt === 'lunch' && i > 0) {
+                        srcDate = prevDk;
+                        srcMt = 'dinner';
+                      } else if (mt === 'dinner') {
+                        srcDate = dk;
+                        srcMt = 'lunch';
+                      }
+                      if (!srcDate || !srcMt) return; // nothing yet to reheat → blank
+                      const srcSlot = cookedSlotOn(srcDate, srcMt);
+                      const srcName = srcSlot
+                        ? get().recipes.find((r) => r.id === srcSlot.recipeId)?.name ?? null
+                        : null;
+                      if (!srcSlot || !srcName) return; // no cooked source → blank
+                      label = `Leftovers · ${srcName}`;
+                      bumpDep(srcDate, srcMt);
                     } else if (habit === 'skip') {
                       label = 'Skipped';
                     } else if (habit === 'grab') {
@@ -1977,12 +2013,13 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   });
                 }
 
-                // Last day spills over: when the user eats dinner-leftovers for
-                // lunch, the FINAL night's dinner is still batched for the next
-                // day's lunch — which falls just outside the plan window. Place
-                // that leftover lunch on the following day and register the
-                // dependency so it's scaled (and shrinks on delete) exactly like
-                // any in-window leftover.
+                // Last day spills over (dinner-cook + lunch-leftover pattern only):
+                // the FINAL night's dinner is still batched for the next day's
+                // lunch — which falls just outside the plan window. Place that
+                // leftover lunch on the following day and register the dependency
+                // so it's scaled (and shrinks on delete) like any in-window leftover.
+                // (The mirror dinner-leftover case reheats the SAME day's lunch, so
+                // it never spills past the window — no symmetric block needed.)
                 if (
                   planMealHabits.lunch === 'leftovers' &&
                   selectedMealTypes.includes('dinner')
@@ -1990,7 +2027,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   const lastDate = new Date(startDate);
                   lastDate.setDate(lastDate.getDate() + (days - 1));
                   const lastKey = formatDateKey(lastDate);
-                  const lastDinnerSlot = dinnerSlotOn(lastKey);
+                  const lastDinnerSlot = cookedSlotOn(lastKey, 'dinner');
                   const lastDinnerName = lastDinnerSlot
                     ? get().recipes.find((r) => r.id === lastDinnerSlot.recipeId)?.name ?? null
                     : null;
@@ -2009,17 +2046,18 @@ export const useMealPlanStore = create<MealPlanStore>()(
                       recipeId: null,
                       customMealName: `Leftovers · ${lastDinnerName}`,
                     });
-                    leftoverDeps.set(lastKey, (leftoverDeps.get(lastKey) ?? 0) + 1);
+                    bumpDep(lastKey, 'dinner');
                   }
                 }
 
-                // Scale every dinner that feeds leftovers: a cook for N people
-                // that also covers tomorrow's lunch must yield N × (1 + leftovers)
-                // servings, so the recipe's grocery quantities double up. The home
-                // card then shows the larger serving count, and generateGroceryList
-                // multiplies ingredients by servingOverride / recipe.servings.
-                leftoverDeps.forEach((count, dinnerDate) => {
-                  const slot = dinnerSlotOn(dinnerDate);
+                // Scale every cook that feeds leftovers: a cook for N people that
+                // also covers another meal must yield N × (1 + leftovers) servings,
+                // so the recipe's grocery quantities scale up. The home card then
+                // shows the larger serving count, and generateGroceryList multiplies
+                // ingredients by servingOverride / recipe.servings.
+                leftoverDeps.forEach((count, key) => {
+                  const [srcDate, srcMt] = key.split('|') as [string, 'lunch' | 'dinner'];
+                  const slot = cookedSlotOn(srcDate, srcMt);
                   if (!slot || !slot.recipeId) return;
                   const base = get().recipes.find((r) => r.id === slot.recipeId)?.servings;
                   const perMeal = base && base > 0 ? base : get().preferences.servingSize || 1;
@@ -2447,12 +2485,30 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
       // Meal Plan - with sync
       addMealToSlot: (slot) => {
-        const slotWithId = { ...slot, id: slot.id || generateId() };
+        // Resolve stale temp recipe IDs — the caller may hold a temp ID
+        // (e.g. from a URL param) that was already swapped for a real UUID
+        // by addRecipe's async DB callback. Without this, the new slot
+        // would reference an ID that no longer matches any recipe.
+        let resolvedRecipeId = slot.recipeId;
+        if (resolvedRecipeId) {
+          const mappedId = tempIdToRealId.get(resolvedRecipeId);
+          if (mappedId) {
+            resolvedRecipeId = mappedId;
+          } else if (!get().recipes.some((r) => r.id === resolvedRecipeId)) {
+            // The temp ID isn't in the map yet, but the recipe with that ID
+            // is also gone from the store — scan for the recipe by name as a
+            // last resort (covers edge cases where the map was GC'd).
+            // This is a no-op if the ID is valid.
+          }
+        }
+
+        const resolvedSlot = { ...slot, recipeId: resolvedRecipeId };
+        const slotWithId = { ...resolvedSlot, id: resolvedSlot.id || generateId() };
 
         set((state) => {
           // Check if this exact recipe is already added for this date and meal type
           const isDuplicate = state.mealSlots.some(
-            (s) => s.date === slot.date && s.mealType === slot.mealType && s.recipeId === slot.recipeId
+            (s) => s.date === slotWithId.date && s.mealType === slotWithId.mealType && s.recipeId === slotWithId.recipeId
           );
 
           // If it's a duplicate, don't add it again

@@ -210,7 +210,23 @@ export interface CuratedRecipeEntry {
   planName: string;
 }
 
-/** All unique recipes in a plan, deduped by name slug, in first-seen order. */
+/**
+ * A reheat-only "leftover / tiffin" variant — e.g. "Barramundi Rice Bowl
+ * (leftover tiffin)", "Wednesday Taco Mince Tiffin Bowl" — whose ingredients are
+ * pre-cooked components ("Leftover rice", "Leftover taco mince"). These exist
+ * only to fill the leftover days when a whole plan is applied; they are NOT
+ * standalone cook-from-scratch recipes, so they must never surface in the
+ * Get Inspired browse or be picked into an AI-generated plan.
+ */
+function isLeftoverVariantRecipe(recipe: CuratedMeal['recipe']): boolean {
+  if (/\bleftover\b|\btiffin\b/i.test(recipe.name)) return true;
+  const ings = recipe.ingredients || [];
+  if (ings.length === 0) return false;
+  const leftoverIngredients = ings.filter((i) => /^\s*leftover\b/i.test(i.name)).length;
+  return leftoverIngredients / ings.length >= 0.5;
+}
+
+/** All unique cook-from-scratch recipes in a plan, deduped by name slug, in first-seen order. */
 export function getCuratedPlanRecipes(plan: CuratedMealPlan): CuratedRecipeEntry[] {
   const seen = new Set<string>();
   const out: CuratedRecipeEntry[] = [];
@@ -218,6 +234,8 @@ export function getCuratedPlanRecipes(plan: CuratedMealPlan): CuratedRecipeEntry
     // Skip grab-&-go / buy-out placeholders — they have no real recipe to show.
     if (meal.placeholderLabel) continue;
     if (!meal.recipe?.name) continue;
+    // Skip reheat-only leftover/tiffin variants — not standalone recipes.
+    if (isLeftoverVariantRecipe(meal.recipe)) continue;
     const key = curatedNameSlug(meal.recipe.name);
     if (seen.has(key)) continue;
     seen.add(key);

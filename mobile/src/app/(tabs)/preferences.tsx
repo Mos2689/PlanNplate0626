@@ -1390,45 +1390,6 @@ export default function ProfileScreen() {
                   )}
                 </View>
 
-                {/* Streak chip — cream pill with olive Flame */}
-                {insights.cooking.currentStreakDays > 0 ? (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignSelf: 'flex-start',
-                      alignItems: 'center',
-                      gap: 5,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 999,
-                      backgroundColor: 'rgba(228, 109, 70, 0.10)',
-                      marginTop: 14,
-                    }}
-                  >
-                    <Flame size={11} color={designTokens.colors.olive} strokeWidth={2} />
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.semibold,
-                        fontSize: 11.5,
-                        color: designTokens.colors.olive,
-                        letterSpacing: -0.05,
-                      }}
-                    >
-                      {insights.cooking.currentStreakDays}-day streak
-                    </Text>
-                  </View>
-                ) : insights.cooking.plannedThisWeek > 0 ? (
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 11.5,
-                      color: colors.ink3,
-                      marginTop: 14,
-                    }}
-                  >
-                    New week — let's start one.
-                  </Text>
-                ) : null}
               </View>
 
               {/* ── Taste Signals card with ranked cuisine list ── */}

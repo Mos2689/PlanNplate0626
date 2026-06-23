@@ -2,7 +2,7 @@
 // features (Add recipe / Import recipe / Vibe cooking).
 //
 // Non-premium users get a fixed number of uses PER CALENDAR MONTH (see
-// MONTHLY_FEATURE_LIMITS — 10/mo for add & import, 1/mo for vibe). Opening the
+// MONTHLY_FEATURE_LIMITS — 10/mo for add & import, 5/mo for vibe). Opening the
 // screen once the month's allowance is spent fires the paywall and backs out.
 // Premium users are never gated and never counted. Independent of the
 // meal-planning signup gate and of the other recipe features.

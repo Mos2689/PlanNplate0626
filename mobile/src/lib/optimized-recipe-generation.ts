@@ -47,15 +47,19 @@ interface GenerationProgress {
 }
 
 /**
- * Calculate max allowed repeats based on lunch/dinner meal count
- * Rule: Each unique recipe appears exactly 2 times (original + 1 repeat)
- * Formula: floor(repeatableMealCount / 2) repeats → ceil(repeatableMealCount / 2) unique recipes
+ * Calculate max allowed repeats for a (>7-day) lunch/dinner plan.
+ *
+ * VARIETY-FIRST: a long plan should be mostly NEW recipes — at most 1–2 recipes
+ * carry over from week 1, everything else is unique. So we cap the total repeats
+ * at REPEAT_CAP (2) rather than repeating half the plan. The remaining slots are
+ * filled with fresh unique recipes (curated-first, then OpenAI).
  *
  * Examples (lunch+dinner selected):
- * - 7 days = 14 meals → 7 repeats → 7 unique dinners + 7 repeated as lunch
- * - 3 days = 6 meals → 3 repeats → 3 unique
- * - 1 week lunch only = 7 meals → 3 repeats → 4 unique
+ * - 14 days = 28 meals → 2 repeats → 26 unique recipes (only 2 reused)
+ * - 8 days  = 16 meals → 2 repeats → 14 unique recipes
+ * - < 3 repeatable meals → 0 repeats (all unique)
  */
+const REPEAT_CAP = 2;
 function calculateMaxRepeats(mealTypes: MealType[], totalRecipes: number): number {
   const repeatableMealTypes = mealTypes.filter(mt => mt === 'lunch' || mt === 'dinner');
   if (repeatableMealTypes.length === 0) return 0;
@@ -65,8 +69,8 @@ function calculateMaxRepeats(mealTypes: MealType[], totalRecipes: number): numbe
   const repeatableMealCount = Math.round(slotsPerDay * repeatableMealTypes.length);
 
   if (repeatableMealCount < 3) return 0;
-  // Each recipe appears max 2 times: floor(N/2) repeats gives ceil(N/2) unique recipes
-  return Math.floor(repeatableMealCount / 2);
+  // Cap total repeats so long plans stay varied (≤ 2 reused recipes).
+  return Math.min(REPEAT_CAP, Math.floor(repeatableMealCount / 2));
 }
 
 /**
@@ -114,6 +118,27 @@ function areRecipeNamesTooSimilar(name1: string, name2: string, threshold = 0.6)
   const commonWords = words1.filter(w => words2.includes(w));
   const similarity = commonWords.length / Math.max(words1.length, words2.length);
   return similarity > threshold;
+}
+
+/**
+ * STRICT enforcement guard. regenerateSingleRecipe validates against the user's
+ * preferences and retries, but after its retry budget it returns the recipe even
+ * if it STILL violates (with `recipe.violations` populated). The engine must
+ * never serve such a recipe — e.g. a beef dish to a vegetarian — so it re-checks
+ * the violations and rejects on any allergy/dietary breach.
+ *
+ * `allowOverride` is true only when the slot was deliberately assigned a fridge
+ * ingredient the user chose (those intentionally override preferences).
+ */
+function violatesStrictPreferences(
+  recipe: GeneratedRecipeResponse,
+  allowOverride: boolean,
+): boolean {
+  if (allowOverride) return false;
+  const violations = recipe.violations || [];
+  return violations.some(
+    (v) => v.includes('DIETARY VIOLATION') || v.includes('ALLERGY VIOLATION'),
+  );
 }
 
 // Streaming-aware callbacks for `generateRecipesOptimized`. The function
@@ -340,6 +365,12 @@ export async function generateRecipesOptimized(
             excludeNames
           );
           if (usedRecipeNames.some((n) => areRecipeNamesTooSimilar(recipe.name, n, threshold))) {
+            excludeNames.push(recipe.name);
+            continue;
+          }
+          // STRICT: reject a breakfast that breaks the user's diet/allergies.
+          if (violatesStrictPreferences(recipe, false)) {
+            console.warn(`[OptimizedGeneration] Breakfast "${recipe.name}" violates diet/allergy — rejecting: ${(recipe.violations || []).join('; ')}`);
             excludeNames.push(recipe.name);
             continue;
           }
@@ -826,6 +857,15 @@ export async function generateRecipesOptimized(
             continue;
           }
 
+          // STRICT: never accept a recipe that breaks the user's diet/allergies
+          // (regenerateSingleRecipe may return a non-compliant one after exhausting
+          // its own retries). Fridge-assigned slots are the only allowed override.
+          if (violatesStrictPreferences(recipe, !!assignedFridgeIngredient)) {
+            console.warn(`[OptimizedGeneration] Recipe "${recipe.name}" violates diet/allergy — rejecting & retrying: ${(recipe.violations || []).join('; ')}`);
+            excludeNames.push(recipe.name);
+            continue;
+          }
+
           // Recipe is unique enough - accept it
           generatedCount++;
           usedRecipeNames.push(recipe.name);
@@ -1053,6 +1093,12 @@ export async function generateRecipesOptimized(
           optimizeGrocery,
           allowRepeats,
         }, [...usedRecipeNames]).then(recipe => {
+          // STRICT: drop a safety-net recipe that breaks diet/allergies rather
+          // than serve it (a deliberate fridge/special request may override).
+          if (violatesStrictPreferences(recipe, !!additionalInstructions)) {
+            console.warn(`[OptimizedGeneration] Safety-net recipe "${recipe.name}" violates diet/allergy — dropping: ${(recipe.violations || []).join('; ')}`);
+            return null;
+          }
           usedRecipeNames.push(recipe.name);
           curatedMatcher.record(recipe, mealType);
           if (useCache) cacheRecipe(preferencesHash, mealType, recipe);

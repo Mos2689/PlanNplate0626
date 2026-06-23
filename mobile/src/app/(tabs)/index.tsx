@@ -628,7 +628,10 @@ export default function HomeScreen() {
 
   const handleMealView = useCallback(
     (meal: DisplayMeal) => {
-      if (meal.recipeId) router.push(`/recipe-detail?id=${meal.recipeId}` as any);
+      if (meal.recipeId)
+        router.push(
+          `/recipe-detail?id=${meal.recipeId}${meal.slotId ? `&slotId=${meal.slotId}` : ''}` as any,
+        );
     },
     [router],
   );
@@ -718,9 +721,13 @@ export default function HomeScreen() {
   );
 
   const handleSheetView = useCallback(
-    (recipeId: string) => {
+    (recipeId: string, slotId?: string) => {
       setSheet({ visible: false, mealTypeKey: null });
-      router.push(`/recipe-detail?id=${recipeId}` as any);
+      // Pass the slot so recipe-detail can open at the slot's scaled serving
+      // (e.g. a batch/leftover cook sized to 9) instead of the recipe default.
+      router.push(
+        `/recipe-detail?id=${recipeId}${slotId ? `&slotId=${slotId}` : ''}` as any,
+      );
     },
     [router],
   );

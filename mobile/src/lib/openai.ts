@@ -488,6 +488,24 @@ export function getDurationDays(duration: PlanDuration): number {
 }
 
 // Validate recipe against user preferences (allergies, dietary restrictions, cuisine preferences, prep time)
+// Shared meat/seafood keyword lists for dietary validation. Unambiguous terms
+// only — deliberately excludes words that collide with vegetarian foods
+// (e.g. "goat"→goat cheese, "steak"→cauliflower steak, "mince"→mince garlic).
+const LAND_MEAT_TERMS = [
+  'meat', 'poultry', 'chicken', 'beef', 'pork', 'lamb', 'mutton', 'veal',
+  'venison', 'rabbit', 'kangaroo', 'turkey', 'duck', 'goose', 'bacon', 'ham',
+  'prosciutto', 'pancetta', 'sausage', 'chorizo', 'salami', 'pepperoni',
+  'pastrami', 'meatball', 'meatballs', 'meatloaf', 'brisket', 'sirloin',
+  'ribeye', 'tenderloin', 'schnitzel', 'bratwurst', 'jerky', 'liver',
+];
+const SEAFOOD_TERMS = [
+  'fish', 'salmon', 'tuna', 'cod', 'barramundi', 'snapper', 'trout', 'mackerel',
+  'sardine', 'sardines', 'herring', 'haddock', 'halibut', 'tilapia', 'seafood',
+  'shrimp', 'prawn', 'prawns', 'crab', 'lobster', 'mussel', 'mussels', 'oyster',
+  'oysters', 'scallop', 'scallops', 'squid', 'calamari', 'clam', 'clams',
+  'octopus', 'anchovy', 'anchovies', 'shellfish', 'caviar', 'roe',
+];
+
 export function validateRecipeAgainstPreferences(
   recipe: GeneratedRecipeResponse,
   preferences: UserPreferences,
@@ -670,10 +688,9 @@ export function validateRecipeAgainstPreferences(
 
         if (restrictionLower.includes('vegan')) {
           const animalProducts = [
-            'meat', 'chicken', 'beef', 'pork', 'lamb', 'turkey', 'duck', 'bacon',
-            'ham', 'sausage', 'fish', 'salmon', 'tuna', 'seafood', 'shrimp', 'crab',
-            'prawn', 'anchovy', 'egg', 'eggs', 'mayonnaise', 'milk', 'cheese',
-            'butter', 'cream', 'yogurt', 'ghee', 'whey', 'casein', 'honey',
+            ...LAND_MEAT_TERMS, ...SEAFOOD_TERMS,
+            'egg', 'eggs', 'mayonnaise', 'milk', 'cheese', 'butter', 'cream',
+            'yogurt', 'yoghurt', 'ghee', 'whey', 'casein', 'honey',
             'gelatin', 'lard', 'suet', 'paneer',
           ];
 
@@ -683,11 +700,7 @@ export function validateRecipeAgainstPreferences(
             violations.push(`DIETARY VIOLATION: Not suitable for ${restriction} diet — contains animal product`);
           }
         } else if (restrictionLower.includes('vegetarian')) {
-          const meatProducts = [
-            'meat', 'chicken', 'beef', 'pork', 'lamb', 'turkey', 'duck', 'bacon',
-            'ham', 'sausage', 'fish', 'salmon', 'tuna', 'seafood', 'shrimp', 'crab',
-            'prawn', 'anchovy', 'shellfish', 'lard', 'suet', 'gelatin',
-          ];
+          const meatProducts = [...LAND_MEAT_TERMS, ...SEAFOOD_TERMS, 'lard', 'suet', 'gelatin'];
 
           const foundMeatProduct = meatProducts.some(product => matchesWord(recipeText, product));
 
@@ -698,11 +711,7 @@ export function validateRecipeAgainstPreferences(
           // Pescatarian: no meat or poultry, but fish/seafood, eggs and dairy
           // are all fine. (Note: 'pescatarian' is NOT a substring of
           // 'vegetarian', so it correctly falls through to here.)
-          const meatProducts = [
-            'meat', 'chicken', 'beef', 'pork', 'lamb', 'turkey', 'duck', 'bacon',
-            'ham', 'sausage', 'veal', 'goat', 'venison', 'prosciutto', 'salami',
-            'pepperoni', 'lard', 'suet',
-          ];
+          const meatProducts = [...LAND_MEAT_TERMS, 'lard', 'suet'];
           const foundMeat = meatProducts.some(product => matchesWord(recipeText, product));
           if (foundMeat) {
             violations.push(`DIETARY VIOLATION: Not suitable for ${restriction} diet — contains meat/poultry`);

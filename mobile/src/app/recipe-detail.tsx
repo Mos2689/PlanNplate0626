@@ -42,8 +42,6 @@ import {
   X as XIcon,
   Camera,
   ImageIcon,
-  // Premium icon swaps — no Sparkles, no generic Plus.
-  Wand2,
   CirclePlus,
   CircleMinus,
   Copy,
@@ -133,6 +131,11 @@ export default function RecipeDetailScreen() {
     if (!slotId) return null;
     return mealSlots.find((s) => s.id === slotId);
   }, [mealSlots, slotId]);
+
+  // Opened from a meal-plan slot (vs the Recipes tab / Favorites). When true
+  // the recipe is already in the plan, so the bottom CTA becomes "Start cooking"
+  // and the inline Start-cooking chip is dropped (the CTA covers it).
+  const fromMealPlan = !!mealSlot;
 
   // Extended multiplier: prefers the in-screen `viewServings` stepper if the
   // user has interacted with it, otherwise falls back to the slot's override,
@@ -506,9 +509,10 @@ export default function RecipeDetailScreen() {
     );
   }
 
-  // Source badge label
+  // Source badge label — mirror the Recipes-list denotation so a Plan-My-Meals
+  // recipe reads "PnP" here too (not "AI").
   const sourceBadge = recipe.isAIGenerated
-    ? { label: 'AI', Icon: Wand2 }
+    ? { label: 'PnP', Icon: ChefHat }
     : recipe.isImported
       ? { label: 'IMPORTED', Icon: Upload }
       : { label: 'CUSTOM', Icon: User };
@@ -602,6 +606,7 @@ export default function RecipeDetailScreen() {
                 fontFamily: designTokens.font.medium,
                 fontSize: 10.5,
                 letterSpacing: 0.55,
+                textTransform: 'uppercase',
                 color: designTokens.colors.cream,
               }}>
                 {sourceBadge.label}
@@ -1115,7 +1120,7 @@ export default function RecipeDetailScreen() {
               >
                 Instructions
               </Text>
-              {recipe.instructions.length > 0 && (
+              {!fromMealPlan && recipe.instructions.length > 0 && (
                 <Pressable
                   onPress={handleOpenCookMode}
                   style={{
@@ -1246,7 +1251,8 @@ export default function RecipeDetailScreen() {
         </SafeAreaView>
       </Animated.View>
 
-      {/* Bottom Add-to-Meal-Plan button */}
+      {/* Bottom CTA — "Start cooking" when the recipe is already in the plan
+          (opened from a meal-plan slot), otherwise "Add to meal plan". */}
       <View style={{
         position: 'absolute',
         bottom: 0,
@@ -1260,7 +1266,7 @@ export default function RecipeDetailScreen() {
         borderTopColor: isDark ? '#2a2a2a' : designTokens.colors.hair2,
       }}>
         <Pressable
-          onPress={handleAddToMealPlan}
+          onPress={fromMealPlan ? handleOpenCookMode : handleAddToMealPlan}
           style={{
             flexDirection: 'row',
             alignItems: 'center',
@@ -1271,22 +1277,37 @@ export default function RecipeDetailScreen() {
             backgroundColor: designTokens.colors.brand,
           }}
         >
-          <CirclePlus size={18} color={designTokens.colors.cream} strokeWidth={1.8} />
-          <Text style={{
-            fontFamily: designTokens.font.semibold,
-            fontSize: 15,
-            color: designTokens.colors.cream,
-          }}>
-            Add to meal{' '}
-            <Text style={{
-              fontFamily: designTokens.font.serifItalic,
-              fontStyle: 'italic',
-              fontSize: 17,
-              color: designTokens.colors.cream,
-            }}>
-              plan
-            </Text>
-          </Text>
+          {fromMealPlan ? (
+            <>
+              <ChefHat size={18} color={designTokens.colors.cream} strokeWidth={1.8} />
+              <Text style={{
+                fontFamily: designTokens.font.semibold,
+                fontSize: 15,
+                color: designTokens.colors.cream,
+              }}>
+                Start cooking
+              </Text>
+            </>
+          ) : (
+            <>
+              <CirclePlus size={18} color={designTokens.colors.cream} strokeWidth={1.8} />
+              <Text style={{
+                fontFamily: designTokens.font.semibold,
+                fontSize: 15,
+                color: designTokens.colors.cream,
+              }}>
+                Add to meal{' '}
+                <Text style={{
+                  fontFamily: designTokens.font.serifItalic,
+                  fontStyle: 'italic',
+                  fontSize: 17,
+                  color: designTokens.colors.cream,
+                }}>
+                  plan
+                </Text>
+              </Text>
+            </>
+          )}
         </Pressable>
       </View>
 

@@ -41,7 +41,7 @@ interface MealSlotSheetProps {
   isRestricted?: boolean;
   onClose: () => void;
   onAdd: () => void;
-  onView: (recipeId: string) => void;
+  onView: (recipeId: string, slotId?: string) => void;
   onSwap: (slot: MealSlot) => void;
   onRemove: (slotId: string) => void;
   onOpenServing: (slot: MealSlot, recipe: Recipe) => void;
@@ -194,7 +194,7 @@ export function MealSlotSheet({
                   >
                     {/* Top row: image + name/description/meta. Tap → open recipe detail. */}
                     <Pressable
-                      onPress={() => onView(recipe.id)}
+                      onPress={() => onView(recipe.id, slot.id)}
                       style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}
                     >
                       <Image

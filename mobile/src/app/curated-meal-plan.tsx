@@ -15,6 +15,7 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import {
   Bookmark,
+  ChevronLeft,
   Clock,
   Flame,
   Plus,
@@ -345,7 +346,8 @@ export default function CuratedMealPlanScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       router.push({
         pathname: '/curated-recipe-detail',
-        params: { planId: entry.planId, key: entry.key },
+        // Detail screen reads `recipe` (the name-slug key) — must match.
+        params: { planId: entry.planId, recipe: entry.key },
       } as any);
     },
     [router],
@@ -408,6 +410,30 @@ export default function CuratedMealPlanScreen() {
           contentContainerStyle={{ paddingTop: 8, paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
         >
+          {/* Always-visible back button (the sticky header only fades in on
+              scroll, so the top of the page needs its own affordance). */}
+          <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}>
+            <Pressable onPress={handleBack} hitSlop={10} style={{ width: 40, height: 40 }}>
+              {({ pressed }) => (
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: colors.bg,
+                    borderWidth: 1,
+                    borderColor: colors.hair,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transform: [{ scale: pressed ? 0.94 : 1 }],
+                  }}
+                >
+                  <ChevronLeft size={22} color={colors.ink} strokeWidth={1.9} />
+                </View>
+              )}
+            </Pressable>
+          </View>
+
           {/* ── Editorial header ───────────────────────────────────── */}
           <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 18 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

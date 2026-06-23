@@ -66,8 +66,8 @@ export interface PlanningHabitInsight {
 }
 
 export interface CookingMomentumInsight {
-  cookedThisWeek: number;
-  plannedThisWeek: number;           // mealSlots with a recipeId, Monday→today this week
+  cookedThisWeek: number;            // planned recipes cooked so far this week (Mon→now)
+  plannedThisWeek: number;           // mealSlots with a recipeId, full Monday→Sunday week
   currentStreakDays: number;         // consecutive days back from today
   longestStreakDays: number;
 }
@@ -291,12 +291,16 @@ function computeCookingMomentum(
   mealSlots: MealSlot[],
   now: Date,
 ): CookingMomentumInsight {
+  // Monday→Sunday calendar week, so the momentum denominator matches the
+  // "This week · planned" tile on the Profile screen exactly (the FULL week's
+  // planned recipes, not just the so-far slice). `cookedThisWeek` is still the
+  // count cooked up to now — you can't cook a future meal — giving a
+  // "cooked N of the week's M planned" progress figure.
   const today = startOfDay(now);
-  // Monday-anchored current week so these numbers reconcile with the
-  // "This week · planned" stat on the Profile screen. Counts are still
-  // capped at today (you can't have cooked a future meal), so the
-  // denominator is the so-far slice of the week's planned total.
   const weekStart = mondayOfWeek(now);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
 
   const cookedThisWeek = cookingLogs.filter((l) => {
     if (l.status !== 'cooked') return false;
@@ -315,7 +319,7 @@ function computeCookingMomentum(
       Number(parts[1]) - 1,
       Number(parts[2]),
     );
-    return slotDate >= weekStart && slotDate <= today;
+    return slotDate >= weekStart && slotDate <= weekEnd;
   }).length;
 
   // Streak — consecutive days back from today with ≥1 cooked log.

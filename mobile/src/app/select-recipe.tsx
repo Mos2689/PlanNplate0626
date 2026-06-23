@@ -221,6 +221,34 @@ export default function SelectRecipeScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRecipeIds, setSelectedRecipeIds] = useState<string[]>(initialSelectedRecipeIds);
+
+  // Resolve stale temp IDs — when navigating from vibe-cooking (or any
+  // flow that calls addRecipe), the recipeId passed via URL params may be
+  // a temp ID that gets swapped for a real UUID by addRecipe's async DB
+  // callback. This effect watches the recipe list and, if the selected ID
+  // can't be found, searches for the recipe that was added most recently
+  // (by matching on name + vibe-cooking tag) and updates the selection.
+  React.useEffect(() => {
+    if (!params.recipeId || selectedRecipeIds.length === 0) return;
+    const currentId = selectedRecipeIds[0];
+    const found = recipes.find((r) => r.id === currentId);
+    if (found) return; // ID is still valid
+
+    // The ID was swapped — find the recipe by scanning for one that was
+    // just added. The most reliable signal is that the recipe list
+    // contains a row whose ID differs from params.recipeId but didn't
+    // exist before (i.e. it's the swapped version). We match by looking
+    // for the most recently created AI-generated recipe tagged with
+    // 'vibe-cooking', or fall back to the most recently created recipe.
+    const vibeRecipes = recipes
+      .filter((r) => r.tags?.includes('vibe-cooking'))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const replacement = vibeRecipes[0] ?? recipes[recipes.length - 1];
+    if (replacement && replacement.id !== currentId) {
+      setSelectedRecipeIds([replacement.id]);
+    }
+  }, [recipes, params.recipeId, selectedRecipeIds]);
+
   const [dateMealTypeMap, setDateMealTypeMap] = useState<Record<string, string[]>>({
     [initialDate]: initialMealTypes,
   });
