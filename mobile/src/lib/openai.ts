@@ -6,6 +6,7 @@ import { getMealTypePromptGuidance, validateMealType, getClassificationReport } 
 import { findSupabaseImage, extractPrimaryIngredientNames } from './supabase-image-library';
 import { determineIngredientCategory, getCategoryGuidancePrompt } from './ingredient-category-mapper';
 import { apiCall } from './api-router';
+import { isSupabaseConfigured } from './supabase';
 
 export type PlanDuration = 'single' | 'week1' | 'week2' | 'week3' | 'week4' | 'monthly';
 
@@ -2203,11 +2204,10 @@ export async function generateMealPlan(
  * Now checks if Supabase is configured since OpenAI calls go through Edge Functions
  */
 export function isOpenAIConfigured(): boolean {
-  // OpenAI calls now go through Supabase Edge Functions
-  return !!(
-    process.env.EXPO_PUBLIC_SUPABASE_URL &&
-    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-  );
+  // OpenAI calls go through Supabase Edge Functions. Use the resolved config
+  // (env OR built-in publishable fallback) so this never reports "off" just
+  // because a build profile was missing the EXPO_PUBLIC_* env.
+  return isSupabaseConfigured();
 }
 
 // Generate a single replacement recipe for a meal plan
@@ -2939,8 +2939,12 @@ export async function generateRecipeImage(
 ): Promise<string> {
   const ingredientNames = extractPrimaryIngredientNames(recipeIngredients);
 
-  // Step 1: Try Pexels first for the freshest, most relevant images
-  const pexelsApiKey = process.env.EXPO_PUBLIC_PEXELS_API_KEY;
+  // Step 1: Try Pexels first for the freshest, most relevant images.
+  // Fall back to the known key when a build profile omits the env (otherwise
+  // recipe photos silently degrade to the default image in such builds).
+  const pexelsApiKey =
+    process.env.EXPO_PUBLIC_PEXELS_API_KEY ||
+    'e04AwB0tvSH3BVmyE9c7sZTNvQcbUHKKFQXX1j98dKhT0715wH785NF5';
 
   if (pexelsApiKey) {
     try {

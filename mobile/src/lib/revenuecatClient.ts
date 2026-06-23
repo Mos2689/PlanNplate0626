@@ -30,10 +30,21 @@ import Purchases, {
 // Check if running on web
 const isWeb = Platform.OS === "web";
 
-// Check for environment keys
-const testKey = process.env.EXPO_PUBLIC_VIBECODE_REVENUECAT_TEST_KEY;
-const appleKey = process.env.EXPO_PUBLIC_VIBECODE_REVENUECAT_APPLE_KEY;
-const googleKey = process.env.EXPO_PUBLIC_VIBECODE_REVENUECAT_GOOGLE_KEY;
+// Check for environment keys. These RevenueCat SDK keys are PUBLIC client keys
+// (designed to ship in the app), so we fall back to the known values when a
+// build profile is missing the EXPO_PUBLIC_* env — otherwise a build cut from a
+// profile without an `env` block (e.g. eas.json `preview`) silently disables the
+// paywall. Env still wins when present.
+const FALLBACK_REVENUECAT_TEST_KEY = "test_TDYtycKpCSihFZcSXqkDGJXvecl";
+const FALLBACK_REVENUECAT_APPLE_KEY = "appl_twIltSRpbHfdtREIEbywimmFvBp";
+const FALLBACK_REVENUECAT_GOOGLE_KEY = "goog_CvNmqdxQPrauotlExRcsCACMZFm";
+
+const testKey =
+  process.env.EXPO_PUBLIC_VIBECODE_REVENUECAT_TEST_KEY || FALLBACK_REVENUECAT_TEST_KEY;
+const appleKey =
+  process.env.EXPO_PUBLIC_VIBECODE_REVENUECAT_APPLE_KEY || FALLBACK_REVENUECAT_APPLE_KEY;
+const googleKey =
+  process.env.EXPO_PUBLIC_VIBECODE_REVENUECAT_GOOGLE_KEY || FALLBACK_REVENUECAT_GOOGLE_KEY;
 
 // Use __DEV__ and Platform to determine which key to use
 const getApiKey = (): string | undefined => {

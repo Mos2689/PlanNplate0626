@@ -6,7 +6,7 @@
  * and response parsing.
  */
 
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, isSupabaseConfigured, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
 
 // Session refresh lock to prevent concurrent refreshes
 let isRefreshing = false;
@@ -119,8 +119,8 @@ export async function apiCall<T>(
       return { error: 'Session expired. Please log in again.' };
     }
 
-    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+    const supabaseUrl = SUPABASE_URL;
+    const supabaseAnonKey = SUPABASE_ANON_KEY;
 
     try {
       const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
@@ -184,8 +184,8 @@ export async function apiFormCall<T>(
       return { error: 'Session expired. Please log in again.' };
     }
 
-    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+    const supabaseUrl = SUPABASE_URL;
+    const supabaseAnonKey = SUPABASE_ANON_KEY;
 
     try {
       const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
@@ -256,8 +256,8 @@ export async function apiDelete<T>(
       return { error: 'Session expired. Please log in again.' };
     }
 
-    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+    const supabaseUrl = SUPABASE_URL;
+    const supabaseAnonKey = SUPABASE_ANON_KEY;
 
     try {
       const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
