@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vibecode.planplate.8ctfq2",
-      "buildNumber": "35",
+      "buildNumber": "36",
       "infoPlist": {
         "NSCameraUsageDescription": "PlanNplate uses the camera to capture photos inside the app before you publish them.",
         "NSPhotoLibraryUsageDescription": "PlanNplate accesses your photo library to let you choose media that appears in the app.",
