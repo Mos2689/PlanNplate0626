@@ -4,7 +4,7 @@
 // recipe-detail.tsx can't render them. This screen looks the recipe up
 // straight from CURATED_MEAL_PLANS by planId + recipe key (name slug).
 import React, { useCallback, useMemo } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -32,6 +32,10 @@ import {
 } from '@/lib/curated-meal-plans';
 import { useMealPlanStore } from '@/lib/store';
 import { designTokens, elevation } from '@/lib/design-tokens';
+import {
+  StickyScreenHeader,
+  useStickyHeaderScroll,
+} from '@/components/StickyScreenHeader';
 
 const MEAL_TYPE_META: Record<
   'breakfast' | 'lunch' | 'dinner' | 'snack',
@@ -51,6 +55,12 @@ export default function CuratedRecipeDetailScreen() {
   }>();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { scrollY, scrollHandler } = useStickyHeaderScroll();
+
+  const handleBack = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.back();
+  }, [router]);
 
   const entry = planId && recipeKey ? findCuratedRecipe(planId, recipeKey) : undefined;
 
@@ -149,7 +159,7 @@ export default function CuratedRecipeDetailScreen() {
                 textAlign: 'center',
               }}
             >
-              We couldn't find that recipe.
+              We couldn&apos;t find that recipe.
             </Text>
           </View>
         </SafeAreaView>
@@ -169,10 +179,12 @@ export default function CuratedRecipeDetailScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: surfaceBg }}>
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <ScrollView
+        <Animated.ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
         >
           {/* Back button */}
           <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 6 }}>
@@ -467,7 +479,7 @@ export default function CuratedRecipeDetailScreen() {
               ))}
             </Animated.View>
           )}
-        </ScrollView>
+        </Animated.ScrollView>
 
         {/* Sticky action bar — Save + Add to meal plan */}
         <View
@@ -560,6 +572,8 @@ export default function CuratedRecipeDetailScreen() {
           </Pressable>
         </View>
       </SafeAreaView>
+
+      <StickyScreenHeader scrollY={scrollY} title={recipe.name} onBack={handleBack} />
     </View>
   );
 }

@@ -313,12 +313,6 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
   // Pick image from library — preserved verbatim.
   const pickImage = useCallback(async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your photo library to change your profile photo.');
-        return;
-      }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,

@@ -589,12 +589,6 @@ export default function AddRecipeScreen() {
         return;
       }
 
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        setUploadError('Photo library permission is required');
-        return;
-      }
-
       const remainingSlots = 5 - uploadedImages.length;
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
