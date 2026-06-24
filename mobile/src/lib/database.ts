@@ -863,15 +863,20 @@ export async function upsertMealSlot(userId: string, slot: MealSlot): Promise<st
     return null;
   }
 
-  // Check if this exact slot already exists (by checking user_id, date, meal_type, and recipe_id)
-  const { data: existingSlot } = await supabase
-    .from('meal_slots')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('date', slot.date)
-    .eq('meal_type', slot.mealType)
-    .eq('recipe_id', slot.recipeId)
-    .maybeSingle();
+  // Check if this exact slot already exists (by user_id, date, meal_type, recipe_id).
+  // NOTE: `.eq('recipe_id', null)` never matches in PostgREST — null comparisons
+  // need `.is(...)`, so recipe-less placeholder slots must use `.is`.
+  const baseMatch = () =>
+    supabase
+      .from('meal_slots')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('date', slot.date)
+      .eq('meal_type', slot.mealType);
+  const matchRecipe = (q: ReturnType<typeof baseMatch>) =>
+    slot.recipeId ? q.eq('recipe_id', slot.recipeId) : q.is('recipe_id', null);
+
+  const { data: existingSlot } = await matchRecipe(baseMatch()).maybeSingle();
 
   if (existingSlot) {
     // Update existing slot
@@ -906,6 +911,18 @@ export async function upsertMealSlot(userId: string, slot: MealSlot): Promise<st
       .single();
 
     if (error) {
+      // 23505 = unique-constraint hit on (user_id, date, meal_type, recipe_id).
+      // The check-above + insert isn't atomic, and curated recipes now reuse a
+      // single recipe_id (addRecipe dedups on curatedSourceId), so concurrent
+      // slot syncs can collide. Treat it as "already exists": fetch and return
+      // the existing row's id instead of failing — which is the whole point of
+      // an upsert. (Previously this errored and the slot never persisted, so
+      // it survived in Expo Go's in-memory store but vanished on a DB reload in
+      // TestFlight — the "lunch/dinner missing" bug.)
+      if ((error as { code?: string }).code === '23505') {
+        const { data: dup } = await matchRecipe(baseMatch()).maybeSingle();
+        if (dup?.id) return dup.id;
+      }
       console.error('Error inserting meal slot:', error);
       return null;
     }

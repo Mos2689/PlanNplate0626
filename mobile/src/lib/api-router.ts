@@ -41,46 +41,34 @@ async function getValidAccessToken(): Promise<string | null> {
   }
 
   const { data: sessionData } = await supabase.auth.getSession();
-  const currentToken = sessionData.session?.access_token;
+  const session = sessionData.session;
+  const now = Math.floor(Date.now() / 1000);
 
-  if (currentToken) {
-    try {
-      const parts = currentToken.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1]));
-        const now = Math.floor(Date.now() / 1000);
-        const expiresIn = payload.exp - now;
-        if (expiresIn > 60) {
-          return currentToken;
-        }
-      }
-    } catch {
-      // Continue to refresh
-    }
+  // Use the session's own `expires_at` (unix seconds) — DO NOT decode the JWT
+  // with atob(). JWT segments are base64URL ("-"/"_", often unpadded); the
+  // production Hermes `atob` is strict and throws on that, while Expo Go's is
+  // lenient — which silently pushed every API call into the sign-out + anon
+  // recovery path on device, breaking all authed edge-function calls.
+  if (session?.access_token && session.expires_at && session.expires_at - now > 60) {
+    return session.access_token;
   }
 
   isRefreshing = true;
   refreshPromise = (async () => {
     try {
-      // Attempt 1: server-side refresh
+      // Attempt 1: server-side refresh.
       const { data, error } = await supabase.auth.refreshSession();
       if (!error && data.session?.access_token) {
-        // Validate the refreshed token is actually usable
-        try {
-          const parts = data.session.access_token.split('.');
-          if (parts.length === 3) {
-            const payload = JSON.parse(atob(parts[1]));
-            if (payload.exp > Math.floor(Date.now() / 1000) + 30) {
-              return data.session.access_token;
-            }
-          }
-        } catch {
-          // fall through to recovery
+        const refreshedExp = data.session.expires_at ?? 0;
+        if (refreshedExp > Math.floor(Date.now() / 1000) + 30) {
+          return data.session.access_token;
         }
+        // No/short expiry but we got a token — use it rather than nuking the session.
+        return data.session.access_token;
       }
 
-      // Attempt 2: the session is truly dead — sign out the stale session
-      // and create a fresh anonymous guest so the app can keep working.
+      // Attempt 2: refresh genuinely failed — only now fall back to a fresh
+      // anonymous guest so the app can keep working.
       console.warn('[API] Session refresh failed — creating fresh anonymous session...');
       await supabase.auth.signOut().catch(() => {});
       const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
