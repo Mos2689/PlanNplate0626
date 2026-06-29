@@ -1138,7 +1138,30 @@ export async function clearCheckedGroceryItems(userId: string): Promise<boolean>
 
 // ============ BULK OPERATIONS ============
 
-export async function replaceUserGroceryItems(
+// Serializes grocery writes (see replaceUserGroceryItems). Module-level so all
+// callers share one queue per app session.
+let grocerySyncChain: Promise<boolean> = Promise.resolve(true);
+
+/**
+ * Replace the user's grocery rows (delete-all + insert-all).
+ *
+ * Serialized via a per-module promise chain: this body races with itself when
+ * fired rapidly — e.g. adding several spoken items at once, where each add
+ * triggers its own sync — and the overlapping inserts violate the primary key
+ * (Postgres 23505 on grocery_items_pkey). Chaining runs the calls one at a
+ * time; each call carries the full latest list, so the final state is correct.
+ */
+export function replaceUserGroceryItems(
+  userId: string,
+  items: GroceryItem[]
+): Promise<boolean> {
+  const run = grocerySyncChain.then(() => replaceUserGroceryItemsImpl(userId, items));
+  // Swallow rejections on the chain so one failure doesn't break later writes.
+  grocerySyncChain = run.catch(() => false);
+  return run;
+}
+
+async function replaceUserGroceryItemsImpl(
   userId: string,
   items: GroceryItem[]
 ): Promise<boolean> {

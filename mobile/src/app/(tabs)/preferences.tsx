@@ -2,7 +2,7 @@
 // Every store read, callback, route, side-effect, and modal
 // from the previous implementation is preserved exactly.
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Linking, Alert, Image } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Linking, Alert, Image, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -33,13 +33,13 @@ import {
   Shield,
   FileText,
   User,
+  Share2,
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useMealPlanStore, servingSizeFromHousehold } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
 import { useSubscriptionStore, useAccountStatus, useIsPremium, useUserAvatar } from '@/lib/subscription-store';
-import { restorePurchases } from '@/lib/revenuecatClient';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { cn } from '@/lib/cn';
 import { designTokens, elevation, getThemeColors } from '@/lib/design-tokens';
@@ -55,6 +55,19 @@ import {
 
 const PRIVACY_POLICY_URL = 'https://www.plannplate.com.au/privacy-policy';
 const TERMS_OF_USE_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+
+// ── Share-the-app message ──────────────────────────────────────────────
+// Sent via the native share sheet (WhatsApp / iMessage / SMS / etc.). The
+// store links render a rich preview with the PlanNplate app icon in apps that
+// support it, so the brand shows up without attaching an image file.
+const APP_STORE_URL = 'https://apps.apple.com/app/id6757459949';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=ycom.plannplate.app';
+const SHARE_APP_MESSAGE =
+  '🍽️ I have been using PlanNplate for meal planning, and it saves me time, money, and the daily "What\'s for dinner?" stress.\n\n' +
+  'Plus, all my recipes and grocery lists are in one place.\n\n' +
+  'Give it a try:\n\n' +
+  `📱 iPhone: ${APP_STORE_URL}\n` +
+  `🤖 Android: ${PLAY_STORE_URL}`;
 
 // ── Helpers ───────────────────────────────────────────────────────────
 function clamp<T>(arr: T[] | undefined | null, n: number): T[] {
@@ -397,8 +410,6 @@ export default function ProfileScreen() {
   const userAvatar = useUserAvatar();
   const deleteAccount = useSubscriptionStore((s) => s.deleteAccount);
   const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
-  const syncWithRevenueCat = useSubscriptionStore((s) => s.syncWithRevenueCat);
-  const [isRestoring, setIsRestoring] = useState(false);
 
   // ── Local state (preserved) ────────────────────────────────────
   const [modalType, setModalType] = useState<'delete' | null>(null);
@@ -607,36 +618,20 @@ export default function ProfileScreen() {
     setShowEditProfile(true);
   }, []);
 
-  // Restore Purchases path that does NOT require seeing the paywall first.
-  // A paid user who lands here as non-premium (reinstall, cleared data,
-  // first launch on a new device) can recover entitlement directly.
-  const handleRestore = useCallback(async () => {
-    if (isRestoring) return;
+  // Share PlanNplate via the native share sheet (WhatsApp / iMessage / SMS).
+  const handleShareApp = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setIsRestoring(true);
     try {
-      const result = await restorePurchases();
-      if (result.ok) {
-        if (currentUser?.id) {
-          await syncWithRevenueCat(currentUser.id);
-        }
-        const restoredPremium = useSubscriptionStore.getState().isPremium;
-        Alert.alert(
-          restoredPremium ? 'Restored' : 'No purchases found',
-          restoredPremium
-            ? 'Your purchases have been restored.'
-            : "We didn't find any purchases on this store account.",
-        );
-      } else {
-        Alert.alert(
-          'Restore Failed',
-          'Unable to restore purchases. Please try again.',
-        );
-      }
-    } finally {
-      setIsRestoring(false);
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { message: SHARE_APP_MESSAGE, url: APP_STORE_URL }
+          : { message: SHARE_APP_MESSAGE },
+        { dialogTitle: 'Share PlanNplate' },
+      );
+    } catch {
+      // User dismissed the sheet or sharing is unavailable — no-op.
     }
-  }, [isRestoring, currentUser?.id, syncWithRevenueCat]);
+  }, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : colors.bg }}>
@@ -651,7 +646,8 @@ export default function ProfileScreen() {
             entering={FadeInDown.delay(50).springify()}
             style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 22 }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
               {/* Avatar with optional premium badge */}
               <View style={{ position: 'relative', width: 64, height: 64, flexShrink: 0 }}>
                 <UserAvatarDisplay size={64} avatarUrl={userAvatar} name={currentUser?.name || 'User'} />
@@ -772,10 +768,52 @@ export default function ProfileScreen() {
                   </View>
                 </View>
               </View>
+              </View>
+              {/* Edit profile + Do more with PnP — top-right circular icon
+                  buttons, styled like the grocery header's action buttons. */}
+              <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                <Pressable
+                  onPress={openEditProfile}
+                  hitSlop={6}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: colors.hair,
+                    backgroundColor: colors.bg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Pencil size={17} color={colors.ink} strokeWidth={1.7} />
+                </Pressable>
+                {!isPremium && (
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      openPaywallSheet('profile-banner');
+                    }}
+                    hitSlop={6}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: designTokens.colors.olive,
+                      backgroundColor: 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Crown size={18} color={designTokens.colors.olive} strokeWidth={1.7} />
+                  </Pressable>
+                )}
+              </View>
             </View>
-            {/* Edit cooking profile button */}
+            {/* Share with friends — primary CTA (native share sheet). */}
             <Pressable
-              onPress={openEditProfile}
+              onPress={handleShareApp}
               style={{
                 marginTop: 16,
                 width: '100%',
@@ -789,7 +827,7 @@ export default function ProfileScreen() {
                 backgroundColor: designTokens.colors.ink,
               }}
             >
-              <Pencil size={15} color={designTokens.colors.cream} strokeWidth={1.8} />
+              <Share2 size={15} color={designTokens.colors.cream} strokeWidth={1.8} />
               <Text
                 style={{
                   fontFamily: designTokens.font.medium,
@@ -798,74 +836,9 @@ export default function ProfileScreen() {
                   letterSpacing: -0.145,
                 }}
               >
-                Edit cooking profile
+                Share with friends
               </Text>
             </Pressable>
-            {/* Do more with PnP — premium upsell (non-premium only). Moved here
-                from the meal-plan page; styled as a secondary CTA that sits
-                directly under the Edit button. */}
-            {!isPremium && (
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  openPaywallSheet('profile-banner');
-                }}
-                style={{
-                  marginTop: 10,
-                  width: '100%',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  paddingHorizontal: 16,
-                  paddingVertical: 13,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: designTokens.colors.olive,
-                  backgroundColor: 'transparent',
-                }}
-              >
-                <Crown size={15} color={designTokens.colors.olive} strokeWidth={1.8} />
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.medium,
-                    fontSize: 14.5,
-                    color: designTokens.colors.olive,
-                    letterSpacing: -0.145,
-                  }}
-                >
-                  Do more with PnP
-                </Text>
-              </Pressable>
-            )}
-            {/* Restore Purchases — non-premium only. Gives a paid user who
-                ended up locally non-premium (reinstall, switched device, etc.)
-                a recovery path that doesn't require the paywall first. */}
-            {!isPremium && (
-              <Pressable
-                onPress={handleRestore}
-                disabled={isRestoring}
-                style={{
-                  marginTop: 10,
-                  alignSelf: 'center',
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  opacity: isRestoring ? 0.6 : 1,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.medium,
-                    fontSize: 13,
-                    color: colors.ink2,
-                    letterSpacing: -0.13,
-                    textDecorationLine: 'underline',
-                  }}
-                >
-                  {isRestoring ? 'Restoring…' : 'Restore purchases'}
-                </Text>
-              </Pressable>
-            )}
           </Animated.View>
 
           {/* ── Cooking profile card ────────────────────────────── */}

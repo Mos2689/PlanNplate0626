@@ -1,7 +1,7 @@
 import type { Ingredient, UserPreferences } from './store';
 import { fetch } from 'expo/fetch';
 import { checkRateLimit, incrementRateLimit } from './rate-limit-store';
-import { validateIngredient, logIngredientValidationIssues } from './ingredient-validator';
+import { validateIngredient, logIngredientValidationIssues, splitCompoundIngredient } from './ingredient-validator';
 import { getMealTypePromptGuidance, validateMealType, getClassificationReport } from './meal-type-validator';
 import { findSupabaseImage, extractPrimaryIngredientNames } from './supabase-image-library';
 import { determineIngredientCategory, getCategoryGuidancePrompt } from './ingredient-category-mapper';
@@ -507,6 +507,50 @@ const SEAFOOD_TERMS = [
   'octopus', 'anchovy', 'anchovies', 'shellfish', 'caviar', 'roe',
 ];
 
+// Cuisine keyword indicators, used to verify a recipe actually belongs to a
+// user's selected cuisine(s). Intentionally LENIENT (matches if ANY signal is
+// present) so we reject only clear cross-cuisine mismatches, not edge cases —
+// over-rejecting would burn regeneration attempts. "Asian" umbrellas the
+// East/SE-Asian options so picking it accepts Japanese/Chinese/Thai/etc.
+const CUISINE_KEYWORDS: Record<string, string[]> = {
+  italian: ['italian', 'pasta', 'spaghetti', 'penne', 'linguine', 'fettuccine', 'lasagna', 'lasagne', 'risotto', 'gnocchi', 'parmesan', 'parmigiano', 'mozzarella', 'pesto', 'marinara', 'bolognese', 'carbonara', 'bruschetta', 'prosciutto', 'focaccia', 'caprese', 'ravioli', 'tortellini', 'minestrone', 'polenta'],
+  mexican: ['mexican', 'taco', 'burrito', 'quesadilla', 'enchilada', 'tortilla', 'salsa', 'guacamole', 'jalapeno', 'jalapeño', 'chipotle', 'fajita', 'nachos', 'tostada', 'carnitas', 'pico de gallo', 'queso', 'tex-mex', 'refried'],
+  asian: ['asian', 'stir-fry', 'stir fry', 'stir-fried', 'soy sauce', 'sesame', 'ginger', 'teriyaki', 'miso', 'tofu', 'hoisin', 'fish sauce', 'rice wine', 'bok choy', 'noodle', 'ramen', 'udon', 'soba', 'dumpling', 'spring roll', 'wonton', 'sushi', 'sashimi', 'kimchi', 'bibimbap', 'pad thai', 'pho', 'curry', 'satay', 'tempura', 'szechuan', 'sichuan', 'thai', 'chinese', 'japanese', 'korean', 'vietnamese', 'edamame', 'wok', 'gochujang', 'lemongrass'],
+  mediterranean: ['mediterranean', 'hummus', 'tahini', 'falafel', 'tzatziki', 'feta', 'olive', 'pita', 'tabbouleh', 'couscous', 'tagine', 'harissa', "za'atar", 'halloumi', 'dolma', 'baba ganoush'],
+  indian: ['indian', 'curry', 'masala', 'tikka', 'tandoori', 'naan', 'dal', 'daal', 'paneer', 'garam masala', 'biryani', 'korma', 'vindaloo', 'samosa', 'chana', 'saag', 'raita', 'chutney', 'turmeric', 'ghee', 'roti', 'chapati'],
+  american: ['american', 'burger', 'cheeseburger', 'bbq', 'barbecue', 'barbeque', 'mac and cheese', 'meatloaf', 'cornbread', 'coleslaw', 'buffalo', 'sloppy joe', 'grilled cheese', 'pulled pork', 'hot dog', 'fried chicken'],
+  french: ['french', 'ratatouille', 'baguette', 'quiche', 'coq au vin', 'beef bourguignon', 'croissant', 'crepe', 'crêpe', 'gratin', 'cassoulet', 'bisque', 'béarnaise', 'provençal', 'confit', 'dijon'],
+  japanese: ['japanese', 'sushi', 'sashimi', 'ramen', 'udon', 'soba', 'miso', 'teriyaki', 'tempura', 'katsu', 'donburi', 'yakitori', 'edamame', 'nori', 'wasabi', 'dashi', 'matcha', 'onigiri', 'gyoza'],
+  chinese: ['chinese', 'stir-fry', 'stir fry', 'szechuan', 'sichuan', 'hoisin', 'wonton', 'dumpling', 'chow mein', 'lo mein', 'fried rice', 'kung pao', 'sweet and sour', 'spring roll', 'bok choy', 'wok', 'char siu', 'dim sum'],
+  korean: ['korean', 'kimchi', 'bibimbap', 'bulgogi', 'gochujang', 'gochugaru', 'japchae', 'tteokbokki', 'korean bbq', 'galbi', 'doenjang'],
+  thai: ['thai', 'pad thai', 'green curry', 'red curry', 'massaman', 'tom yum', 'tom kha', 'lemongrass', 'fish sauce', 'coconut milk', 'satay', 'larb', 'som tam', 'galangal', 'thai basil'],
+  greek: ['greek', 'tzatziki', 'feta', 'souvlaki', 'gyro', 'spanakopita', 'moussaka', 'dolma', 'taramasalata', 'horiatiki', 'avgolemono', 'kalamata'],
+};
+
+/**
+ * True if the recipe plausibly belongs to at least one of the user's selected
+ * cuisines (checks tags, name, description, and ingredient names against the
+ * cuisine name itself and its keyword set). Lenient by design.
+ */
+export function recipeMatchesPreferredCuisine(
+  recipe: GeneratedRecipeResponse,
+  cuisinePreferences: string[],
+): boolean {
+  const prefs = (cuisinePreferences || []).map((c) => c.toLowerCase().trim()).filter(Boolean);
+  if (prefs.length === 0) return true; // no cuisine selected → nothing to enforce
+
+  const tags = (recipe.tags || []).map((t) => t.toLowerCase());
+  const ingredientNames = recipe.ingredients.map((i) => i.name.toLowerCase()).join(' ');
+  const text = `${recipe.name.toLowerCase()} ${recipe.description.toLowerCase()} ${tags.join(' ')} ${ingredientNames}`;
+
+  for (const c of prefs) {
+    if (text.includes(c)) return true; // cuisine named directly
+    const keywords = CUISINE_KEYWORDS[c] || [];
+    if (keywords.some((k) => text.includes(k))) return true;
+  }
+  return false;
+}
+
 export function validateRecipeAgainstPreferences(
   recipe: GeneratedRecipeResponse,
   preferences: UserPreferences,
@@ -767,6 +811,20 @@ export function validateRecipeAgainstPreferences(
     }
   }
 
+  // ── #3d  CUISINE (HARD, main meals only) ─────────────────────
+  // Cuisine is a hard requirement for lunch/dinner. Breakfast & snacks are left
+  // cuisine-neutral (they're usually generic and largely curated). A user's
+  // explicit special request, or fridge-assigned recipes, override saved cuisine.
+  if (
+    !hasSpecialRequest &&
+    !isFridgeAssigned &&
+    (recipe.mealType === 'lunch' || recipe.mealType === 'dinner') &&
+    (preferences.cuisinePreferences?.length ?? 0) > 0 &&
+    !recipeMatchesPreferredCuisine(recipe, preferences.cuisinePreferences)
+  ) {
+    violations.push(`CUISINE VIOLATION: Not ${preferences.cuisinePreferences.join('/')} cuisine`);
+  }
+
   if (violations.length > 0) {
     console.warn(`[Validation] Recipe "${recipe.name}" has ${violations.length} violation(s): ${violations.join('; ')}`);
   }
@@ -979,10 +1037,16 @@ DIETARY RESTRICTION: This recipe MUST be ${preferences.dietaryRestrictions.join(
     }
   }
 
-  // 3d. Cuisine preferences
+  // 3d. Cuisine preferences — HARD requirement for lunch/dinner.
   if (preferences.cuisinePreferences.length > 0) {
-    prompt += `
-CUISINE PREFERENCE: Prefer these cuisines: ${preferences.cuisinePreferences.join(', ')}.`;
+    const cuisineList = preferences.cuisinePreferences.join(', ');
+    if (mealType === 'lunch' || mealType === 'dinner') {
+      prompt += `
+CUISINE (MANDATORY): This recipe MUST be authentic ${cuisineList} cuisine. Do NOT produce a dish from any other cuisine (e.g. Italian, Mexican, Mediterranean) unless it is part of ${cuisineList}. The dish name, ingredients, and flavour profile must clearly reflect ${cuisineList} cuisine.`;
+    } else {
+      prompt += `
+CUISINE PREFERENCE: Prefer these cuisines where it fits: ${cuisineList}.`;
+    }
   }
 
   // 3e. Prep time
@@ -1176,7 +1240,11 @@ Similar variations are NOT allowed. Examples of what is NOT allowed:
   - "Lemon Garlic Chicken with Rice" and "Lemon Garlic Chicken with Vegetables" (same base dish)
   - "Grilled Chicken" and "Grilled Chicken with Herbs" (same dish + garnish)
   - "Chicken Stir Fry" and "Chicken Vegetable Stir Fry" (same format)
-Change the PROTEIN, the CUISINE STYLE, and the COOKING METHOD to create real variety.`;
+${
+  (mealType === 'lunch' || mealType === 'dinner') && preferences.cuisinePreferences.length > 0
+    ? `Keep the cuisine as ${preferences.cuisinePreferences.join('/')} (that is required), but change the PROTEIN and the COOKING METHOD to create real variety.`
+    : 'Change the PROTEIN, the CUISINE STYLE, and the COOKING METHOD to create real variety.'
+}`;
   }
 
   if (excludeProteins.length > 0) {
@@ -1271,7 +1339,17 @@ Only return valid JSON, no markdown or explanation.`;
  * Sanitize recipe ingredients to fix common issues with quantities, units, and categories
  */
 function sanitizeRecipeIngredients(recipe: GeneratedRecipeResponse): GeneratedRecipeResponse {
-  const validatedIngredients = recipe.ingredients.map(ing => {
+  // First split any compound ingredient names ("Olive Oil + 2 tsp Cumin") into
+  // separate ingredients so each becomes its own line, THEN validate each.
+  const expandedIngredients = recipe.ingredients.flatMap(ing =>
+    splitCompoundIngredient({
+      name: ing.name,
+      quantity: ing.quantity,
+      unit: ing.unit,
+      category: ing.category,
+    }),
+  );
+  const validatedIngredients = expandedIngredients.map(ing => {
     const validated = validateIngredient({
       name: ing.name,
       quantity: ing.quantity,

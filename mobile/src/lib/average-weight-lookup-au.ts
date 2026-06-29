@@ -441,7 +441,189 @@ export const AVERAGE_WEIGHT_LOOKUP_AU: Record<string, AverageWeightEntry> = {
     description: 'Single whole clove',
     source: 'Industry standard',
   },
+
+  // EXPANDED COVERAGE — common count-able produce/proteins so a "piece" row
+  // can fold into a "g" row of the same canonical ingredient. Keys here must
+  // match what normalizeIngredientName() emits (the alias-map canonical).
+  'spring onion': {
+    canonicalName: 'spring onion',
+    aliases: ['scallion', 'green onion'],
+    averageWeightG: 15,
+    confidence: 'medium',
+    description: 'Single spring onion / scallion stalk',
+    source: 'Industry standard',
+  },
+  'eggplant': {
+    canonicalName: 'eggplant',
+    aliases: ['aubergine'],
+    averageWeightG: 250,
+    confidence: 'medium',
+    description: 'Single medium eggplant',
+    source: 'ABS Vegetable Standards',
+  },
+  'sweet potato': {
+    canonicalName: 'sweet potato',
+    aliases: ['kumara'],
+    averageWeightG: 200,
+    confidence: 'medium',
+    description: 'Single medium sweet potato',
+    source: 'ABS Vegetable Standards',
+  },
+  'leek': {
+    canonicalName: 'leek',
+    aliases: ['leeks'],
+    averageWeightG: 150,
+    confidence: 'medium',
+    description: 'Single medium leek (trimmed)',
+    source: 'Industry standard',
+  },
+  'cauliflower': {
+    canonicalName: 'cauliflower',
+    aliases: ['cauliflower head'],
+    averageWeightG: 600,
+    confidence: 'medium',
+    description: 'Single medium cauliflower head',
+    source: 'ABS Vegetable Standards',
+  },
+  'corn': {
+    canonicalName: 'corn',
+    aliases: ['corn cob', 'corn on the cob', 'sweetcorn'],
+    averageWeightG: 250,
+    confidence: 'medium',
+    description: 'Single corn cob',
+    source: 'Industry standard',
+  },
+  'chili': {
+    canonicalName: 'chili',
+    aliases: ['chilli', 'chili pepper', 'chilli pepper'],
+    averageWeightG: 15,
+    confidence: 'medium',
+    description: 'Single fresh chili',
+    source: 'Industry standard',
+  },
+  'sausage': {
+    canonicalName: 'sausage',
+    aliases: ['sausages', 'pork sausage', 'beef sausage'],
+    averageWeightG: 75,
+    confidence: 'medium',
+    description: 'Single sausage',
+    source: 'Industry standard',
+  },
+  'bacon': {
+    canonicalName: 'bacon',
+    aliases: ['bacon rasher', 'rasher'],
+    averageWeightG: 30,
+    confidence: 'medium',
+    description: 'Single bacon rasher',
+    source: 'Industry standard',
+  },
+  'mango': {
+    canonicalName: 'mango',
+    aliases: ['mangoes', 'mangos'],
+    averageWeightG: 200,
+    confidence: 'medium',
+    description: 'Single medium mango (flesh ~140g)',
+    source: 'ABS Fruit Standards',
+  },
+  'pear': {
+    canonicalName: 'pear',
+    aliases: ['pears'],
+    averageWeightG: 180,
+    confidence: 'medium',
+    description: 'Single medium pear',
+    source: 'ABS Fruit Standards',
+  },
+  'peach': {
+    canonicalName: 'peach',
+    aliases: ['peaches'],
+    averageWeightG: 150,
+    confidence: 'medium',
+    description: 'Single medium peach',
+    source: 'ABS Fruit Standards',
+  },
 };
+
+/**
+ * Standard container volume (mL) for LIQUID ingredients that are normally sold
+ * by the can/tin/carton/bottle. Used to reconcile a volume row (mL) with a
+ * count row (the count collapses every container unit to "piece", so a "piece"
+ * of these ingredients reliably means one standard container).
+ *
+ * Deliberately curated and small: only liquids where a counted unit is
+ * unambiguously a container — never produce like lemon/onion where "piece"
+ * means a whole item, not a measured volume. Anything not listed here is left
+ * for the manual "combine duplicates" flow rather than guessed.
+ *
+ * Keys must match what normalizeIngredientName() emits (the alias-map canonical).
+ */
+export const CONTAINER_VOLUME_ML_AU: Record<string, number> = {
+  'coconut milk': 400, // standard AU can
+  'coconut cream': 400, // standard AU can
+  'evaporated milk': 375, // standard AU can
+  'condensed milk': 395, // standard AU can
+  'chicken broth': 500, // carton/can portion
+  'beef broth': 500,
+  'vegetable broth': 500,
+  'passata': 680, // standard bottle
+  'tomato passata': 680,
+};
+
+/**
+ * Returns the standard container volume (mL) for a counted liquid, or null when
+ * the ingredient isn't a known container liquid (so the caller should NOT
+ * attempt a count→volume conversion).
+ */
+export function getContainerVolumeML(ingredientName: string): number | null {
+  const normalized = ingredientName.toLowerCase().trim();
+  return CONTAINER_VOLUME_ML_AU[normalized] ?? null;
+}
+
+/**
+ * Density (grams per millilitre) for common liquids, so a weight row (g) and a
+ * volume row (mL) of the SAME liquid can be reconciled when manually combined
+ * (e.g. "200 g honey" + "30 mL honey"). Water ≈ 1.0; fats are lighter, syrups
+ * heavier.
+ *
+ * Curated to liquids/pourables only — never applied to solids, where "g" and a
+ * stray "mL" would not represent the same thing. Keys must match what
+ * normalizeIngredientName() emits (the alias-map canonical).
+ */
+export const LIQUID_DENSITY_G_PER_ML_AU: Record<string, number> = {
+  'water': 1.0,
+  'milk': 1.03,
+  'almond milk': 1.0,
+  'coconut milk': 1.0,
+  'coconut cream': 1.0,
+  'cream': 1.01,
+  'yogurt': 1.03,
+  'olive oil': 0.91,
+  'oil': 0.91,
+  'vegetable oil': 0.91,
+  'canola oil': 0.91,
+  'sunflower oil': 0.92,
+  'sesame oil': 0.92,
+  'honey': 1.42,
+  'maple syrup': 1.37,
+  'soy sauce': 1.2,
+  'vinegar': 1.01,
+  'chicken broth': 1.0,
+  'beef broth': 1.0,
+  'vegetable broth': 1.0,
+  'orange juice': 1.04,
+  'lemon juice': 1.03,
+  'lime juice': 1.03,
+  'wine': 0.99,
+};
+
+/**
+ * Returns the density (g per mL) for a known liquid, or null when the
+ * ingredient isn't a recognised liquid (so the caller should NOT attempt a
+ * weight↔volume conversion).
+ */
+export function getLiquidDensityGPerMl(ingredientName: string): number | null {
+  const normalized = ingredientName.toLowerCase().trim();
+  return LIQUID_DENSITY_G_PER_ML_AU[normalized] ?? null;
+}
 
 /**
  * Get average weight for an ingredient with confidence level

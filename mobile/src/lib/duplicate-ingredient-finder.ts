@@ -25,6 +25,48 @@ const MODIFIER_WORDS = new Set([
 ]);
 
 /**
+ * Curated synonym groups — names within a group are treated as the SAME
+ * ingredient for duplicate grouping, so the user is offered a manual combine
+ * (e.g. "soy" ↔ "soy sauce", "coriander" ↔ "cilantro"). Each member is matched
+ * against the significant-word, singularized form of the grocery item name, so
+ * plurals, AU/UK spellings, and prep descriptors (fresh/dried) still hit.
+ *
+ * Keep entries genuinely equivalent. Distinct products must NOT share a group
+ * (so no "tomato"+"tomato sauce", no "fish"+"fish sauce"). Bare "soy" is paired
+ * with "soy sauce" deliberately — note "soy milk"/"soybean" carry a
+ * distinguishing word and therefore form different phrases, so they're safe.
+ */
+const SYNONYM_GROUPS: string[][] = [
+  ['soy sauce', 'soy', 'soya sauce'],
+  ['cilantro', 'coriander'],
+  ['bell pepper', 'capsicum'],
+  ['spring onion', 'scallion', 'green onion'],
+  ['shrimp', 'prawn'],
+  ['eggplant', 'aubergine'],
+  ['zucchini', 'courgette'],
+  ['chickpea', 'garbanzo'],
+  ['sweet potato', 'kumara'],
+];
+
+const SYNONYM_CANONICAL: Map<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const group of SYNONYM_GROUPS) {
+    for (const member of group) m.set(member, group[0]);
+  }
+  return m;
+})();
+
+/**
+ * Reduce a name to its significant, singularized phrase and map it through the
+ * synonym table. Returns the canonical phrase when the name is a known synonym,
+ * otherwise the plain phrase (so callers can also detect plain equivalence).
+ */
+function canonicalizeForDuplicate(name: string): string {
+  const phrase = getSignificantWords(name).map(singularize).join(' ');
+  return SYNONYM_CANONICAL.get(phrase) ?? phrase;
+}
+
+/**
  * Extract significant words from ingredient name
  */
 function getSignificantWords(text: string): string[] {
@@ -81,6 +123,16 @@ function wordOverlapScore(a: string[], b: string[]): number {
  */
 export function areDuplicateIngredients(name1: string, name2: string): boolean {
   if (name1.toLowerCase() === name2.toLowerCase()) {
+    return true;
+  }
+
+  // Curated synonyms (e.g. soy ↔ soy sauce, coriander ↔ cilantro, capsicum ↔
+  // bell pepper). Checked before the core-word logic so a known equivalent
+  // pair groups even when one name carries an extra distinguishing-looking
+  // word like "sauce".
+  const canon1 = canonicalizeForDuplicate(name1);
+  const canon2 = canonicalizeForDuplicate(name2);
+  if (canon1 && canon2 && canon1 === canon2) {
     return true;
   }
 

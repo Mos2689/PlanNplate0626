@@ -137,7 +137,10 @@ function violatesStrictPreferences(
   if (allowOverride) return false;
   const violations = recipe.violations || [];
   return violations.some(
-    (v) => v.includes('DIETARY VIOLATION') || v.includes('ALLERGY VIOLATION'),
+    (v) =>
+      v.includes('DIETARY VIOLATION') ||
+      v.includes('ALLERGY VIOLATION') ||
+      v.includes('CUISINE VIOLATION'),
   );
 }
 

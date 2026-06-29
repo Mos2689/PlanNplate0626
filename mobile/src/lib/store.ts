@@ -7,8 +7,8 @@ import { useAuthStore } from './auth-store';
 import { useReviewStore } from './review-store';
 import { normalizeIngredientName, getCanonicalIngredientName, shouldCombineIngredients, normalizeUnit } from './ingredient-aliases';
 import { convertToBaseUnit, formatFromBaseUnit, canCombineIngredients, getCanonicalUnit } from './unit-conversion';
-import { getAverageWeightWithConfidence, shouldConvertCountToWeight } from './average-weight-lookup-au';
-import { validateIngredient, validateIngredients } from './ingredient-validator';
+import { getAverageWeightWithConfidence, shouldConvertCountToWeight, getContainerVolumeML, getLiquidDensityGPerMl } from './average-weight-lookup-au';
+import { validateIngredient, validateIngredients, splitCompoundIngredient } from './ingredient-validator';
 import { generateRecipesOptimized } from './optimized-recipe-generation';
 import { generateRecipeImage, type MealType, type GeneratedRecipeResponse } from './openai';
 import {
@@ -240,6 +240,69 @@ function getCanonicalCategory(
 
   // Fallback to original category
   return originalCategory;
+}
+
+/**
+ * Combine two base-unit amounts of the SAME ingredient that may be in
+ * different base systems (g / ml / piece).
+ *
+ * Used by the manual "combine duplicates" flow so that, e.g., merging
+ * "200 g chicken" with "2 pieces chicken" sums correctly as grams (via the
+ * count→weight table) instead of numerically mixing g and piece. Container
+ * liquids reconcile count→volume the same way ("1 can coconut milk" + "400 ml"
+ * → 800 mL).
+ *
+ * Falls back to a numeric add in the first amount's unit when no safe
+ * conversion exists (genuinely incompatible, e.g. g + ml, or a counted item
+ * with no average-weight / container-volume lookup).
+ */
+function combineBaseAmounts(
+  qtyA: number,
+  unitA: string,
+  qtyB: number,
+  unitB: string,
+  ingredientName: string,
+): { quantity: number; unit: string } {
+  if (unitA === unitB) return { quantity: qtyA + qtyB, unit: unitA };
+
+  const nameKey = normalizeIngredientName(ingredientName);
+  const sides = [
+    { qty: qtyA, unit: unitA },
+    { qty: qtyB, unit: unitB },
+  ];
+  const countSide = sides.find((s) => s.unit === 'piece');
+  const gramSide = sides.find((s) => s.unit === 'g');
+  const mlSide = sides.find((s) => s.unit === 'ml');
+
+  // count + weight → grams
+  if (countSide && gramSide && shouldConvertCountToWeight(nameKey)) {
+    const lookup = getAverageWeightWithConfidence(nameKey);
+    if (lookup) {
+      return { quantity: gramSide.qty + countSide.qty * lookup.weightG, unit: 'g' };
+    }
+  }
+
+  // count + volume (container liquid) → millilitres
+  if (countSide && mlSide) {
+    const perMl = getContainerVolumeML(nameKey);
+    if (perMl) {
+      return { quantity: mlSide.qty + countSide.qty * perMl, unit: 'ml' };
+    }
+  }
+
+  // weight + volume (known liquid) → reconcile via density, in the first
+  // amount's unit. e.g. "200 g honey" + "30 mL honey" (density 1.42 g/mL).
+  if (gramSide && mlSide) {
+    const density = getLiquidDensityGPerMl(nameKey); // g per mL
+    if (density) {
+      return unitA === 'ml'
+        ? { quantity: mlSide.qty + gramSide.qty / density, unit: 'ml' }
+        : { quantity: gramSide.qty + mlSide.qty * density, unit: 'g' };
+    }
+  }
+
+  // No safe conversion: keep the first amount's unit and add numerically.
+  return { quantity: qtyA + qtyB, unit: unitA };
 }
 
 function debounceMealSlotSync(userId: string, slot: MealSlot, delayMs: number = 100) {
@@ -492,13 +555,17 @@ export function servingSizeFromHousehold(household: Household | undefined): numb
 // MONTH; exceeding the limit opens the paywall. Premium users are unlimited.
 // "Get Groceries" and "Get Inspired" are intentionally NOT listed — they are
 // free with no monthly restriction.
-export type MonthlyFeature = 'planMeals' | 'addRecipe' | 'importRecipe' | 'vibe';
+export type MonthlyFeature = 'planMeals' | 'addRecipe' | 'importRecipe' | 'vibe' | 'speakGrocery';
 
 export const MONTHLY_FEATURE_LIMITS: Record<MonthlyFeature, number> = {
   planMeals: 5,
   addRecipe: 10,
   importRecipe: 10,
   vibe: 5,
+  // Voice grocery entry: 5 SUCCESSFUL speak attempts per month (each attempt may
+  // contain any number of items). Typing has no limit. Not shown on the paywall
+  // feature list — exceeding it just pops the paywall with a contextual note.
+  speakGrocery: 5,
 };
 
 // Calendar-month key, e.g. "2026-06". Usage counters reset when this changes.
@@ -1459,7 +1526,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
           if (uid) {
             db.upsertUserPreferences(uid, get().preferences).catch(() => {});
           }
-          if (planCount > 2) {
+          // Ask for a review right after the user's FIRST completed plan — the
+          // natural "aha" moment for a new user. maybePrompt still self-gates
+          // (once per session, ≥3-day snooze, never after review/dismiss), so
+          // existing users who are already past their first plan aren't spammed.
+          if (planCount >= 1) {
             setTimeout(() => useReviewStore.getState().maybePrompt(), 1200);
           }
           setTimeout(() => {
@@ -2747,7 +2818,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
             return; // Skip normal processing for this recipe
           }
 
-          recipe.ingredients.forEach((ing) => {
+          // Split any compound ingredient names ("Olive Oil + 2 tsp Cumin")
+          // into separate ingredients first, so they land on their own grocery
+          // rows instead of one glued line. Safety net for recipes that were
+          // saved before sanitization split them at generation time.
+          recipe.ingredients.flatMap(splitCompoundIngredient).forEach((ing) => {
             try {
               // Convert ingredient quantity to base unit
               const baseConversion = convertToBaseUnit(ing.quantity, ing.unit, ing.name);
@@ -2813,7 +2888,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
               // path above. Two recipes tagging the same ingredient with
               // different categories must still merge.
               const key = `${normalizedName}-${normalizedUnit}`;
-              const baseQty = parseFloat(ing.quantity) || 0;
+              const baseQty = parseFloat(String(ing.quantity)) || 0;
               const adjustedQty = baseQty * servingMultiplier;
               const canonicalName = getCanonicalIngredientName(ing.name);
 
@@ -2846,11 +2921,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
         // → 5g, etc.), fold the piece quantity into the gram row and drop
         // the piece row. This catches the mixed-unit case that the
         // (name, base_unit) key intentionally splits on for safety.
-        const keysByName = new Map<string, { gramKey?: string; pieceKey?: string }>();
+        const keysByName = new Map<string, { gramKey?: string; mlKey?: string; pieceKey?: string }>();
         ingredientMap.forEach((item, key) => {
           const nameKey = normalizeIngredientName(item.name);
           const slot = keysByName.get(nameKey) ?? {};
           if (item.base_unit === 'g') slot.gramKey = key;
+          else if (item.base_unit === 'ml') slot.mlKey = key;
           else if (item.base_unit === 'piece') slot.pieceKey = key;
           keysByName.set(nameKey, slot);
         });
@@ -2875,6 +2951,37 @@ export const useMealPlanStore = create<MealPlanStore>()(
           ingredientMap.delete(pieceKey);
           console.log(
             `[GROCERY] count→weight: merged ${pieceCount} × ${lookup.weightG}g of ${nameKey} into the weight row (${summedG}g total).`,
+          );
+        });
+
+        // ── Count→Volume reconciliation pass ────────────────────────────
+        // Same idea as count→weight, but for LIQUIDS sold by the container.
+        // If a canonical liquid appears as BOTH an `ml`-keyed row and a
+        // `piece`-keyed row AND it's in the curated container-volume lookup
+        // (so a counted "piece" reliably means one can/carton — e.g.
+        // "1 can coconut milk" = 400 mL), fold the count into the mL row and
+        // drop the piece row. Deliberately curated: only liquids where a
+        // counted unit is unambiguously a container, never produce.
+        keysByName.forEach(({ mlKey, pieceKey }, nameKey) => {
+          if (!mlKey || !pieceKey) return;
+          if (!ingredientMap.has(pieceKey)) return; // already consumed by the gram pass
+          const perContainerMl = getContainerVolumeML(nameKey);
+          if (!perContainerMl) return;
+          const mlItem = ingredientMap.get(mlKey);
+          const pieceItem = ingredientMap.get(pieceKey);
+          if (!mlItem || !pieceItem || mlItem.quantity_base == null) return;
+          const pieceCount = pieceItem.quantity_base ?? parseFloat(pieceItem.quantity) ?? 0;
+          if (!pieceCount) return;
+          const convertedMl = pieceCount * perContainerMl;
+          const summedMl = mlItem.quantity_base + convertedMl;
+          mlItem.quantity_base = summedMl;
+          mlItem.quantity = formatFromBaseUnit(summedMl, 'ml', mlItem.name);
+          pieceItem.recipeIds.forEach((rid) => {
+            if (!mlItem.recipeIds.includes(rid)) mlItem.recipeIds.push(rid);
+          });
+          ingredientMap.delete(pieceKey);
+          console.log(
+            `[GROCERY] count→volume: merged ${pieceCount} × ${perContainerMl}mL of ${nameKey} into the volume row (${summedMl}mL total).`,
           );
         });
 
@@ -3226,19 +3333,22 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
       mergeIntoGroceryItem: (itemId, addedQuantity, addedUnit) => {
         try {
-          const baseConversion = convertToBaseUnit(addedQuantity, addedUnit, '');
           set((state) => {
             // Search in groceryItems first, then customGroceryItems
             const groceryIndex = state.groceryItems.findIndex((g) => g.id === itemId);
             if (groceryIndex >= 0) {
               const existing = state.groceryItems[groceryIndex];
+              const incoming = convertToBaseUnit(addedQuantity, addedUnit, existing.name);
               const existingBaseQty = existing.quantity_base || parseFloat(existing.quantity) || 0;
-              const newBaseQty = existingBaseQty + baseConversion.quantity;
+              const existingUnit = existing.base_unit || incoming.unit;
+              const combined = combineBaseAmounts(
+                existingBaseQty, existingUnit, incoming.quantity, incoming.unit, existing.name,
+              );
               const updated = {
                 ...existing,
-                quantity_base: newBaseQty,
-                base_unit: baseConversion.unit,
-                quantity: formatFromBaseUnit(newBaseQty, baseConversion.unit, existing.name),
+                quantity_base: combined.quantity,
+                base_unit: combined.unit,
+                quantity: formatFromBaseUnit(combined.quantity, combined.unit, existing.name),
                 unit: '',
               };
               return {
@@ -3248,13 +3358,17 @@ export const useMealPlanStore = create<MealPlanStore>()(
             const customIndex = state.customGroceryItems.findIndex((g) => g.id === itemId);
             if (customIndex >= 0) {
               const existing = state.customGroceryItems[customIndex];
+              const incoming = convertToBaseUnit(addedQuantity, addedUnit, existing.name);
               const existingBaseQty = existing.quantity_base || parseFloat(existing.quantity) || 0;
-              const newBaseQty = existingBaseQty + baseConversion.quantity;
+              const existingUnit = existing.base_unit || incoming.unit;
+              const combined = combineBaseAmounts(
+                existingBaseQty, existingUnit, incoming.quantity, incoming.unit, existing.name,
+              );
               const updated = {
                 ...existing,
-                quantity_base: newBaseQty,
-                base_unit: baseConversion.unit,
-                quantity: formatFromBaseUnit(newBaseQty, baseConversion.unit, existing.name),
+                quantity_base: combined.quantity,
+                base_unit: combined.unit,
+                quantity: formatFromBaseUnit(combined.quantity, combined.unit, existing.name),
                 unit: '',
               };
               return {
@@ -3602,18 +3716,21 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
       mergeIntoCurrentSavedListItem: (itemId, addedQuantity, addedUnit) => {
         try {
-          const baseConversion = convertToBaseUnit(addedQuantity, addedUnit, '');
           set((state) => {
             const idx = state.currentSavedListItems.findIndex((g) => g.id === itemId);
             if (idx < 0) return {};
             const existing = state.currentSavedListItems[idx];
+            const incoming = convertToBaseUnit(addedQuantity, addedUnit, existing.name);
             const existingBaseQty = existing.quantity_base || parseFloat(existing.quantity) || 0;
-            const newBaseQty = existingBaseQty + baseConversion.quantity;
+            const existingUnit = existing.base_unit || incoming.unit;
+            const combined = combineBaseAmounts(
+              existingBaseQty, existingUnit, incoming.quantity, incoming.unit, existing.name,
+            );
             const updated = {
               ...existing,
-              quantity_base: newBaseQty,
-              base_unit: baseConversion.unit,
-              quantity: formatFromBaseUnit(newBaseQty, baseConversion.unit, existing.name),
+              quantity_base: combined.quantity,
+              base_unit: combined.unit,
+              quantity: formatFromBaseUnit(combined.quantity, combined.unit, existing.name),
               unit: '',
             };
             return {

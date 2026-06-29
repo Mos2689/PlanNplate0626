@@ -21,7 +21,7 @@ export const ANDROID_PACKAGE = 'ycom.plannplate.app';
 export const FEEDBACK_EMAIL = 'support@plannplate.app';
 
 // Don't re-ask within this many days of a dismissal / "maybe later".
-const SNOOZE_DAYS = 15;
+const SNOOZE_DAYS = 3;
 
 // Session guard — never show the prompt more than once per app session. Module-
 // level (not persisted), so it resets when the app is relaunched.

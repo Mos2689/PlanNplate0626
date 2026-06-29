@@ -270,6 +270,73 @@ const DEFAULT_QUANTITIES_BY_INGREDIENT: Record<string, string> = {
   'soy sauce': '30',
 };
 
+type RawIngredient = {
+  name: string;
+  quantity: string | number;
+  unit: string;
+  category: 'produce' | 'dairy' | 'meat' | 'pantry' | 'frozen' | 'bakery' | 'other';
+};
+
+/** Tidy a parsed ingredient name: collapse whitespace, strip edge punctuation. */
+function cleanIngredientName(name: string): string {
+  return name.replace(/\s+/g, ' ').replace(/^[\s,.;:+-]+|[\s,.;:+-]+$/g, '').trim();
+}
+
+/**
+ * Split a compound ingredient whose NAME glued several ingredients together —
+ * a model artifact, e.g. "Olive Oil + 2 tsp Cumin" — into separate ingredients:
+ *   { name: "Olive Oil", <original qty/unit> }  and  { name: "Cumin", qty 2, unit tsp }.
+ *
+ * Standard logic:
+ *  - Only acts on names joined by " + ", " & ", or " plus " (spaces required, so
+ *    things like "B+" aren't split).
+ *  - The FIRST segment keeps the ingredient's original quantity/unit (that's the
+ *    amount the row referred to).
+ *  - Each TRAILING segment is parsed for a leading "<qty> <unit?> <name>"; when no
+ *    leading amount is present the whole segment becomes the name with no amount,
+ *    so a downstream validator can assign a sensible default.
+ *  - Category is inherited; callers should re-derive the correct category per item.
+ * Returns the input unchanged (as a single-element array) when there's nothing
+ * to split.
+ */
+export function splitCompoundIngredient(ingredient: RawIngredient): RawIngredient[] {
+  const rawName = (ingredient.name ?? '').trim();
+  const parts = rawName
+    .split(/\s+\+\s+|\s+&\s+|\s+plus\s+/i)
+    .map((p) => cleanIngredientName(p))
+    .filter((p) => p.length > 0);
+
+  if (parts.length < 2) return [ingredient];
+
+  const result: RawIngredient[] = [
+    // First segment owns the row's original amount.
+    { ...ingredient, name: parts[0] },
+  ];
+
+  for (let i = 1; i < parts.length; i++) {
+    const seg = parts[i];
+    // Leading "<qty> <unit?> <name>" e.g. "2 tsp Cumin", "1/2 cup Rice", "3 Eggs".
+    const m = seg.match(/^(\d+(?:[.,/]\d+)?)\s*([a-zA-Z]+)?\.?\s+(.+)$/);
+    if (m) {
+      result.push({
+        name: cleanIngredientName(m[3]),
+        quantity: m[1].replace(',', '.'),
+        unit: m[2] ?? '',
+        category: ingredient.category,
+      });
+    } else {
+      result.push({
+        name: seg,
+        quantity: '',
+        unit: '',
+        category: ingredient.category,
+      });
+    }
+  }
+
+  return result;
+}
+
 /**
  * Validate and sanitize an ingredient
  * Fixes common issues: 0 quantity, NaN, missing units, missing quantities

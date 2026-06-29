@@ -1,5 +1,6 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Share, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Share, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { Audio } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -27,6 +28,8 @@ import {
   Lightbulb,
   Leaf,
   Home,
+  Mic,
+  Keyboard,
 } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
@@ -38,14 +41,16 @@ import Animated, {
   withSequence,
   useSharedValue,
   useAnimatedStyle,
+  Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { useMealPlanStore, type GroceryItem, type Ingredient, type SavedGroceryList } from '@/lib/store';
+import { useMealPlanStore, MONTHLY_FEATURE_LIMITS, type GroceryItem, type Ingredient, type SavedGroceryList } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
 import { useIsAccountPaused, useSubscriptionStore, useHasPremiumAccess, useIsPremiumResolved } from '@/lib/subscription-store';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { cn } from '@/lib/cn';
 import { designTokens, getThemeColors, getCategoryTint, elevation } from '@/lib/design-tokens';
+import { transcribeAudioToText, parseGroceryItemsFromTranscript, type ParsedGroceryItem } from '@/lib/voice-grocery';
 import { ShoppingListCompletionModal } from '@/components/ShoppingListCompletionModal';
 import { DuplicateIngredientBanner, DuplicateIngredientModal } from '@/components/DuplicateIngredientModal';
 import { findDuplicateIngredientGroups, type DuplicateIngredientGroup } from '@/lib/duplicate-ingredient-finder';
@@ -322,6 +327,199 @@ const CATEGORY_TINT: Record<Ingredient['category'], string> = {
   other: '#F4F2EB',
 };
 
+// Voice capture for the Add Item modal: record → transcribe → parse into
+// name+quantity items, each auto-classified into a grocery category, then a
+// quick review list before adding them all.
+function VoiceGroceryCapture({
+  isDark,
+  onAddItems,
+  onClose,
+}: {
+  isDark: boolean;
+  onAddItems: (items: ParsedGroceryItem[]) => void;
+  onClose: () => void;
+}) {
+  const [phase, setPhase] = useState<'idle' | 'recording' | 'processing' | 'review'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] = useState<ParsedGroceryItem[]>([]);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+
+  const hasPremiumAccess = useHasPremiumAccess();
+  const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
+
+  const pulse = useSharedValue(1);
+  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+
+  const startRecording = useCallback(async () => {
+    try {
+      // Paywall gate: free users get MONTHLY_FEATURE_LIMITS.speakGrocery
+      // SUCCESSFUL voice attempts per month. Typing is unrestricted. Hitting the
+      // cap dismisses the modal and pops the paywall with a rollover note.
+      if (!hasPremiumAccess) {
+        const used = useMealPlanStore.getState().getMonthlyFeatureCount('speakGrocery');
+        if (used >= MONTHLY_FEATURE_LIMITS.speakGrocery) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onClose();
+          openPaywallSheet('speak-grocery-limit');
+          return;
+        }
+      }
+      setError(null);
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Microphone permission is required.');
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      recordingRef.current = recording;
+      setPhase('recording');
+      pulse.value = withRepeat(
+        withTiming(1.18, { duration: 750, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true,
+      );
+    } catch (e) {
+      console.error('[VoiceGrocery] start failed', e);
+      setError('Could not start recording.');
+      setPhase('idle');
+    }
+  }, [pulse, hasPremiumAccess, onClose, openPaywallSheet]);
+
+  const stopRecording = useCallback(async () => {
+    pulse.value = 1;
+    const recording = recordingRef.current;
+    recordingRef.current = null;
+    if (!recording) {
+      setPhase('idle');
+      return;
+    }
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setPhase('processing');
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      if (!uri) throw new Error('No recording found');
+      const text = await transcribeAudioToText(uri);
+      const parsed = await parseGroceryItemsFromTranscript(text);
+      if (parsed.length === 0) {
+        setError("Didn't catch any items — try again and say each item with its quantity.");
+        setPhase('idle');
+        return;
+      }
+      setItems(parsed);
+      setPhase('review');
+      // Count this as one SUCCESSFUL voice attempt (free users only).
+      if (!hasPremiumAccess) {
+        useMealPlanStore.getState().recordMonthlyFeatureUse('speakGrocery');
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      console.error('[VoiceGrocery] stop/parse failed', e);
+      setError(e?.message ? `Couldn't process audio: ${e.message}` : "Couldn't process audio. Please try again.");
+      setPhase('idle');
+    }
+  }, [pulse, hasPremiumAccess]);
+
+  const removeItem = useCallback((idx: number) => {
+    setItems((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const labelText = isDark ? 'text-charcoal-300' : 'text-charcoal-600';
+
+  if (phase !== 'review') {
+    const recording = phase === 'recording';
+    const processing = phase === 'processing';
+    return (
+      <View className="items-center py-3">
+        <Text className={cn('text-sm text-center mb-6 px-2', labelText)}>
+          Tap the mic and say your items with quantities — e.g. “two onions, a loaf of bread, 500 grams of chicken, milk”.
+        </Text>
+        <Animated.View style={pulseStyle}>
+          <Pressable
+            onPress={recording ? stopRecording : startRecording}
+            disabled={processing}
+            className={cn(
+              'w-24 h-24 rounded-full items-center justify-center',
+              recording ? 'bg-red-500' : 'bg-sage-500',
+              processing && 'opacity-60',
+            )}
+          >
+            {processing ? <ActivityIndicator color="#fff" /> : <Mic size={34} color="#fff" strokeWidth={1.8} />}
+          </Pressable>
+        </Animated.View>
+        <Text className={cn('text-sm font-medium mt-4', isDark ? 'text-white' : 'text-charcoal-800')}>
+          {processing ? 'Sorting your items…' : recording ? 'Listening… tap to stop' : 'Tap to talk'}
+        </Text>
+        {error && <Text className="text-red-500 text-xs text-center mt-3 px-2">{error}</Text>}
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      <Text className={cn('text-sm font-medium mb-3', labelText)}>
+        {items.length} item{items.length === 1 ? '' : 's'} found — tap ✕ to remove any
+      </Text>
+      <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+        {items.map((it, idx) => {
+          const cfg = (CATEGORY_CONFIG as Record<string, { label: string }>)[it.category] ?? CATEGORY_CONFIG.other;
+          return (
+            <View
+              key={`${it.name}-${idx}`}
+              className={cn('flex-row items-center rounded-xl px-3 py-2.5 mb-2', isDark ? 'bg-charcoal-700' : 'bg-cream-100')}
+            >
+              <View className="flex-1 min-w-0">
+                <Text className={cn('text-base font-medium', isDark ? 'text-white' : 'text-charcoal-900')} numberOfLines={1}>
+                  {it.name}
+                </Text>
+                <Text className={cn('text-xs mt-0.5', isDark ? 'text-charcoal-400' : 'text-charcoal-500')}>
+                  {it.quantity} {it.unit} · {cfg.label}
+                </Text>
+              </View>
+              <Pressable onPress={() => removeItem(idx)} hitSlop={8} className="ml-2 p-1">
+                <X size={18} color={isDark ? '#9d9d9d' : '#888888'} />
+              </Pressable>
+            </View>
+          );
+        })}
+      </ScrollView>
+      <View className="flex-row mt-2" style={{ gap: 10 }}>
+        <Pressable
+          onPress={() => {
+            setItems([]);
+            setPhase('idle');
+            setError(null);
+          }}
+          className={cn('flex-1 py-4 rounded-2xl items-center', isDark ? 'bg-charcoal-700' : 'bg-cream-200')}
+        >
+          <Text className={cn('text-base font-semibold', isDark ? 'text-charcoal-200' : 'text-charcoal-600')}>Try again</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => onAddItems(items)}
+          disabled={items.length === 0}
+          className={cn(
+            'flex-1 py-4 rounded-2xl items-center',
+            items.length > 0 ? 'bg-sage-500' : isDark ? 'bg-charcoal-700' : 'bg-cream-200',
+          )}
+        >
+          <Text
+            className={cn(
+              'text-base font-semibold',
+              items.length > 0 ? 'text-white' : isDark ? 'text-charcoal-500' : 'text-charcoal-400',
+            )}
+          >
+            Add {items.length} item{items.length === 1 ? '' : 's'}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 interface AddItemModalProps {
   visible: boolean;
   onClose: () => void;
@@ -339,6 +537,7 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
   const [unit, setUnit] = useState('item');
   const [category, setCategory] = useState<Ingredient['category']>('other');
   const [showUnitPicker, setShowUnitPicker] = useState(false);
+  const [mode, setMode] = useState<'type' | 'talk'>('type');
 
   // Duplicate detection state
   // matchedItems: array of all fuzzy-matching items
@@ -390,7 +589,25 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
     setSelectedMatchId(null);
     setShowBanner(false);
     setDuplicateChoice(null);
+    setMode('type');
   }, []);
+
+  // Voice path: add every parsed (and already-categorized) item, then close.
+  const handleAddVoiceItems = useCallback((voiceItems: ParsedGroceryItem[]) => {
+    voiceItems.forEach((it) => {
+      onAdd({
+        name: it.name,
+        quantity: it.quantity,
+        unit: it.unit,
+        category: it.category,
+        isChecked: false,
+        recipeIds: [],
+      });
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    resetForm();
+    onClose();
+  }, [onAdd, resetForm, onClose]);
 
   // Re-run fuzzy match every time the name changes — find ALL matches
   const handleNameChange = useCallback((text: string) => {
@@ -540,6 +757,42 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
             </Pressable>
           </View>
 
+          {/* Type / Talk mode toggle */}
+          <View className={cn('flex-row rounded-2xl p-1 mb-5', isDark ? 'bg-charcoal-700' : 'bg-cream-100')}>
+            {([['type', 'Type', Keyboard], ['talk', 'Talk', Mic]] as const).map(([m, lbl, Icon]) => {
+              const active = mode === m;
+              return (
+                <Pressable
+                  key={m}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setMode(m);
+                  }}
+                  className={cn(
+                    'flex-1 flex-row items-center justify-center py-2.5 rounded-xl',
+                    active ? 'bg-sage-500' : 'bg-transparent',
+                  )}
+                >
+                  <Icon size={16} color={active ? '#fff' : isDark ? '#9d9d9d' : '#888888'} strokeWidth={1.8} />
+                  <Text
+                    className={cn(
+                      'text-sm font-semibold ml-2',
+                      active ? 'text-white' : isDark ? 'text-charcoal-300' : 'text-charcoal-600',
+                    )}
+                  >
+                    {lbl}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {mode === 'talk' && (
+            <VoiceGroceryCapture isDark={isDark} onAddItems={handleAddVoiceItems} onClose={onClose} />
+          )}
+
+          {mode === 'type' && (
+          <>
           {/* Item Name */}
           <View className="mb-3">
             <Text className={cn("text-sm font-medium mb-2", labelText)}>Item Name</Text>
@@ -748,6 +1001,8 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
               {duplicateChoice === 'combine' ? "Combine & Add" : duplicateChoice === 'separate' ? "Add Separately" : "Add to List"}
             </Text>
           </Pressable>
+          </>
+          )}
         </Animated.View>
       </KeyboardAvoidingView>
 
@@ -1524,73 +1779,46 @@ export default function GroceryScreen() {
   }, [params.showSavedLists]);
 
 
-  // Group items by category - separate generated and custom OR show saved list items
-  const { groupedMealItems, groupedCustomItems, stats } = useMemo(() => {
-    const mealGroups: Record<string, GroceryItem[]> = {};
-    const customGroups: Record<string, GroceryItem[]> = {};
+  // Group items by category. Generated (meal) and custom items (including voice-
+  // added items) share ONE section per category, so an added item joins the
+  // existing category instead of spawning a duplicate header. `customItemIds`
+  // lets the row handlers route to the right store action per item.
+  const { groupedItems, customItemIds, stats } = useMemo(() => {
+    const groups: Record<string, GroceryItem[]> = {};
+    const customIds = new Set<string>();
 
-    // If in saved list mode, only show currentSavedListItems in customGroups
+    const push = (item: GroceryItem) => {
+      if (!groups[item.category]) groups[item.category] = [];
+      groups[item.category].push(item);
+    };
+
     if (isSavedListMode) {
-      currentSavedListItems.forEach((item) => {
-        if (!customGroups[item.category]) {
-          customGroups[item.category] = [];
-        }
-        customGroups[item.category].push(item);
-      });
+      currentSavedListItems.forEach(push);
     } else {
-      // Normal mode: show grocery items and custom items
-      groceryItems.forEach((item) => {
-        if (!mealGroups[item.category]) {
-          mealGroups[item.category] = [];
-        }
-        mealGroups[item.category].push(item);
-      });
-
+      groceryItems.forEach(push);
       customGroceryItems.forEach((item) => {
-        if (!customGroups[item.category]) {
-          customGroups[item.category] = [];
-        }
-        customGroups[item.category].push(item);
+        customIds.add(item.id);
+        push(item);
       });
     }
 
-    // Sort items within each category: unchecked first (alphabetically), then checked (alphabetically)
-    Object.keys(mealGroups).forEach((category) => {
-      mealGroups[category].sort((a, b) => {
-        // First, separate unchecked from checked
-        if (a.isChecked !== b.isChecked) {
-          return a.isChecked ? 1 : -1;
-        }
-        // Then, sort alphabetically within each group
+    // Sort within each category: unchecked first (alphabetically), then checked.
+    Object.keys(groups).forEach((category) => {
+      groups[category].sort((a, b) => {
+        if (a.isChecked !== b.isChecked) return a.isChecked ? 1 : -1;
         return a.name.localeCompare(b.name);
       });
     });
 
-    Object.keys(customGroups).forEach((category) => {
-      customGroups[category].sort((a, b) => {
-        // First, separate unchecked from checked
-        if (a.isChecked !== b.isChecked) {
-          return a.isChecked ? 1 : -1;
-        }
-        // Then, sort alphabetically within each group
-        return a.name.localeCompare(b.name);
-      });
-    });
-
-    // Calculate stats based on which mode we're in
-    let allItems: GroceryItem[] = [];
-    if (isSavedListMode) {
-      allItems = currentSavedListItems;
-    } else {
-      allItems = [...groceryItems, ...customGroceryItems];
-    }
-
+    const allItems: GroceryItem[] = isSavedListMode
+      ? currentSavedListItems
+      : [...groceryItems, ...customGroceryItems];
     const total = allItems.length;
     const checked = allItems.filter((i) => i.isChecked).length;
 
     return {
-      groupedMealItems: mealGroups,
-      groupedCustomItems: customGroups,
+      groupedItems: groups,
+      customItemIds: customIds,
       stats: { total, checked, remaining: total - checked },
     };
   }, [groceryItems, customGroceryItems, isSavedListMode, currentSavedListItems]);
@@ -1630,30 +1858,35 @@ export default function GroceryScreen() {
   const handleCombineDuplicates = useCallback(
     (groupKey: string, selectedIndices: number[]) => {
       const group = duplicateGroups.find((g) => g.key === groupKey);
-      if (!group || selectedIndices.length === 0) return;
+      if (!group || selectedIndices.length < 2) return;
 
-      // Use the first selected index as the base item
+      // Keep the first selected item as the base; merge the rest INTO it.
       const baseIndex = selectedIndices[0];
       const baseId = group.ingredientIds[baseIndex];
-      const baseQuantity = parseFloat(group.quantities[baseIndex]) || 0;
-      const baseUnit = group.units[baseIndex];
 
-      // Get IDs to remove (all selected except the first one)
-      const idsToRemove = selectedIndices.slice(1).map((idx) => group.ingredientIds[idx]);
+      // Everything except the base is merged in and then removed.
+      const mergeIndices = selectedIndices.slice(1);
+      const idsToRemove = mergeIndices.map((idx) => group.ingredientIds[idx]);
 
-      // Sum quantities from all selected items
-      let totalQuantity = baseQuantity;
-      for (let i = 1; i < selectedIndices.length; i++) {
-        const qty = parseFloat(group.quantities[selectedIndices[i]]) || 0;
-        totalQuantity += qty;
-      }
+      // Add each duplicate's OWN quantity+unit into the base. mergeInto* adds
+      // the passed amount onto the base's existing quantity, so we pass only
+      // the deltas (never the base's own quantity) — otherwise the base is
+      // counted twice (e.g. 4g + 4g would have shown 12g instead of 8g).
+      // Merging per-item also lets each item's own unit be converted correctly.
+      mergeIndices.forEach((idx) => {
+        const addQty = group.quantities[idx];
+        const addUnit = group.units[idx];
+        if (isSavedListMode) {
+          mergeIntoCurrentSavedListItem(baseId, addQty, addUnit);
+        } else {
+          // mergeIntoGroceryItem resolves the base in groceryItems OR
+          // customGroceryItems, so it works whether the base is generated
+          // or a custom item.
+          mergeIntoGroceryItem(baseId, addQty, addUnit);
+        }
+      });
 
-      // Determine if it's a generated item or custom item
-      const isGenerated = isSavedListMode
-        ? false
-        : groceryItems.some((item) => item.id === baseId);
-
-      // Remove the duplicate items
+      // Remove the now-merged duplicates.
       idsToRemove.forEach((id) => {
         if (isSavedListMode) {
           removeCurrentSavedListItem(id);
@@ -1667,20 +1900,12 @@ export default function GroceryScreen() {
         }
       });
 
-      // Update the base item with combined quantity
-      if (isSavedListMode) {
-        mergeIntoCurrentSavedListItem(baseId, totalQuantity.toString(), baseUnit);
-      } else if (isGenerated) {
-        mergeIntoGroceryItem(baseId, totalQuantity.toString(), baseUnit);
-      }
-
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowDuplicateModal(false);
     },
     [
       duplicateGroups,
       isSavedListMode,
-      groceryItems,
       customGroceryItems,
       removeGroceryItem,
       removeCustomGroceryItem,
@@ -2443,27 +2668,27 @@ export default function GroceryScreen() {
           {/* ── Category sections OR empty state ─────────────── */}
           {hasAnyItems ? (
             <View style={{ paddingHorizontal: 16, paddingBottom: 18, gap: 10 }}>
-              {/* Meal-generated items */}
-              {!isSavedListMode &&
-                Object.entries(groupedMealItems).map(([category, items], idx) =>
-                  renderCategorySection(
-                    category,
-                    items,
-                    (id) => toggleGroceryItem(id),
-                    (id) => removeGroceryItem(id),
-                    `meal-${category}`,
-                    idx,
-                  ),
-                )}
-              {/* Custom / saved-list items */}
-              {Object.entries(groupedCustomItems).map(([category, items], idx) =>
+              {/* One section per category — generated + custom items merged, so
+                  added/voice items join the existing category instead of
+                  creating a duplicate header. Handlers route per item. */}
+              {Object.entries(groupedItems).map(([category, items], idx) =>
                 renderCategorySection(
                   category,
                   items,
-                  (id) => (isSavedListMode ? toggleCurrentSavedListItem(id) : toggleCustomGroceryItem(id)),
-                  (id) => (isSavedListMode ? removeCurrentSavedListItem(id) : removeCustomGroceryItem(id)),
-                  `custom-${category}`,
-                  idx + Object.keys(groupedMealItems).length,
+                  (id) =>
+                    isSavedListMode
+                      ? toggleCurrentSavedListItem(id)
+                      : customItemIds.has(id)
+                        ? toggleCustomGroceryItem(id)
+                        : toggleGroceryItem(id),
+                  (id) =>
+                    isSavedListMode
+                      ? removeCurrentSavedListItem(id)
+                      : customItemIds.has(id)
+                        ? removeCustomGroceryItem(id)
+                        : removeGroceryItem(id),
+                  `cat-${category}`,
+                  idx,
                 ),
               )}
 

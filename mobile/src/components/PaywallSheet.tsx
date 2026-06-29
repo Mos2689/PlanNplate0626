@@ -318,6 +318,28 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
                 </Text>{' '}
                 with PlanNplate
               </Text>
+              {trigger === 'speak-grocery-limit' && (
+                <View
+                  style={{
+                    marginTop: 14,
+                    backgroundColor: colors.hair2,
+                    borderRadius: 12,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.regular,
+                      fontSize: 13.5,
+                      color: colors.ink2,
+                      lineHeight: 19.5,
+                    }}
+                  >
+                    You've reached your monthly limit of 5 voice grocery entries. Upgrade to Premium for unlimited voice entries, or continue adding groceries by typing.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Plan toggle */}

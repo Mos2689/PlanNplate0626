@@ -113,7 +113,7 @@ const INGREDIENT_ALIASES: Record<string, string[]> = {
   'thyme': ['dried thyme', 'fresh thyme'],
   'rosemary': ['dried rosemary', 'fresh rosemary'],
   'parsley': ['dried parsley', 'fresh parsley', 'italian parsley'],
-  'cilantro': ['fresh cilantro', 'coriander leaves'],
+  'cilantro': ['fresh cilantro', 'coriander leaves', 'coriander', 'fresh coriander', 'corianders'],
   'dill': ['dried dill', 'fresh dill', 'dill weed'],
 
   // Common ingredients
@@ -136,7 +136,7 @@ const INGREDIENT_ALIASES: Record<string, string[]> = {
   // Vegetables
   'onion': ['yellow onion', 'white onion', 'red onion', 'sweet onion', 'onions'],
   'garlic': ['garlic cloves', 'minced garlic', 'garlic puree', 'garlics'],
-  'bell pepper': ['red bell pepper', 'green bell pepper', 'yellow bell pepper', 'orange bell pepper', 'bell peppers'],
+  'bell pepper': ['red bell pepper', 'green bell pepper', 'yellow bell pepper', 'orange bell pepper', 'bell peppers', 'capsicum', 'capsicums', 'red capsicum', 'green capsicum', 'yellow capsicum'],
   'tomato': ['fresh tomato', 'cherry tomato', 'roma tomato', 'beefsteak tomato', 'tomatoes'],
   'lettuce': ['romaine lettuce', 'iceberg lettuce', 'leaf lettuce', 'mixed greens', 'lettuces'],
   'spinach': ['fresh spinach', 'baby spinach', 'frozen spinach', 'spinaches'],
@@ -152,6 +152,31 @@ const INGREDIENT_ALIASES: Record<string, string[]> = {
   'pork': ['ground pork', 'pork chop', 'pork shoulder', 'porks'],
   'salmon': ['atlantic salmon', 'wild salmon', 'salmon fillet', 'salmons'],
   'egg': ['chicken egg', 'whole egg', 'large egg', 'eggs', 'hard boiled egg', 'hard boiled eggs', 'hard-boiled egg', 'hard-boiled eggs', 'boiled egg', 'boiled eggs', 'soft boiled egg', 'soft boiled eggs', 'soft-boiled egg', 'soft-boiled eggs', 'poached egg', 'poached eggs', 'fried egg', 'fried eggs', 'scrambled egg', 'scrambled eggs'],
+
+  // More vegetables (varieties + AU/UK spellings so they canonicalize & combine)
+  'spring onion': ['scallion', 'scallions', 'green onion', 'green onions', 'spring onions'],
+  'eggplant': ['aubergine', 'aubergines', 'eggplants'],
+  'sweet potato': ['sweet potatoes', 'kumara', 'kumaras'],
+  'zucchini': ['courgette', 'courgettes', 'zucchinis'],
+  'leek': ['leeks'],
+  'cauliflower': ['cauliflowers', 'cauliflower florets'],
+  'mushroom': ['button mushroom', 'button mushrooms', 'cremini', 'crimini', 'portobello', 'swiss brown mushroom', 'swiss brown mushrooms', 'mushrooms'],
+  'green bean': ['green beans', 'french bean', 'french beans', 'string bean', 'string beans'],
+  'chili': ['chilli', 'chillies', 'chilies', 'chillis', 'chili pepper', 'chilli pepper', 'red chili', 'green chili', 'red chilli', 'green chilli'],
+  'corn': ['corn cob', 'corn cobs', 'corn on the cob', 'sweetcorn', 'sweet corn', 'corns'],
+
+  // More proteins
+  'shrimp': ['prawn', 'prawns', 'shrimps', 'king prawn', 'king prawns', 'school prawn', 'school prawns'],
+  'sausage': ['sausages', 'pork sausage', 'pork sausages', 'beef sausage', 'beef sausages', 'italian sausage'],
+  'bacon': ['bacon rasher', 'bacon rashers', 'rasher', 'rashers', 'streaky bacon'],
+
+  // More fruit
+  'mango': ['mangoes', 'mangos'],
+  'pear': ['pears'],
+  'peach': ['peaches'],
+
+  // Legumes
+  'chickpea': ['chickpeas', 'chick pea', 'chick peas', 'garbanzo', 'garbanzo bean', 'garbanzo beans'],
 
   // Dairy alternatives
   'almond milk': ['unsweetened almond milk', 'sweetened almond milk'],
