@@ -377,13 +377,16 @@ export default function RecipesScreen() {
   const recipes = useMealPlanStore((s) => s.recipes);
   const toggleSaveRecipe = useMealPlanStore((s) => s.toggleSaveRecipe);
   const deleteRecipe = useMealPlanStore((s) => s.deleteRecipe);
+  // Persisted "keep all" dismissals — keyed by group MEMBER ids so the same set
+  // isn't re-flagged next session, but a newly-added similar recipe is.
+  const dismissedDuplicateRecipeGroups = useMealPlanStore((s) => s.dismissedDuplicateRecipeGroups);
+  const dismissDuplicateRecipeGroup = useMealPlanStore((s) => s.dismissDuplicateRecipeGroup);
 
   // ── Local state — identical to inventory ──────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
-  const [dismissedGroups, setDismissedGroups] = useState<Set<string>>(new Set());
 
   // Deduplicate recipes by name (keep the first occurrence) — identical
   const uniqueRecipes = useMemo(() => {
@@ -446,10 +449,15 @@ export default function RecipesScreen() {
     return filtered;
   }, [uniqueRecipes, searchQuery, selectedCategory, showSavedOnly]);
 
+  // Signature of a group = its sorted member recipe ids. Adding a NEW similar
+  // recipe changes the membership → new signature → the group is shown again.
+  const allDuplicateGroups = useMemo(() => findDuplicateGroups(recipes), [recipes]);
   const duplicateGroups = useMemo(() => {
-    const groups = findDuplicateGroups(recipes);
-    return groups.filter((g) => !dismissedGroups.has(g.key));
-  }, [recipes, dismissedGroups]);
+    const dismissed = new Set(dismissedDuplicateRecipeGroups);
+    return allDuplicateGroups.filter(
+      (g) => !dismissed.has(g.recipes.map((r) => r.id).sort().join('|')),
+    );
+  }, [allDuplicateGroups, dismissedDuplicateRecipeGroups]);
 
   const totalDuplicates = useMemo(() => {
     return duplicateGroups.reduce((sum, g) => sum + g.recipes.length, 0);
@@ -467,8 +475,13 @@ export default function RecipesScreen() {
   );
 
   const handleKeepAllGroup = useCallback((groupKey: string) => {
-    setDismissedGroups((prev) => new Set(prev).add(groupKey));
-  }, []);
+    // Persist this exact set of recipes as "kept" so it won't be re-flagged next
+    // session. Keyed by member ids — if the user later saves another similar
+    // recipe, the group grows into a new signature and prompts again.
+    const group = allDuplicateGroups.find((g) => g.key === groupKey);
+    if (!group) return;
+    dismissDuplicateRecipeGroup(group.recipes.map((r) => r.id).sort().join('|'));
+  }, [allDuplicateGroups, dismissDuplicateRecipeGroup]);
 
   const handleRecipePress = useCallback(
     (recipe: Recipe) => {

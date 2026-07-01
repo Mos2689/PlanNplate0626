@@ -114,21 +114,21 @@ function householdSummary(prefs: any): string {
   // Preferred path — derive the household word from the `household` enum so
   // editing "Who are you cooking for?" reflects here.
   const label = household ? HOUSEHOLD_LABELS[household] : undefined;
-  if (label) return `${label} · cooking for ${servings}`;
+  if (label) return `${label} · Cooking for ${servings}`;
 
   // Fallback (no household set) — size-only wording, unchanged behavior.
   if (!servings || servings <= 0) return 'Not set';
-  if (servings === 1) return 'Solo · cooking for 1';
-  if (servings === 2) return 'Couple · cooking for 2';
+  if (servings === 1) return 'Solo · Cooking for 1';
+  if (servings === 2) return 'Couple · Cooking for 2';
   return `Cooking for ${servings}`;
 }
 
 function prepStyleItalic(mealPrepTime?: string): string {
   switch (mealPrepTime) {
-    case 'quick': return 'quick weeknights';
-    case 'moderate': return 'balanced cooking';
-    case 'elaborate': return 'weekend cooking';
-    default: return 'flexible cooking';
+    case 'quick': return 'Quick weeknights';
+    case 'moderate': return 'Balanced cooking';
+    case 'elaborate': return 'Weekend cooking';
+    default: return 'Flexible cooking';
   }
 }
 
@@ -1024,9 +1024,9 @@ export default function ProfileScreen() {
               <Text
                 style={{
                   fontFamily: designTokens.font.medium,
-                  fontSize: 22,
+                  fontSize: 18,
                   color: colors.ink,
-                  letterSpacing: -0.44,
+                  letterSpacing: -0.36,
                 }}
               >
                 Your rhythm

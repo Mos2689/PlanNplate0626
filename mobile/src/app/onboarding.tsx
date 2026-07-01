@@ -1035,7 +1035,10 @@ export default function OnboardingScreen() {
 
     const handleSignIn = () => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      router.push('/login');
+      // `reauth=1` tells the login screen + root guard NOT to auto-bounce to the
+      // tabs — the user deliberately wants the sign-in form (e.g. an anonymous
+      // guest signing into a real account, or switching accounts).
+      router.push('/login?reauth=1');
     };
 
     return (
@@ -1104,16 +1107,6 @@ export default function OnboardingScreen() {
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <BrandLogo size={26} color="#FFFFFF" />
-            <Text
-              style={{
-                fontFamily: designTokens.font.semibold,
-                fontSize: 16,
-                color: '#FFFFFF',
-                letterSpacing: -0.3,
-              }}
-            >
-              PlannPlate
-            </Text>
           </View>
           <Pressable onPress={handleSignIn} hitSlop={12}>
             <Text

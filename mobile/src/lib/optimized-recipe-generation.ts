@@ -1,4 +1,4 @@
-import { generateRecipe, regenerateSingleRecipe, parseFridgeIngredientsWithQuantity, extractProteinsFromRecipe, type GenerateRecipeParams, type GeneratedRecipeResponse, type MealType } from './openai';
+import { generateRecipe, regenerateSingleRecipe, parseFridgeIngredientsWithQuantity, extractProteinsFromRecipe, validateRecipeAgainstPreferences, type GenerateRecipeParams, type GeneratedRecipeResponse, type MealType } from './openai';
 import { getCachedRecipes, cacheRecipe, generatePreferencesHash } from './recipe-cache';
 import { createCuratedMatcher, type CuratedMatcher } from './curated-recipe-source';
 import type { UserPreferences } from './store';
@@ -141,6 +141,21 @@ function violatesStrictPreferences(
       v.includes('DIETARY VIOLATION') ||
       v.includes('ALLERGY VIOLATION') ||
       v.includes('CUISINE VIOLATION'),
+  );
+}
+
+// Defensive re-check for CURATED (Get Inspired) picks. They already come from
+// the pre-gated matcher, but we re-verify allergy + dietary compliance at the
+// moment of placement so an allergen or off-diet dish can NEVER reach the plan,
+// even if the matcher gate ever regresses. (violatesStrictPreferences can't be
+// used here — curated recipes don't carry a `.violations` array.)
+function curatedFailsAllergyOrDiet(
+  recipe: GeneratedRecipeResponse,
+  preferences: Parameters<typeof validateRecipeAgainstPreferences>[1],
+): boolean {
+  const { violations } = validateRecipeAgainstPreferences(recipe, preferences, false, false);
+  return violations.some(
+    (v) => v.includes('ALLERGY VIOLATION') || v.includes('DIETARY VIOLATION'),
   );
 }
 
@@ -345,7 +360,9 @@ export async function generateRecipesOptimized(
         similarityThreshold: threshold,
       });
       let madeFromCurated = false;
-      if (curated) {
+      if (curated && curatedFailsAllergyOrDiet(curated, preferences)) {
+        console.warn(`[OptimizedGeneration] Curated breakfast "${curated.name}" failed allergy/diet re-check — skipping to OpenAI`);
+      } else if (curated) {
         made = curated;
         madeFromCurated = true;
         curatedCount++;
@@ -789,7 +806,9 @@ export async function generateRecipesOptimized(
         const curated = curatedMatcher.take(mealType, excludeNames, {
           similarityThreshold: optimizeGrocery ? 0.8 : 0.6,
         });
-        if (curated) {
+        if (curated && curatedFailsAllergyOrDiet(curated, preferences)) {
+          console.warn(`[OptimizedGeneration] Curated ${mealType} "${curated.name}" failed allergy/diet re-check — falling back to OpenAI`);
+        } else if (curated) {
           curatedCount++;
           generatedCount++;
           usedRecipeNames.push(curated.name);

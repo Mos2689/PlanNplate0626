@@ -562,6 +562,12 @@ export function validateRecipeAgainstPreferences(
   // ── Build combined text for checking ─────────────────────────
   const ingredientNames = recipe.ingredients.map(ing => ing.name.toLowerCase());
   const recipeText = `${recipe.name.toLowerCase()} ${recipe.description.toLowerCase()} ${ingredientNames.join(' ')}`;
+  // Allergens can hide in the METHOD too (e.g. "serve with naan", "top with
+  // parmesan", "brush with butter"). Scan instructions as well, but ONLY for the
+  // allergy check — the dietary checks keep the tighter `recipeText` so serving
+  // suggestions ("great with a meat alternative") don't cause false positives.
+  const instructionsText = (recipe.instructions || []).map(i => i.toLowerCase()).join(' ');
+  const allergenScanText = `${recipeText} ${instructionsText}`;
 
   // Helper: word-boundary match
   const matchesWord = (text: string, word: string): boolean => {
@@ -709,7 +715,7 @@ export function validateRecipeAgainstPreferences(
       const allergyIndicators = allergenMap[allergyLower] || [allergyLower];
 
       allergyIndicators.forEach(indicator => {
-        if (matchesWord(recipeText, indicator)) {
+        if (matchesWord(allergenScanText, indicator)) {
           // Always flag the violation for display
           violations.push(`ALLERGY VIOLATION: Contains ${allergy}`);
           // But only reject if NOT a fridge-assigned ingredient (user explicitly chose it)

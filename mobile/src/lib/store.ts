@@ -687,6 +687,12 @@ interface MealPlanStore {
   updateRecipe: (id: string, updates: Partial<Recipe>) => void;
   deleteRecipe: (id: string) => void;
   toggleSaveRecipe: (id: string) => void;
+  // Recipe duplicate detection: signatures (sorted member recipe ids) the user
+  // chose to "keep all" for. Persisted so the SAME set isn't re-flagged next
+  // session; adding a NEW similar recipe grows the group → new signature →
+  // prompts again.
+  dismissedDuplicateRecipeGroups: string[];
+  dismissDuplicateRecipeGroup: (signature: string) => void;
   hasRecipeWithSourceUrl: (sourceUrl: string) => boolean;
 
   // Meal Plan
@@ -1217,6 +1223,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
       recipeRatings: [],
       mealPlanRatings: [],
       nudgeDismissals: {},
+      dismissedDuplicateRecipeGroups: [],
       lastWeeklyPromptAt: null,
 
       // ───── Behavior Intelligence state ─────
@@ -2242,6 +2249,14 @@ export const useMealPlanStore = create<MealPlanStore>()(
         set((state) => ({
           nudgeDismissals: { ...state.nudgeDismissals, [key]: new Date().toISOString() },
         }));
+      },
+
+      dismissDuplicateRecipeGroup: (signature) => {
+        set((state) =>
+          state.dismissedDuplicateRecipeGroups.includes(signature)
+            ? {}
+            : { dismissedDuplicateRecipeGroups: [...state.dismissedDuplicateRecipeGroups, signature] },
+        );
       },
 
       setLastWeeklyPromptAt: (iso) => set({ lastWeeklyPromptAt: iso }),
@@ -4013,6 +4028,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
         recipeRatings: state.recipeRatings,
         mealPlanRatings: state.mealPlanRatings,
         nudgeDismissals: state.nudgeDismissals,
+        dismissedDuplicateRecipeGroups: state.dismissedDuplicateRecipeGroups,
         lastWeeklyPromptAt: state.lastWeeklyPromptAt,
         // Behavior Intelligence — offline-first, also synced to Supabase
         planningEvents: state.planningEvents,

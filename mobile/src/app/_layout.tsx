@@ -1,6 +1,6 @@
 import { DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { ThemeProvider } from '@react-navigation/core';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, useGlobalSearchParams } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, type AppStateStatus } from 'react-native';
@@ -43,6 +43,7 @@ const queryClient = new QueryClient();
 function useProtectedRoute() {
   const segments = useSegments();
   const router = useRouter();
+  const params = useGlobalSearchParams<{ reauth?: string }>();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isAnonymous = useAuthStore((s) => s.isAnonymous);
   const isLoading = useAuthStore((s) => s.isLoading);
@@ -71,17 +72,22 @@ function useProtectedRoute() {
     // Bounce a fully signed-up (NON-anonymous) user off the auth screens once
     // they're authenticated. An ANONYMOUS user must be allowed to sit on
     // /login or /signup — that's the gate where they create their account.
+    // Deliberate re-auth intent (welcome "Sign in" passes ?reauth=1): keep the
+    // user on the login form instead of bouncing them to the tabs.
+    const reauthIntent = segments[0] === 'login' && params.reauth === '1';
+
     if (
       isAuthenticated &&
       !isAnonymous &&
       inAuthGroup &&
+      !reauthIntent &&
       segments[0] !== 'reset-password' &&
       segments[0] !== 'verify-otp' &&
       !inOnboarding
     ) {
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, isAnonymous, isLoading, hasHydrated, segments, router, isPasswordResetFlow]);
+  }, [isAuthenticated, isAnonymous, isLoading, hasHydrated, segments, router, isPasswordResetFlow, params.reauth]);
 }
 
 function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null | undefined }) {
@@ -122,11 +128,17 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
       // returning users on logout → log-back-in.
       if (isSigningUp || isSyncing) return;
 
-      // Don't force onboarding on a RETURNING real account that already
-      // completed it on the server (e.g. reinstalled and logged back in).
-      const realAccountAlreadyDone =
-        isAuthenticated && !isAnonymous && !subscriptionLoading && !needsProfileSetup;
-      if (realAccountAlreadyDone) return;
+      // A real (non-anonymous) signed-in account: the locally-persisted
+      // hasCompletedOnboarding flag can still be FALSE until server prefs sync.
+      // While subscription state is still resolving right after sign-in, WAIT
+      // rather than bounce them to onboarding — otherwise a RETURNING user
+      // briefly lands on /onboarding and has to tap "Sign in" again to reach
+      // the app. Once resolved, a real account that already has a profile is
+      // never sent to onboarding.
+      if (isAuthenticated && !isAnonymous) {
+        if (subscriptionLoading) return; // still resolving — don't decide yet
+        if (!needsProfileSetup) return; // returning account, already set up
+      }
 
       console.log('[Navigation] Redirecting to onboarding (not yet completed)');
       const timer = setTimeout(() => {

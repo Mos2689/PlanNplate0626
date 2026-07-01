@@ -318,13 +318,15 @@ export default function SignupScreen() {
 
   const handleSignIn = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push('/login');
-  }, [router]);
+    router.push({ pathname: '/login', params: { email } });
+  }, [router, email]);
 
   const handleForgotPassword = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push('/forgot-password');
-  }, [router]);
+    // No standalone /forgot-password route — reuse the login screen's OTP reset
+    // flow, opened automatically and prefilled with this email.
+    router.push({ pathname: '/login', params: { forgot: '1', email } });
+  }, [router, email]);
 
   const handleSignup = useCallback(async () => {
     setError('');
@@ -389,8 +391,11 @@ export default function SignupScreen() {
 
   const navigateToLogin = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.back();
-  }, [router]);
+    // Navigate to the sign-in page explicitly — router.back() would return to
+    // wherever signup was opened from (e.g. onboarding), not the login screen.
+    // reauth=1 keeps the login form from auto-bouncing; email prefills it.
+    router.push({ pathname: '/login', params: { reauth: '1', email } });
+  }, [router, email]);
 
   // ── Token-driven styles ────────────────────────────────────────────────
   const cardBg = isDark ? '#1f1f1f' : '#FFFFFF';
@@ -1188,7 +1193,7 @@ export default function SignupScreen() {
             >
               {[
                 { Icon: Leaf, label: 'Smart\nmeal plans', tint: designTokens.colors.brand },
-                { Icon: Flame, label: 'AI cooks\nwith you', tint: designTokens.colors.olive },
+                { Icon: Flame, label: 'PNP cooks\nwith you', tint: designTokens.colors.olive },
                 { Icon: Droplet, label: 'Grocery\nmade easy', tint: '#88A4C2' },
               ].map(({ Icon, label, tint }, idx) => (
                 <View key={idx} style={{ flex: 1, alignItems: 'center', gap: 8 }}>

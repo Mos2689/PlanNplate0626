@@ -17,7 +17,7 @@ import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   Mail,
   Lock,
@@ -38,6 +38,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useAuthStore } from '@/lib/auth-store';
+import { useMealPlanStore } from '@/lib/store';
 import { designTokens } from '@/lib/design-tokens';
 import { useColorScheme } from '@/lib/useColorScheme';
 
@@ -64,15 +65,29 @@ export default function LoginScreen() {
   // an anonymous session. Only bounce REAL signed-in users to home — keep the
   // anonymous guest on the login screen so they can sign into their account.
   const isAnonymous = useAuthStore((s) => s.isAnonymous);
+  // Guest who already finished onboarding has a local setup that signing into
+  // an existing account would replace — used to warn before discarding it.
+  const hasGuestSetup = useMealPlanStore((s) => s.preferences.hasCompletedOnboarding);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  // When opened deliberately ("Sign in" on the welcome screen passes reauth=1),
+  // never auto-bounce away — even an already-signed-in user wants the form.
+  // `forgot=1` (from signup's "Forgot password?") auto-opens the OTP reset
+  // modal; `email` prefills the form.
+  const { reauth, forgot, email: emailParam } = useLocalSearchParams<{
+    reauth?: string;
+    forgot?: string;
+    email?: string;
+  }>();
 
-  // If a real account is already signed in, redirect to home.
+  // If a real account is already signed in, redirect to home — unless the user
+  // explicitly came here to sign in / switch accounts.
   React.useEffect(() => {
+    if (reauth === '1') return;
     if (isAuthenticated && !isAnonymous) {
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, isAnonymous, router]);
+  }, [isAuthenticated, isAnonymous, router, reauth]);
 
   // Reset password visibility when screen comes into focus (security)
   useFocusEffect(
@@ -81,11 +96,29 @@ export default function LoginScreen() {
     }, [])
   );
 
+  // Prefill the email + (when arriving from signup's "Forgot password?") open
+  // the OTP reset modal automatically, once per navigation.
+  const forgotHandledRef = useRef(false);
+  React.useEffect(() => {
+    if (typeof emailParam === 'string' && emailParam) {
+      setEmail(emailParam);
+    }
+    if (forgot === '1' && !forgotHandledRef.current) {
+      forgotHandledRef.current = true;
+      setResetEmail(typeof emailParam === 'string' ? emailParam : '');
+      setResetError('');
+      setResetSuccess(false);
+      setShowForgotModal(true);
+    }
+  }, [forgot, emailParam]);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // Confirm before a guest's local setup is replaced by an existing account.
+  const [showGuestWarning, setShowGuestWarning] = useState(false);
 
   // Forgot password modal state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -112,7 +145,8 @@ export default function LoginScreen() {
     buttonScale.value = withSpring(1);
   }, []);
 
-  const handleLogin = useCallback(async () => {
+  const performLogin = useCallback(async () => {
+    setShowGuestWarning(false);
     setError('');
     setIsLoading(true);
 
@@ -128,6 +162,18 @@ export default function LoginScreen() {
 
     setIsLoading(false);
   }, [email, password, login, router]);
+
+  const handleLogin = useCallback(() => {
+    // If a guest finished onboarding on this device, signing into an existing
+    // account would replace that local setup with the account's saved data.
+    // Confirm first; otherwise sign in straight away.
+    if (isAnonymous && hasGuestSetup) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setShowGuestWarning(true);
+      return;
+    }
+    performLogin();
+  }, [isAnonymous, hasGuestSetup, performLogin]);
 
   const navigateToSignup = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -608,7 +654,7 @@ export default function LoginScreen() {
             >
               {[
                 { Icon: Leaf, label: 'Smart\nmeal plans', tint: designTokens.colors.brand },
-                { Icon: Flame, label: 'AI cooks\nwith you', tint: designTokens.colors.olive },
+                { Icon: Flame, label: 'PNP cooks\nwith you', tint: designTokens.colors.olive },
                 { Icon: Droplet, label: 'Grocery\nmade easy', tint: '#88A4C2' },
               ].map(({ Icon, label, tint }, idx) => (
                 <View key={idx} style={{ flex: 1, alignItems: 'center', gap: 8 }}>
@@ -663,6 +709,97 @@ export default function LoginScreen() {
             </Text>
           </Animated.View>
       </KeyboardAwareScrollView>
+
+      {/* ── Replace-guest-setup confirmation ──────────────────────────── */}
+      <Modal
+        visible={showGuestWarning}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGuestWarning(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 24,
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 380,
+              borderRadius: 22,
+              borderWidth: 1,
+              borderColor: cardBorder,
+              backgroundColor: cardBg,
+              paddingHorizontal: 22,
+              paddingTop: 22,
+              paddingBottom: 18,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: designTokens.font.medium,
+                fontSize: 19,
+                color: inkPrimary,
+                letterSpacing: -0.38,
+                marginBottom: 10,
+              }}
+            >
+              Replace guest setup?
+            </Text>
+            <Text
+              style={{
+                fontFamily: designTokens.font.regular,
+                fontSize: 14.5,
+                color: inkSecondary,
+                lineHeight: 21,
+                marginBottom: 20,
+              }}
+            >
+              You set up a meal plan as a guest on this device. Signing into an existing account will replace it with that account's saved data — your guest setup won't be kept.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowGuestWarning(false);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 14,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: cardBorder,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 15, color: inkPrimary }}>
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={performLogin}
+                disabled={isLoading}
+                style={{
+                  flex: 1,
+                  paddingVertical: 14,
+                  borderRadius: 14,
+                  backgroundColor: designTokens.colors.olive,
+                  alignItems: 'center',
+                  opacity: isLoading ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ fontFamily: designTokens.font.semibold, fontSize: 15, color: '#FFFFFF' }}>
+                  {isLoading ? 'Signing in…' : 'Continue'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Forgot Password Modal (preserved flow) ────────────────────── */}
       <Modal
