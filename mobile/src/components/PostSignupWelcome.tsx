@@ -22,44 +22,25 @@ const WELCOME_DURATION_MS = 1200;
 export function PostSignupWelcome() {
   const welcome = useSubscriptionStore((s) => s.postSignupWelcome);
   const hidePostSignupWelcome = useSubscriptionStore((s) => s.hidePostSignupWelcome);
-  const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
 
   const visible = !!welcome?.visible;
   const name = welcome?.name ?? '';
 
   useEffect(() => {
     if (!visible) return;
-    // One success haptic — replaces the haptic that used to fire in signup.tsx
-    // so the user gets the buzz on the celebratory reveal, not on submit.
+    // One success haptic on the celebratory reveal.
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    let cancelled = false;
-    const initial = setTimeout(() => {
-      // After the welcome card, wait briefly for the subscription store to
-      // resolve before deciding whether to open the paywall. A user signing
-      // up with a store account that already holds the entitlement should
-      // never see the upsell.
-      const start = Date.now();
-      const tick = () => {
-        if (cancelled) return;
-        const s = useSubscriptionStore.getState();
-        const resolved = !s.isLoading && s._initializingUserId === null;
-        const elapsed = Date.now() - start;
-        if (!resolved && elapsed < 2500) {
-          setTimeout(tick, 100);
-          return;
-        }
-        hidePostSignupWelcome();
-        if (!s.isPremium) openPaywallSheet('onboarding');
-      };
-      tick();
+    // Show the welcome card, then simply dismiss it. We deliberately do NOT
+    // open the paywall after signup — the paywall now appears only when a
+    // feature's monthly usage limit is exceeded (Plan My Meals, Vibe, Import,
+    // Add recipe, Speak grocery) or when the user taps an upgrade CTA.
+    const t = setTimeout(() => {
+      hidePostSignupWelcome();
     }, WELCOME_DURATION_MS);
 
-    return () => {
-      cancelled = true;
-      clearTimeout(initial);
-    };
-  }, [visible, hidePostSignupWelcome, openPaywallSheet]);
+    return () => clearTimeout(t);
+  }, [visible, hidePostSignupWelcome]);
 
   if (!visible) return null;
 

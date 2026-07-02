@@ -51,6 +51,7 @@ import { useColorScheme } from '@/lib/useColorScheme';
 import { cn } from '@/lib/cn';
 import { designTokens, getThemeColors, getCategoryTint, elevation } from '@/lib/design-tokens';
 import { transcribeAudioToText, parseGroceryItemsFromTranscript, type ParsedGroceryItem } from '@/lib/voice-grocery';
+import { formatFromBaseUnit, resolveMeasurementSystem, type MeasurementSystem } from '@/lib/unit-conversion';
 import { ShoppingListCompletionModal } from '@/components/ShoppingListCompletionModal';
 import { DuplicateIngredientBanner, DuplicateIngredientModal } from '@/components/DuplicateIngredientModal';
 import { findDuplicateIngredientGroups, type DuplicateIngredientGroup } from '@/lib/duplicate-ingredient-finder';
@@ -116,6 +117,16 @@ const UNIT_GROUPS: { label: string; units: { value: string; label: string }[] }[
     ],
   },
 ];
+
+// Display label for a grocery item's amount in the chosen system. Storage is
+// metric; imperial re-formats from the base value (falls back to the stored
+// display string when there's no base value or in metric).
+function groceryQuantityLabel(item: GroceryItem, system: MeasurementSystem): string {
+  if (system === 'imperial' && item.quantity_base != null && item.base_unit) {
+    return formatFromBaseUnit(item.quantity_base, item.base_unit, item.name, 'imperial');
+  }
+  return `${item.quantity}${item.unit ? ` ${item.unit}` : ''}`;
+}
 
 // Extract just the numeric part from a quantity string (e.g., "3.5 cloves" → "3.5")
 function extractNumericQuantity(qty: string): string {
@@ -232,6 +243,11 @@ interface GroceryItemRowProps {
 
 function GroceryItemRow({ item, onToggle, onDelete, isDark, index, checkColor }: GroceryItemRowProps) {
   const colors = getThemeColors(isDark);
+  const measurementSystem = useMealPlanStore((s) => resolveMeasurementSystem(s.preferences.measurementSystem));
+  // Storage is metric; when the user chose imperial, re-format from the base
+  // value so weights show oz/lb and volumes show cups/tbsp/tsp. Items without a
+  // base value (or in metric) fall back to their stored display string.
+  const quantityLabel = groceryQuantityLabel(item, measurementSystem);
 
   const handleToggle = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -303,7 +319,7 @@ function GroceryItemRow({ item, onToggle, onDelete, isDark, index, checkColor }:
             }}
             numberOfLines={1}
           >
-            {item.quantity}{item.unit ? ` ${item.unit}` : ''}
+            {quantityLabel}
           </Text>
         </View>
 
@@ -1671,6 +1687,7 @@ export default function GroceryScreen() {
 
   const groceryItems = useMealPlanStore((s) => s.groceryItems);
   const customGroceryItems = useMealPlanStore((s) => s.customGroceryItems);
+  const measurementSystem = useMealPlanStore((s) => resolveMeasurementSystem(s.preferences.measurementSystem));
   const savedGroceryLists = useMealPlanStore((s) => s.savedGroceryLists);
   const toggleGroceryItem = useMealPlanStore((s) => s.toggleGroceryItem);
   const toggleCustomGroceryItem = useMealPlanStore((s) => s.toggleCustomGroceryItem);
@@ -1683,18 +1700,8 @@ export default function GroceryScreen() {
   const generateGroceryList = useMealPlanStore((s) => s.generateGroceryList);
   const setGroceryDateRange = useMealPlanStore((s) => s.setGroceryDateRange);
   // ─── AUTH-LAST signup gate ───
-  // Gate fires once the anonymous guest has built their first plan.
-  // Any subsequent interaction (including grocery) sends them to signup.
-  const isAnonymous = useAuthStore((s) => s.isAnonymous);
-  const freePlanBuildsUsed = useMealPlanStore(
-    (s) => s.preferences.freePlanBuildsUsed ?? 0,
-  );
-  const freeGroceryBuildsUsed = useMealPlanStore(
-    (s) => s.preferences.freeGroceryBuildsUsed ?? 0,
-  );
-  const markFreeGatedAction = useMealPlanStore((s) => s.markFreeGatedAction);
-  const shouldGateSignup =
-    isAnonymous && freePlanBuildsUsed >= 1 && freeGroceryBuildsUsed >= 1;
+  // AUTH-FIRST: users create an account before onboarding, so the old
+  // anonymous-guest signup gate for grocery builds has been removed.
   const saveGroceryList = useMealPlanStore((s) => s.saveGroceryList);
   const saveAndClearCheckedItems = useMealPlanStore((s) => s.saveAndClearCheckedItems);
   const updateSavedGroceryList = useMealPlanStore((s) => s.updateSavedGroceryList);
@@ -1839,21 +1846,11 @@ export default function GroceryScreen() {
   }, [groceryItems, customGroceryItems, isSavedListMode, currentSavedListItems]);
 
   const handleGenerateFromMealPlan = useCallback((startDate: string, endDate: string) => {
-    // Signup gate: an anonymous guest who has already built BOTH a plan and a
-    // grocery list is sent to signup before building another.
-    if (shouldGateSignup) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      router.push('/signup');
-      return;
-    }
     // "Get Groceries" is free with no monthly restriction — no premium gate.
-    // (The signup gate above still applies to anonymous guests.)
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     generateGroceryList(startDate, endDate);
     setGroceryDateRange(startDate, endDate);
-    // Mark the grocery feature used (only matters while anonymous).
-    if (isAnonymous) markFreeGatedAction('grocery');
-  }, [generateGroceryList, setGroceryDateRange, isAnonymous, shouldGateSignup, hasPremiumAccess, isPremiumResolved, currentUserId, openPaywallSheet, freeGroceryBuildsUsed, markFreeGatedAction, router]);
+  }, [generateGroceryList, setGroceryDateRange]);
 
   const handleCombineDuplicates = useCallback(
     (groupKey: string, selectedIndices: number[]) => {
@@ -1955,13 +1952,13 @@ export default function GroceryScreen() {
       text += `*${config.label}*\n`;
       items.forEach((item) => {
         const checkbox = item.isChecked ? '✅' : '⬜';
-        text += `${checkbox} ${item.quantity}${item.unit ? ` ${item.unit}` : ''} ${item.name}\n`;
+        text += `${checkbox} ${groceryQuantityLabel(item, measurementSystem)} ${item.name}\n`;
       });
       text += '\n';
     });
 
     return text.trim();
-  }, [groceryItems]);
+  }, [groceryItems, measurementSystem]);
 
   // Format saved list for sharing (includes checked/completed status)
   const formatSavedListForShare = useCallback(() => {
@@ -1984,13 +1981,13 @@ export default function GroceryScreen() {
       text += `*${config.label}*\n`;
       items.forEach((item) => {
         const checkbox = item.isChecked ? '✅' : '⬜';
-        text += `${checkbox} ${item.quantity}${item.unit ? ` ${item.unit}` : ''} ${item.name}\n`;
+        text += `${checkbox} ${groceryQuantityLabel(item, measurementSystem)} ${item.name}\n`;
       });
       text += '\n';
     });
 
     return text.trim();
-  }, [currentSavedListItems, currentSavedListName]);
+  }, [currentSavedListItems, currentSavedListName, measurementSystem]);
 
   const handleShareWhatsApp = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

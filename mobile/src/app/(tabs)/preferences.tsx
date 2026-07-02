@@ -34,15 +34,17 @@ import {
   FileText,
   User,
   Share2,
+  Scale,
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useMealPlanStore, servingSizeFromHousehold } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
-import { useSubscriptionStore, useAccountStatus, useIsPremium, useUserAvatar } from '@/lib/subscription-store';
+import { useSubscriptionStore, useAccountStatus, useIsPremium, useUserAvatar, useUserName } from '@/lib/subscription-store';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { cn } from '@/lib/cn';
 import { designTokens, elevation, getThemeColors } from '@/lib/design-tokens';
+import { resolveMeasurementSystem } from '@/lib/unit-conversion';
 import { AccountManagementModal } from '@/components/AccountManagementModal';
 import { UserAvatarDisplay } from '@/components/ProfileSetupModal';
 import { EditProfileModal } from '@/components/EditProfileModal';
@@ -396,6 +398,8 @@ export default function ProfileScreen() {
 
   // ── Store reads (preserved) ────────────────────────────────────
   const preferences = useMealPlanStore((s) => s.preferences);
+  const setPreferences = useMealPlanStore((s) => s.setPreferences);
+  const measurementSystem = resolveMeasurementSystem(preferences.measurementSystem);
   const recipes = useMealPlanStore((s) => s.recipes);
   const mealSlots = useMealPlanStore((s) => s.mealSlots);
   const groceryItems = useMealPlanStore((s) => s.groceryItems);
@@ -580,7 +584,14 @@ export default function ProfileScreen() {
   }, [currentUser?.id, modalType, deleteAccount, clearAllData, logout, router]);
 
   // ── Derived display strings (purely visual) ────────────────────
-  const firstName = currentUser?.name?.split(' ')[0] || currentUser?.name || 'User';
+  // Use the SAME name source as the meal-plan home screen: the onboarding name
+  // (userSubscription.name), falling back to the account name. Keeps both
+  // screens showing the name the user set in the onboarding flow.
+  const subscriptionName = useUserName();
+  const fallbackAuthName =
+    currentUser?.name && currentUser.name !== 'User' ? currentUser.name : null;
+  const displayName = subscriptionName || fallbackAuthName || 'User';
+  const firstName = displayName.split(' ')[0] || displayName;
   const householdLine = householdSummary(preferences);
   const prefRowSummaries = {
     household: householdLine,
@@ -650,7 +661,7 @@ export default function ProfileScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
               {/* Avatar with optional premium badge */}
               <View style={{ position: 'relative', width: 64, height: 64, flexShrink: 0 }}>
-                <UserAvatarDisplay size={64} avatarUrl={userAvatar} name={currentUser?.name || 'User'} />
+                <UserAvatarDisplay size={64} avatarUrl={userAvatar} name={displayName} />
                 {isPremium ? (
                   <Pressable
                     onPress={() => {
@@ -1876,6 +1887,68 @@ export default function ProfileScreen() {
                 overflow: 'hidden',
               }}
             >
+              {/* Units — inline Metric/Imperial toggle (display only) */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.hair,
+                }}
+              >
+                <Scale size={14} color={designTokens.colors.ink2} strokeWidth={1.7} />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 14.5,
+                    color: colors.ink,
+                    letterSpacing: -0.145,
+                  }}
+                >
+                  Units
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    backgroundColor: colors.pill,
+                    borderRadius: 999,
+                    padding: 3,
+                  }}
+                >
+                  {(['metric', 'imperial'] as const).map((sys) => {
+                    const active = measurementSystem === sys;
+                    return (
+                      <Pressable
+                        key={sys}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setPreferences({ measurementSystem: sys });
+                        }}
+                        style={{
+                          paddingHorizontal: 14,
+                          paddingVertical: 6,
+                          borderRadius: 999,
+                          backgroundColor: active ? designTokens.colors.olive : 'transparent',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: designTokens.font.medium,
+                            fontSize: 13,
+                            color: active ? '#FFFFFF' : colors.ink2,
+                          }}
+                        >
+                          {sys === 'metric' ? 'Metric' : 'Imperial'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
               <SettingsRow
                 icon={<User size={14} color={designTokens.colors.ink2} strokeWidth={1.7} />}
                 label="Account"

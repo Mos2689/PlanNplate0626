@@ -755,73 +755,26 @@ export default function HomeScreen() {
   const isPremiumResolved = useIsPremiumResolved();
   const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
 
-  // ─── AUTH-LAST signup gate ───
-  // An anonymous guest gets ONE free plan build. After that, any subsequent
-  // interaction (PnP Picks, grocery, explore, etc.) gates to signup.
-  // All data created during the anonymous session is preserved because
-  // signup uses updateUser() to link the same user ID to an email.
-  const isAnonymous = useAuthStore((s) => s.isAnonymous);
-  const currentUserId = useAuthStore((s) => s.currentUser?.id);
-  const freePlanBuildsUsed = useMealPlanStore(
-    (s) => s.preferences.freePlanBuildsUsed ?? 0,
-  );
-  const freeGroceryBuildsUsed = useMealPlanStore(
-    (s) => s.preferences.freeGroceryBuildsUsed ?? 0,
-  );
-  const markFreeGatedAction = useMealPlanStore((s) => s.markFreeGatedAction);
-  const shouldGateSignup =
-    isAnonymous && freePlanBuildsUsed >= 1 && freeGroceryBuildsUsed >= 1;
-
+  // AUTH-FIRST: users create an account before reaching the app, so the old
+  // anonymous-guest signup gate on quick actions has been removed. Each action
+  // simply routes to its screen.
   const handleQuickAction = useCallback(
     (item: { title: string }) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const t = item.title.toLowerCase();
       if (t.includes('grocer')) {
-        if (shouldGateSignup) {
-          router.push('/signup');
-          return;
-        }
-        if (isAnonymous) markFreeGatedAction('grocery');
         router.push('/grocery');
-      }
-      // "Get Inspired" → opens the curated recipe catalog (was "Explore meals").
-      // Free to use, but once an anonymous guest has spent their free plan +
-      // grocery build, any further action (this included) routes to signup.
-      else if (t.includes('get inspired') || t.includes('explore')) {
-        if (shouldGateSignup) {
-          router.push('/signup');
-          return;
-        }
+      } else if (t.includes('get inspired') || t.includes('explore')) {
         router.push('/curated-meal-plan');
-      }
-      // "Plan My Meals" → opens the AI multi-day plan setup flow.
-      // (Was "PnP Picks"/"PnP Suggests"; single-recipe generation is still
-      // reachable from the Recipes tab and select-recipe footer.)
-      else if (t.includes('plan my meals') || t.includes('suggests') || t.includes('pnp')) {
-        if (isPlanInFlight) {
-          // Plan already streaming — banner above already explains it.
-          // No-op rather than queue a second concurrent generation.
-          return;
-        }
-        // ─── Signup gate (anonymous guest, post-first-plan) ───
-        if (shouldGateSignup) {
-          router.push('/signup');
-          return;
-        }
-        if (isAnonymous) markFreeGatedAction('plan');
-        // Premium gate removed — tapping "Plan My Meals" goes straight to the
-        // plan setup screen (the signup gate above still applies to anonymous
-        // guests who've exhausted their free plan + grocery builds).
+      } else if (t.includes('plan my meals') || t.includes('suggests') || t.includes('pnp')) {
+        // Plan already streaming — no-op rather than queue a second generation.
+        if (isPlanInFlight) return;
         router.push('/plan-meals');
       } else if (t.includes('vibe')) {
-        if (shouldGateSignup) {
-          router.push('/signup');
-          return;
-        }
         router.push('/generate-recipe');
       }
     },
-    [router, isPlanInFlight, hasPremiumAccess, isPremiumResolved, currentUserId, openPaywallSheet, shouldGateSignup, isAnonymous, freeGroceryBuildsUsed, markFreeGatedAction],
+    [router, isPlanInFlight],
   );
 
   const cookedRecipeIds = useMemo(

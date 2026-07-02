@@ -128,17 +128,25 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
       // returning users on logout → log-back-in.
       if (isSigningUp || isSyncing) return;
 
-      // A real (non-anonymous) signed-in account: the locally-persisted
-      // hasCompletedOnboarding flag can still be FALSE until server prefs sync.
-      // While subscription state is still resolving right after sign-in, WAIT
-      // rather than bounce them to onboarding — otherwise a RETURNING user
-      // briefly lands on /onboarding and has to tap "Sign in" again to reach
-      // the app. Once resolved, a real account that already has a profile is
-      // never sent to onboarding.
-      if (isAuthenticated && !isAnonymous) {
-        if (subscriptionLoading) return; // still resolving — don't decide yet
-        if (!needsProfileSetup) return; // returning account, already set up
+      // AUTH-FIRST: unauthenticated OR anonymous users must create an account
+      // (or sign in) BEFORE onboarding. Signup is now the first screen; the
+      // deferred signup gate (post plan+grocery) no longer fires because users
+      // are never anonymous once they're through here.
+      if (!isAuthenticated || isAnonymous) {
+        const timer = setTimeout(() => {
+          router.replace('/signup');
+        }, 50);
+        return () => clearTimeout(timer);
       }
+
+      // A real (non-anonymous) signed-in account that hasn't finished onboarding.
+      // While subscription state is still resolving right after sign-in, WAIT
+      // rather than bounce — otherwise a RETURNING user briefly lands here. A
+      // returning account that already completed onboarding (profileCompleted)
+      // is never sent to onboarding; a fresh signup (profileCompleted=false)
+      // falls through to the persona flow.
+      if (subscriptionLoading) return; // still resolving — don't decide yet
+      if (!needsProfileSetup) return; // returning account, already set up
 
       console.log('[Navigation] Redirecting to onboarding (not yet completed)');
       const timer = setTimeout(() => {

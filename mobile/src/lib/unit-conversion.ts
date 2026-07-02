@@ -617,10 +617,73 @@ export function convertToBaseUnit(
  * Weight: g, kg
  * Count: pieces, cloves, items, etc.
  */
+export type MeasurementSystem = 'metric' | 'imperial';
+
+// Device default: the three countries that use imperial for everyday cooking.
+// Detected once from the device locale's region (pure JS via Intl — no native
+// dependency). Falls back to metric if the region can't be read.
+function detectDeviceMeasurementSystem(): MeasurementSystem {
+  try {
+    const IMPERIAL_REGIONS = new Set(['US', 'LR', 'MM']);
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale || '';
+    const match = locale.match(/[-_]([A-Za-z]{2})(?:[-_]|$)/); // e.g. "en-US" → US
+    const region = match ? match[1].toUpperCase() : '';
+    return IMPERIAL_REGIONS.has(region) ? 'imperial' : 'metric';
+  } catch {
+    return 'metric';
+  }
+}
+
+export const DEVICE_MEASUREMENT_SYSTEM: MeasurementSystem = detectDeviceMeasurementSystem();
+
+/**
+ * Resolve the effective display system: the user's explicit choice if set,
+ * otherwise the device-locale default (imperial for US/LR/MM, else metric).
+ */
+export function resolveMeasurementSystem(pref?: MeasurementSystem | null): MeasurementSystem {
+  return pref ?? DEVICE_MEASUREMENT_SYSTEM;
+}
+
+// Imperial weight display from grams: oz below a pound, lb above.
+function formatWeightImperial(g: number): string {
+  const oz = g / 28.3495;
+  if (oz >= 16) {
+    const lb = Math.round((g / 453.592) * 100) / 100;
+    return lb === 1 ? '1 lb' : `${lb} lb`;
+  }
+  const rounded = Math.round(oz * 10) / 10;
+  return rounded === 1 ? '1 oz' : `${rounded} oz`;
+}
+
+// Imperial volume display from millilitres: cups → tbsp → tsp (US kitchen units).
+function formatVolumeImperial(ml: number): string {
+  const cups = ml / 236.588;
+  if (cups >= 0.25) {
+    const rounded = Math.round(cups * 4) / 4; // nearest 1/4 cup
+    if (rounded === 0.25) return '1/4 cup';
+    if (rounded === 0.5) return '1/2 cup';
+    if (rounded === 0.75) return '3/4 cup';
+    if (rounded === 1) return '1 cup';
+    if (rounded === 1.25) return '1 1/4 cups';
+    if (rounded === 1.5) return '1 1/2 cups';
+    if (rounded === 1.75) return '1 3/4 cups';
+    const d = Math.round(rounded * 10) / 10;
+    return d === 1 ? '1 cup' : `${d} cups`;
+  }
+  const tbsp = ml / 14.7868;
+  if (tbsp >= 1) {
+    const r = Math.round(tbsp);
+    return r === 1 ? '1 tbsp' : `${r} tbsp`;
+  }
+  const tsp = Math.max(1, Math.round(ml / 4.92892));
+  return tsp === 1 ? '1 tsp' : `${tsp} tsp`;
+}
+
 export function formatFromBaseUnit(
   baseQuantity: number,
   baseUnit: string,
-  ingredientName?: string
+  ingredientName?: string,
+  system: MeasurementSystem = 'metric'
 ): string {
   const qty = Math.round(baseQuantity * 100) / 100; // Round to 2 decimals
 
@@ -695,6 +758,7 @@ export function formatFromBaseUnit(
   }
 
   if (baseUnit === 'ml') {
+    if (system === 'imperial') return formatVolumeImperial(qty);
     // Volume-Liquid: Display in mL or L (metric only)
     // Use L for quantities >= 1000 mL
     if (qty >= 1000) {
@@ -709,6 +773,7 @@ export function formatFromBaseUnit(
   }
 
   if (baseUnit === 'g') {
+    if (system === 'imperial') return formatWeightImperial(qty);
     // Weight: Display in g or kg (metric only)
     // Use kg for quantities >= 1000g
     if (qty >= 1000) {
@@ -723,6 +788,34 @@ export function formatFromBaseUnit(
   }
 
   return qty.toString();
+}
+
+/**
+ * Display a recipe ingredient's quantity+unit in the user's chosen system.
+ * Storage stays metric; this only affects what's shown. For `metric` (default)
+ * the original quantity/unit is returned unchanged. For `imperial`, WEIGHT
+ * (g/kg) → oz/lb and VOLUME (ml/l/cup/tbsp/tsp) → cups/tbsp/tsp. COUNT units
+ * (piece, clove, can, slice, bunch…) are identical in both systems and are
+ * returned verbatim so "2 cloves garlic" never becomes "2 pieces".
+ */
+export function formatIngredientDisplay(
+  quantity: string | number,
+  unit: string,
+  ingredientName: string = '',
+  system: MeasurementSystem = 'metric'
+): string {
+  const q = typeof quantity === 'number' ? String(quantity) : (quantity ?? '').trim();
+  const asIs = unit ? `${q} ${unit}`.trim() : q;
+  if (system !== 'imperial') return asIs;
+
+  try {
+    const base = convertToBaseUnit(quantity, unit, ingredientName);
+    // Count units are the same in both systems — keep the recipe's own wording.
+    if (base.unit === 'piece') return asIs;
+    return formatFromBaseUnit(base.quantity, base.unit, ingredientName, 'imperial');
+  } catch {
+    return asIs;
+  }
 }
 
 /**

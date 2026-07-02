@@ -15,6 +15,7 @@ import {
   Dimensions,
   BackHandler,
   StyleSheet,
+  Linking,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -61,7 +62,7 @@ import { BrandLogo } from '@/components/BrandLogo';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { useAuthStore } from '@/lib/auth-store';
-import { useSubscriptionStore } from '@/lib/subscription-store';
+import { useSubscriptionStore, useUserName } from '@/lib/subscription-store';
 import { logMetaEvent } from '@/lib/meta-sdk';
 import {
   useMealPlanStore,
@@ -570,6 +571,8 @@ export default function OnboardingScreen() {
   const router = useRouter();
 
   const currentUser = useAuthStore((s) => s.currentUser);
+  const isAnonymous = useAuthStore((s) => s.isAnonymous);
+  const logout = useAuthStore((s) => s.logout);
   const updateProfile = useSubscriptionStore((s) => s.updateProfile);
   const preferences = useMealPlanStore((s) => s.preferences);
   const setPreferences = useMealPlanStore((s) => s.setPreferences);
@@ -581,17 +584,31 @@ export default function OnboardingScreen() {
       : 0
   );
 
-  // Welcome screen — only on a fresh start (step 0 + not yet completed).
+  // Welcome screen — the "free · no signup" hero was the ANONYMOUS entry point.
+  // Under the AUTH-FIRST flow users sign up before reaching onboarding, so we
+  // skip it for signed-in accounts and go straight to the persona steps. (Kept
+  // for any lingering anonymous session, where its messaging still applies.)
   const [showWelcome, setShowWelcome] = useState<boolean>(
-    (preferences.onboardingStep ?? 0) === 0 && !preferences.hasCompletedOnboarding
+    (preferences.onboardingStep ?? 0) === 0 && !preferences.hasCompletedOnboarding && isAnonymous
   );
 
   // Step 0 — About you
   // AUTH-LAST: onboarding is the FIRST-TIME flow (returning accounts are routed
-  // straight past it), and it runs BEFORE signup. So the name must come from
-  // what the user types here — never pre-filled from a leftover/stale session
-  // (on iOS a previous Supabase token can survive an app-data clear).
+  // straight past it). Under AUTH-FIRST the user has just created an account,
+  // so we seed the name from their account (the name entered at signup) as a
+  // one-time prefill — see the effect below. They can still edit it here.
   const [name, setName] = useState('');
+  const accountName = useUserName();
+  const nameSeededRef = useRef(false);
+  useEffect(() => {
+    if (nameSeededRef.current) return;
+    const seed = accountName || (currentUser?.name && currentUser.name !== 'User' ? currentUser.name : '');
+    if (seed) {
+      // Only prefill when the field is still empty — never clobber typing.
+      setName((prev) => (prev.trim().length === 0 ? seed : prev));
+      nameSeededRef.current = true;
+    }
+  }, [accountName, currentUser?.name]);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [household, setHousehold] = useState<Household>(preferences.household ?? 'couple');
@@ -601,6 +618,14 @@ export default function OnboardingScreen() {
     preferences.dietaryRestrictions ?? []
   );
   const [allergies, setAllergies] = useState<string[]>(preferences.allergies ?? []);
+  // Explicit consent to process dietary/allergy info (sensitive/health data).
+  // Records the moment consent was given; required only once the user actually
+  // selects a dietary restriction or allergy.
+  const [dietaryConsentAt, setDietaryConsentAt] = useState<string | null>(
+    preferences.dietaryDataConsentAt ?? null
+  );
+  const dietaryConsent = !!dietaryConsentAt;
+  const sensitiveDataSelected = dietaryRestrictions.length > 0 || allergies.length > 0;
 
   // Step 2 — Cuisines & style
   const [cuisinePreferences, setCuisinePreferences] = useState<string[]>(
@@ -735,7 +760,9 @@ export default function OnboardingScreen() {
       case 0:
         return name.trim().length > 0 && !!household;
       case 1:
-        return true;
+        // Diet/allergies step: if the user picked any sensitive item, they must
+        // consent to us processing it before continuing.
+        return !sensitiveDataSelected || dietaryConsent;
       case 2:
         return true;
       case 3:
@@ -751,6 +778,8 @@ export default function OnboardingScreen() {
     household,
     weeknightMinutes,
     priorities,
+    sensitiveDataSelected,
+    dietaryConsent,
   ]);
 
   const handleNext = useCallback(() => {
@@ -762,13 +791,19 @@ export default function OnboardingScreen() {
     }
   }, [currentStep, canProceed]);
 
-  const handleBack = useCallback(() => {
+  const handleBack = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (currentStep > 0) {
       transitionDirection.current = 'backward';
       setCurrentStep((p) => p - 1);
+      return;
     }
-  }, [currentStep]);
+    // Step 0 → back to the signup / sign-in screen. Sign out first so the
+    // just-created account doesn't get immediately bounced back into the app,
+    // letting the user pick a different account or sign in instead.
+    await logout();
+    router.replace('/signup');
+  }, [currentStep, logout, router]);
 
   // Intercept Android hardware back button so it walks the user back through
   // onboarding steps instead of popping the whole screen off the navigation
@@ -846,6 +881,8 @@ export default function OnboardingScreen() {
         monthlyBudget: Number.isFinite(monthlyBudgetNum) ? monthlyBudgetNum : null,
         pantryStaples,
         goals,
+        // Record consent only when sensitive data is actually being saved.
+        dietaryDataConsentAt: sensitiveDataSelected ? (dietaryConsentAt ?? undefined) : undefined,
         hasCompletedOnboarding: true,
         onboardingStep: TOTAL_STEPS,
       });
@@ -1513,6 +1550,65 @@ export default function OnboardingScreen() {
           />
         ))}
       </View>
+
+      {/* Sensitive-data consent — shown once the user selects a diet/allergy.
+          Required to continue (see canProceed case 1). */}
+      {sensitiveDataSelected && (
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setDietaryConsentAt((prev) => (prev ? null : new Date().toISOString()));
+          }}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 10,
+            marginTop: 24,
+            padding: 14,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: dietaryConsent
+              ? designTokens.colors.olive
+              : isDark ? '#2a2a2a' : designTokens.colors.hair,
+            backgroundColor: isDark ? '#1f1f1f' : '#FAF7F0',
+          }}
+        >
+          <View
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 6,
+              marginTop: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: dietaryConsent ? 0 : 1.5,
+              borderColor: isDark ? '#444' : designTokens.colors.ink3,
+              backgroundColor: dietaryConsent ? designTokens.colors.olive : 'transparent',
+            }}
+          >
+            {dietaryConsent && <Check size={13} color="#FFFFFF" strokeWidth={3} />}
+          </View>
+          <Text
+            style={{
+              flex: 1,
+              fontFamily: designTokens.font.regular,
+              fontSize: 12.5,
+              lineHeight: 18,
+              color: isDark ? '#aaa' : designTokens.colors.ink2,
+            }}
+          >
+            I consent to PlanNplate using my dietary and allergy information to personalise my
+            recipes and warn me about allergens. See our{' '}
+            <Text
+              onPress={() => Linking.openURL('https://www.plannplate.com.au/privacy-policy').catch(() => {})}
+              style={{ color: designTokens.colors.olive, fontFamily: designTokens.font.medium }}
+            >
+              Privacy Policy
+            </Text>
+            .
+          </Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 
@@ -2255,24 +2351,24 @@ export default function OnboardingScreen() {
             borderTopColor: isDark ? '#2a2a2a' : designTokens.colors.hair2,
           }}
         >
-          {currentStep > 0 && (
-            <Pressable
-              onPress={handleBack}
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 24,
-                borderWidth: 1,
-                borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF',
-              }}
-              hitSlop={8}
-            >
-              <ArrowLeft size={18} color={isDark ? '#fff' : designTokens.colors.ink} strokeWidth={1.8} />
-            </Pressable>
-          )}
+          {/* Back — always shown. Steps 2–5 go to the previous step; on step 1
+              it returns to the signup / sign-in screen (handleBack). */}
+          <Pressable
+            onPress={handleBack}
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF',
+            }}
+            hitSlop={8}
+          >
+            <ArrowLeft size={18} color={isDark ? '#fff' : designTokens.colors.ink} strokeWidth={1.8} />
+          </Pressable>
 
           <Animated.View style={[{ flex: 1, borderRadius: 999, overflow: 'hidden' }, isFinalStep ? celebrateStyle : null]}>
             <Pressable

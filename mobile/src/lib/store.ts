@@ -582,6 +582,13 @@ export interface UserPreferences {
   mealPrepTime: 'quick' | 'moderate' | 'elaborate';
   hasCompletedOnboarding: boolean;
   profileSubtitle?: string;
+  // Display units for ingredient amounts & the grocery list. Storage is ALWAYS
+  // metric; this only changes what's shown. Defaults to metric (AU/UK/etc.).
+  measurementSystem?: 'metric' | 'imperial';
+  // ISO timestamp of the user's explicit consent to process their dietary &
+  // allergy information (sensitive/health data). Set when they tick the consent
+  // box in onboarding; absent = not granted.
+  dietaryDataConsentAt?: string;
 
   // ── Persona fields (all optional for backward compatibility) ──
   household?: Household;
@@ -975,6 +982,8 @@ const defaultPreferences: UserPreferences = {
   cookingSkillLevel: 'intermediate',
   mealPrepTime: 'moderate',
   hasCompletedOnboarding: false,
+  // Left undefined so the display layer can default it from the device locale
+  // (imperial for US, metric elsewhere) until the user explicitly picks one.
   // persona defaults are intentionally undefined so we can detect "not yet set"
   hasUsedFreeTrial: false,
   postTrialPnpTapCount: 0,

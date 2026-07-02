@@ -427,17 +427,10 @@ export default function PlanMealsScreen() {
   const insights = useBehaviorInsights();
 
   // ─── AUTH-LAST signup gate ───
-  // Gate fires once the anonymous guest has built their first plan.
+  // AUTH-FIRST: users create an account before onboarding, so there's no
+  // anonymous-guest signup gate here anymore. `isAnonymous` is still used by the
+  // monthly premium limit below.
   const isAnonymous = useAuthStore((s) => s.isAnonymous);
-  const freePlanBuildsUsed = useMealPlanStore(
-    (s) => s.preferences.freePlanBuildsUsed ?? 0,
-  );
-  const freeGroceryBuildsUsed = useMealPlanStore(
-    (s) => s.preferences.freeGroceryBuildsUsed ?? 0,
-  );
-  const markFreeGatedAction = useMealPlanStore((s) => s.markFreeGatedAction);
-  const shouldGateSignup =
-    isAnonymous && freePlanBuildsUsed >= 1 && freeGroceryBuildsUsed >= 1;
 
   // ── Monthly paywall limit (Plan My Meals) ──
   // Registered non-premium users get MONTHLY_FEATURE_LIMITS.planMeals plan
@@ -648,14 +641,6 @@ export default function PlanMealsScreen() {
   const handleGenerate = useCallback(() => {
     if (!canGenerate) return;
 
-    // Signup gate: an anonymous guest who's already built BOTH a plan and a
-    // grocery list is sent to signup before building another.
-    if (shouldGateSignup) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      router.push('/signup');
-      return;
-    }
-
     // Monthly paywall limit — registered non-premium users get a fixed number
     // of plan builds per month; beyond that the paywall opens.
     if (!isAnonymous && !hasPremiumAccess) {
@@ -706,7 +691,6 @@ export default function PlanMealsScreen() {
       batch: cookStyle === 'batch' ? batch : undefined,
     });
 
-    if (isAnonymous) markFreeGatedAction('plan');
     // Count this build toward the monthly limit (non-premium only).
     if (!hasPremiumAccess) recordMonthlyFeatureUse('planMeals');
 
@@ -725,8 +709,6 @@ export default function PlanMealsScreen() {
     router,
     startBackgroundGeneration,
     isAnonymous,
-    shouldGateSignup,
-    markFreeGatedAction,
     hasPremiumAccess,
     isPremiumResolved,
     currentUserId,

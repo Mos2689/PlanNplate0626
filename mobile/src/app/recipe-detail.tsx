@@ -67,6 +67,7 @@ import * as Linking from 'expo-linking';
 import * as Clipboard from 'expo-clipboard';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useMealPlanStore, type Recipe, type Ingredient } from '@/lib/store';
+import { formatIngredientDisplay, resolveMeasurementSystem } from '@/lib/unit-conversion';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { uploadFile } from '@/lib/upload';
 import { designTokens } from '@/lib/design-tokens';
@@ -91,6 +92,7 @@ export default function RecipeDetailScreen() {
 
   const recipes = useMealPlanStore((s) => s.recipes);
   const mealSlots = useMealPlanStore((s) => s.mealSlots);
+  const measurementSystem = useMealPlanStore((s) => resolveMeasurementSystem(s.preferences.measurementSystem));
   const toggleSaveRecipe = useMealPlanStore((s) => s.toggleSaveRecipe);
   const deleteRecipe = useMealPlanStore((s) => s.deleteRecipe);
   const updateRecipe = useMealPlanStore((s) => s.updateRecipe);
@@ -231,7 +233,7 @@ export default function RecipeDetailScreen() {
     if (!recipe) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const text = adjustedIngredients
-      .map((ing) => `• ${ing.quantity} ${ing.unit} ${ing.name}`)
+      .map((ing) => `• ${formatIngredientDisplay(ing.quantity, ing.unit, ing.name, measurementSystem)} ${ing.name}`)
       .join('\n');
     try {
       await Clipboard.setStringAsync(`${recipe.name}\n\n${text}`);
@@ -240,7 +242,7 @@ export default function RecipeDetailScreen() {
     } catch (err) {
       console.error('Failed to copy ingredients:', err);
     }
-  }, [recipe, adjustedIngredients]);
+  }, [recipe, adjustedIngredients, measurementSystem]);
 
   const handleOpenCookMode = useCallback(() => {
     if (!recipe || recipe.instructions.length === 0) return;
@@ -461,7 +463,7 @@ export default function RecipeDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     const ingredientsList = adjustedIngredients
-      .map(ing => `• ${ing.quantity} ${ing.unit} ${ing.name}`)
+      .map(ing => `• ${formatIngredientDisplay(ing.quantity, ing.unit, ing.name, measurementSystem)} ${ing.name}`)
       .join('\n');
 
     const instructionsList = recipe.instructions
@@ -488,7 +490,7 @@ export default function RecipeDetailScreen() {
     } catch (error) {
       console.error('Error sharing recipe:', error);
     }
-  }, [recipe, adjustedIngredients, displayServings]);
+  }, [recipe, adjustedIngredients, displayServings, measurementSystem]);
 
   if (!recipe) {
     return (
@@ -1091,7 +1093,7 @@ export default function RecipeDetailScreen() {
                         textDecorationLine: isChecked ? 'line-through' : 'none',
                       }}
                     >
-                      {ingredient.quantity} {ingredient.unit}
+                      {formatIngredientDisplay(ingredient.quantity, ingredient.unit, ingredient.name, measurementSystem)}
                     </Text>
                   </Pressable>
                 );
