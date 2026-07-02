@@ -1,6 +1,6 @@
 // HomeHeader Component - PlannPlate Home design
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { Search, Bell, Crown } from 'lucide-react-native';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
 import { UserAvatarDisplay } from './ProfileSetupModal';
@@ -111,17 +111,20 @@ export function HomeHeader({
           <Text
             style={{
               fontFamily: designTokens.font.medium,
-              fontSize: 28,
+              fontSize: Platform.OS === 'android' ? 24 : 28,
               color: colors.ink,
-              letterSpacing: -0.56,
-              lineHeight: 31,
+              letterSpacing: Platform.OS === 'android' ? -0.4 : -0.56,
+              lineHeight: Platform.OS === 'android' ? 28 : 31,
             }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS === 'android'}
+            minimumFontScale={0.85}
           >
             Good{' '}
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontSize: 32,
+                fontSize: Platform.OS === 'android' ? 28 : 32,
                 fontStyle: 'italic',
               }}
             >
@@ -132,12 +135,15 @@ export function HomeHeader({
           </Text>
           <Text
             style={{
-              marginTop: 6,
+              marginTop: Platform.OS === 'android' ? 4 : 6,
               color: colors.ink2,
               fontFamily: designTokens.font.regular,
-              fontSize: 14.5,
-              lineHeight: 20,
+              fontSize: Platform.OS === 'android' ? 13.5 : 14.5,
+              lineHeight: Platform.OS === 'android' ? 18 : 20,
             }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS === 'android'}
+            minimumFontScale={0.85}
           >
             {subtitle}
           </Text>

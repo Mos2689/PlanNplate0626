@@ -15,7 +15,7 @@
 //   • ShoppingCart — pragmatic utility for grocery.
 //   • Compass — curated discovery for explore.
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import {
   ShoppingCart,
@@ -207,8 +207,8 @@ export function QuickActions({
             {
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 16,
-              paddingHorizontal: 20,
+              gap: Platform.OS === 'android' ? 12 : 16,
+              paddingHorizontal: Platform.OS === 'android' ? 16 : 20,
               paddingVertical: 14,
               borderRadius: 24,
               backgroundColor: designTokens.colors.brand,
@@ -241,15 +241,17 @@ export function QuickActions({
               <ActionIcon name={primary.icon} size={22} color="#F6F2E9" strokeWidth={1.85} />
             )}
           </View>
-          <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+          <View style={{ flex: 1, minWidth: 0, marginRight: Platform.OS === 'android' ? 4 : 8 }}>
             <Text
               style={{
                 fontFamily: designTokens.font.semibold,
-                fontSize: 17,
+                fontSize: Platform.OS === 'android' ? 16 : 17,
                 color: '#fff',
                 letterSpacing: -0.25,
               }}
               numberOfLines={1}
+              adjustsFontSizeToFit={Platform.OS === 'android'}
+              minimumFontScale={0.85}
             >
               {isRestricted ? 'Paused' : primary.title}
             </Text>
@@ -257,12 +259,14 @@ export function QuickActions({
               <Text
                 style={{
                   fontFamily: designTokens.font.regular,
-                  fontSize: 13.5,
+                  fontSize: Platform.OS === 'android' ? 12.5 : 13.5,
                   color: 'rgba(246,242,233,0.78)',
                   marginTop: 4,
                   letterSpacing: -0.1,
                 }}
                 numberOfLines={1}
+                adjustsFontSizeToFit={Platform.OS === 'android'}
+                minimumFontScale={0.85}
               >
                 {isRestricted ? 'Resume to access this' : primary.subtitle}
               </Text>
@@ -315,8 +319,8 @@ export function QuickActions({
                       {
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 11,
-                        paddingHorizontal: 12,
+                        gap: Platform.OS === 'android' ? 8 : 11,
+                        paddingHorizontal: Platform.OS === 'android' ? 10 : 12,
                         paddingVertical: 13,
                         borderRadius: 18,
                         borderWidth: 1,
@@ -355,11 +359,13 @@ export function QuickActions({
                       <Text
                         style={{
                           fontFamily: designTokens.font.semibold,
-                          fontSize: 13.5,
+                          fontSize: Platform.OS === 'android' ? 12.5 : 13.5,
                           color: colors.ink,
                           letterSpacing: -0.15,
                         }}
                         numberOfLines={1}
+                        adjustsFontSizeToFit={Platform.OS === 'android'}
+                        minimumFontScale={0.85}
                       >
                         {isRestricted ? 'Paused' : item.title}
                       </Text>
@@ -367,12 +373,14 @@ export function QuickActions({
                         <Text
                           style={{
                             fontFamily: designTokens.font.regular,
-                            fontSize: 11.5,
+                            fontSize: Platform.OS === 'android' ? 10.5 : 11.5,
                             color: colors.ink2,
                             marginTop: 2,
                             letterSpacing: -0.05,
                           }}
                           numberOfLines={1}
+                          adjustsFontSizeToFit={Platform.OS === 'android'}
+                          minimumFontScale={0.85}
                         >
                           {isRestricted ? 'Resume' : item.subtitle}
                         </Text>

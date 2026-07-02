@@ -1,6 +1,6 @@
 // MealCard Component - PlannPlate Home design
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import {
   Plus,
@@ -419,7 +419,7 @@ export function MealCard({
       delayLongPress={500}
       style={{
         flexDirection: 'row',
-        gap: 14,
+        gap: Platform.OS === 'android' ? 10 : 14,
         padding: 12,
         borderRadius: 20,
         borderWidth: 1,
@@ -451,13 +451,15 @@ export function MealCard({
         <Text
           style={{
             fontFamily: designTokens.font.medium,
-            fontSize: 15.5,
+            fontSize: Platform.OS === 'android' ? 14 : 15.5,
             color: colors.ink,
             marginTop: 2,
             letterSpacing: -0.155,
-            lineHeight: 19,
+            lineHeight: Platform.OS === 'android' ? 17 : 19,
           }}
           numberOfLines={2}
+          adjustsFontSizeToFit={Platform.OS === 'android'}
+          minimumFontScale={0.85}
         >
           {title}
         </Text>
@@ -468,8 +470,8 @@ export function MealCard({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 8,
-              marginTop: 5,
+              gap: Platform.OS === 'android' ? 4 : 8,
+              marginTop: Platform.OS === 'android' ? 3 : 5,
             }}
           >
             {metaParts.map((part, idx) => (
@@ -489,9 +491,12 @@ export function MealCard({
                   <Text
                     style={{
                       fontFamily: designTokens.font.regular,
-                      fontSize: 12.5,
+                      fontSize: Platform.OS === 'android' ? 11.5 : 12.5,
                       color: colors.ink2,
                     }}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit={Platform.OS === 'android'}
+                    minimumFontScale={0.85}
                   >
                     {part.label}
                   </Text>
@@ -508,7 +513,7 @@ export function MealCard({
             justifyContent: 'space-between',
             alignItems: 'center',
             marginTop: 'auto',
-            paddingTop: 8,
+            paddingTop: Platform.OS === 'android' ? 4 : 8,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>

@@ -3,7 +3,7 @@ import { ThemeProvider } from '@react-navigation/core';
 import { Stack, useRouter, useSegments, useGlobalSearchParams } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, type AppStateStatus, Text, TextInput } from 'react-native';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -37,6 +37,18 @@ export const unstable_settings = {
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+// Globally disable font scaling to ensure UI consistency across devices,
+// especially on Android where system font scaling often breaks layouts.
+// @ts-expect-error - defaultProps is not strictly typed on Text in newer RN versions
+if (Text.defaultProps == null) Text.defaultProps = {};
+// @ts-expect-error
+Text.defaultProps.allowFontScaling = false;
+
+// @ts-expect-error
+if (TextInput.defaultProps == null) TextInput.defaultProps = {};
+// @ts-expect-error
+TextInput.defaultProps.allowFontScaling = false;
 
 const queryClient = new QueryClient();
 
