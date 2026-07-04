@@ -57,6 +57,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SvgXml } from 'react-native-svg';
 import { designTokens, easing, elevation } from '@/lib/design-tokens';
+import { deviceCurrencySymbol } from '@/lib/currency';
 import { getOptionIcon } from '@/lib/onboarding-icons';
 import { BrandLogo } from '@/components/BrandLogo';
 import * as Haptics from 'expo-haptics';
@@ -85,6 +86,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // ───────────────────────────────────────────────────────────────────────────────
 
 const DIETARY_OPTIONS = [
+  { id: 'None', label: 'No preference', icon: '🍽️' },
   { id: 'Vegetarian', label: 'Vegetarian', icon: '🥬' },
   { id: 'Vegan', label: 'Vegan', icon: '🌱' },
   { id: 'Pescatarian', label: 'Pescatarian', icon: '🐟' },
@@ -1501,13 +1503,20 @@ export default function OnboardingScreen() {
 
       <SectionEyebrow label="Dietary preferences" isDark={isDark} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 26 }}>
-        {DIETARY_OPTIONS.map((opt, idx) => (
+        {DIETARY_OPTIONS.map((opt) => (
           <OptionTile
             key={opt.id}
             emoji={opt.icon}
             label={opt.label}
-            selected={dietaryRestrictions.includes(opt.id)}
-            tone="sage"            onPress={() => toggleInList(opt.id, dietaryRestrictions, setDietaryRestrictions)}
+            // "No preference" is selected when nothing is chosen; picking it
+            // clears any diets, and picking a diet clears "No preference".
+            selected={opt.id === 'None' ? dietaryRestrictions.length === 0 : dietaryRestrictions.includes(opt.id)}
+            tone="sage"
+            onPress={() =>
+              opt.id === 'None'
+                ? setDietaryRestrictions([])
+                : toggleInList(opt.id, dietaryRestrictions, setDietaryRestrictions)
+            }
             isDark={isDark}
           />
         ))}
@@ -1535,7 +1544,7 @@ export default function OnboardingScreen() {
           marginBottom: 12,
         }}
       >
-        Tap any you need to skip — we'll never include them.
+        Tap any you're allergic to — you'll be flagged if a recipe contains the allergen.
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
         {ALLERGY_OPTIONS.map((opt) => (
@@ -1949,6 +1958,7 @@ export default function OnboardingScreen() {
   const renderPrioritiesStep = () => {
     const budgetPlaceholder = household === 'family_kids' ? '200' : '100';
     const monthlyPlaceholder = household === 'family_kids' ? '800' : '400';
+    const currencySymbol = deviceCurrencySymbol();
     return (
       <KeyboardAwareScrollView
         style={{ flex: 1 }}
@@ -2095,7 +2105,7 @@ export default function OnboardingScreen() {
                     color: isDark ? '#fff' : designTokens.colors.ink,
                   }}
                 >
-                  $
+                  {currencySymbol}
                 </Text>
                 <TextInput
                   value={field.value}

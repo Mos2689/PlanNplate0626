@@ -611,19 +611,31 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
   // Voice path: add every parsed (and already-categorized) item, then close.
   const handleAddVoiceItems = useCallback((voiceItems: ParsedGroceryItem[]) => {
     voiceItems.forEach((it) => {
-      onAdd({
-        name: it.name,
-        quantity: it.quantity,
-        unit: it.unit,
-        category: it.category,
-        isChecked: false,
-        recipeIds: [],
-      });
+      // Merge into an existing line when the item already exists (case- and
+      // plural-insensitive), instead of adding a duplicate. Voice add is
+      // silent (no confirm banner), so we use strict normalized-name equality
+      // — not the looser fuzzy match — so "chicken" folds into "Chicken" but
+      // won't wrongly fold into "chicken breast".
+      const match = existingItems.find(
+        (e) => normalizeName(e.name) === normalizeName(it.name),
+      );
+      if (match) {
+        onMerge(match.id, it.quantity, it.unit || 'item');
+      } else {
+        onAdd({
+          name: it.name,
+          quantity: it.quantity,
+          unit: it.unit,
+          category: it.category,
+          isChecked: false,
+          recipeIds: [],
+        });
+      }
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     resetForm();
     onClose();
-  }, [onAdd, resetForm, onClose]);
+  }, [existingItems, onMerge, onAdd, resetForm, onClose]);
 
   // Re-run fuzzy match every time the name changes — find ALL matches
   const handleNameChange = useCallback((text: string) => {

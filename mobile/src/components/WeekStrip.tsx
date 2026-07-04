@@ -16,6 +16,8 @@ export interface DayData {
   partial?: 'skipped';
   /** Optional month label shown above the first day of each month */
   monthLabel?: string;
+  /** True on the first day of a week (Monday) — used to draw a week divider */
+  isWeekStart?: boolean;
 }
 
 interface WeekStripProps {
@@ -28,6 +30,8 @@ interface WeekStripProps {
 
 const DAY_WIDTH = 48;
 const DAY_GAP = 4;
+// Total horizontal space a week divider adds to the row (line + its margins).
+const WEEK_DIVIDER_WIDTH = 1 + 8; // 1px hairline + 4px margin each side
 
 const STATUS_COLORS: Record<DayStatus, string> = {
   cooked: designTokens.colors.olive,
@@ -106,15 +110,23 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
   // We aim to roughly center the target day in the viewport.
   useEffect(() => {
     if (scrollToIndex == null || scrollToIndex < 0) return;
+    // Account for the week dividers rendered before the target day so the
+    // centering stays accurate as the strip spans multiple weeks.
+    const dividersBefore = days
+      .slice(0, scrollToIndex + 1)
+      .filter((d, i) => i > 0 && d.isWeekStart).length;
     const offset = Math.max(
       0,
-      scrollToIndex * (DAY_WIDTH + DAY_GAP) - DAY_WIDTH * 2.5,
+      scrollToIndex * (DAY_WIDTH + DAY_GAP) + dividersBefore * WEEK_DIVIDER_WIDTH - DAY_WIDTH * 2.5,
     );
     // Defer to next tick so the ScrollView is laid out
     const t = setTimeout(() => {
       scrollRef.current?.scrollTo({ x: offset, animated: true });
     }, 0);
     return () => clearTimeout(t);
+    // Intentionally only re-scroll when the selected index changes, not on every
+    // data refresh (e.g. marking a meal cooked), so the strip doesn't jump.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollToIndex]);
 
   return (
@@ -132,10 +144,26 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
       >
         {days.map((day, index) => {
           const isActive = day.status === 'today' || !!day.isToday;
+          // Vertical hairline marking the start of a new week (Monday). Skipped
+          // for the very first day so the strip doesn't open with a divider.
+          const weekDivider =
+            day.isWeekStart && index > 0 ? (
+              <View
+                style={{
+                  width: 1,
+                  alignSelf: 'stretch',
+                  marginVertical: 6,
+                  marginHorizontal: 4,
+                  borderRadius: 1,
+                  backgroundColor: isDark ? '#3a3a3a' : designTokens.colors.hair,
+                }}
+              />
+            ) : null;
           return (
-            <Pressable
-              key={index}
-              onPress={() => onDayPress?.(day, index)}
+            <React.Fragment key={index}>
+              {weekDivider}
+              <Pressable
+                onPress={() => onDayPress?.(day, index)}
               style={{
                 width: DAY_WIDTH,
                 alignItems: 'center',
@@ -187,8 +215,9 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
                 {day.date}
               </Text>
 
-              <StatusDots day={day} isActive={isActive} />
-            </Pressable>
+                <StatusDots day={day} isActive={isActive} />
+              </Pressable>
+            </React.Fragment>
           );
         })}
       </ScrollView>

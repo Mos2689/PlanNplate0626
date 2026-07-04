@@ -4,7 +4,7 @@
 // Additive enhancements are purely local (useState / useMemo / useSharedValue) — no new
 // store actions, routes, or API calls.
 // No Sparkles. One italic word per screen ("plan" in the bottom CTA).
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -96,6 +96,7 @@ export default function RecipeDetailScreen() {
   const toggleSaveRecipe = useMealPlanStore((s) => s.toggleSaveRecipe);
   const deleteRecipe = useMealPlanStore((s) => s.deleteRecipe);
   const updateRecipe = useMealPlanStore((s) => s.updateRecipe);
+  const updateMealSlot = useMealPlanStore((s) => s.updateMealSlot);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -111,6 +112,14 @@ export default function RecipeDetailScreen() {
   const [cookStep, setCookStep] = useState(0);
   const [imageOpen, setImageOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Edit-modal scroll plumbing: after "Add"/"Add step" appends a row at the
+  // bottom of its section, auto-scroll it into view so the button clearly
+  // registers as working. `pendingEditScroll` is set on press; the actual
+  // scroll runs in onContentSizeChange once the new row has laid out.
+  const editScrollRef = useRef<ScrollView>(null);
+  const instructionsSectionY = useRef(0);
+  const pendingEditScroll = useRef<'ingredients' | 'instructions' | null>(null);
 
   // Reanimated values for sticky header + heart pulse.
   const scrollY = useSharedValue(0);
@@ -170,6 +179,26 @@ export default function RecipeDetailScreen() {
     [mealSlots, recipe?.id]
   );
 
+  // Is this recipe planned for the current week or any week ahead? Deleting it
+  // would strip those upcoming meals, so we warn first. Slots dated before this
+  // week's Monday (previous weeks / prior dates) are treated as history and
+  // don't trigger the warning. Date keys are local "YYYY-MM-DD", so a plain
+  // string compare is chronological.
+  const recipeInUpcomingPlan = useMemo(() => {
+    if (!recipe) return false;
+    const now = new Date();
+    const dow = now.getDay();
+    const daysToMonday = dow === 0 ? 6 : dow - 1; // planner uses Monday-start weeks
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - daysToMonday);
+    weekStart.setHours(0, 0, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const weekStartKey = `${weekStart.getFullYear()}-${pad(weekStart.getMonth() + 1)}-${pad(weekStart.getDate())}`;
+    return mealSlots.some(
+      (s) => s.recipeId === recipe.id && typeof s.date === 'string' && s.date >= weekStartKey,
+    );
+  }, [mealSlots, recipe?.id]);
+
   // Seed the local servings stepper once the recipe loads (only first time).
   useEffect(() => {
     if (recipe && viewServings == null) {
@@ -213,6 +242,30 @@ export default function RecipeDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setViewServings(baseServings || recipe?.servings || 1);
   }, [baseServings, recipe?.servings]);
+
+  // Persist the stepper's serving change back to the meal slot so it survives
+  // leaving the screen. Only relevant when opened from a plan slot. We save on
+  // unmount (back / Start cooking) so the in-screen "Scaled from" indicator and
+  // reset button keep working during the session. A ref mirrors the latest
+  // values so the unmount cleanup isn't a stale closure.
+  const persistRef = useRef<{ slotId?: string; viewServings: number | null; recipeServings?: number }>({
+    viewServings: null,
+  });
+  persistRef.current = {
+    slotId,
+    viewServings,
+    recipeServings: recipe?.servings,
+  };
+  useEffect(() => {
+    return () => {
+      const { slotId: sid, viewServings: vs, recipeServings } = persistRef.current;
+      if (!sid || vs == null || recipeServings == null) return;
+      // Clear the override when it matches the recipe default, otherwise store it.
+      const override = vs === recipeServings ? undefined : vs;
+      updateMealSlot(sid, { servingOverride: override });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleToggleIngredient = useCallback((ingredientId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1383,9 +1436,26 @@ export default function RecipeDetailScreen() {
             </View>
 
             <ScrollView
+              ref={editScrollRef}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 100 }}
               keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() => {
+                const target = pendingEditScroll.current;
+                if (!target) return;
+                pendingEditScroll.current = null;
+                if (target === 'instructions') {
+                  // Instructions are the last section → end reveals the new step.
+                  editScrollRef.current?.scrollToEnd({ animated: true });
+                } else {
+                  // The new ingredient sits just above the Instructions header;
+                  // scroll so that boundary lands near the bottom of the viewport.
+                  editScrollRef.current?.scrollTo({
+                    y: Math.max(0, instructionsSectionY.current - 320),
+                    animated: true,
+                  });
+                }
+              }}
             >
               {/* Photo */}
               <View style={{ paddingHorizontal: 20, marginTop: 6 }}>
@@ -1527,6 +1597,7 @@ export default function RecipeDetailScreen() {
                   </Text>
                   <Pressable
                     onPress={() => {
+                      pendingEditScroll.current = 'ingredients';
                       setEditingIngredients(prev =>
                         prev ? [...prev, {
                           id: Date.now().toString(),
@@ -1648,7 +1719,12 @@ export default function RecipeDetailScreen() {
               </View>
 
               {/* Instructions editor */}
-              <View style={{ paddingHorizontal: 20, marginTop: 22 }}>
+              <View
+                style={{ paddingHorizontal: 20, marginTop: 22 }}
+                onLayout={(e) => {
+                  instructionsSectionY.current = e.nativeEvent.layout.y;
+                }}
+              >
                 <View style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -1666,6 +1742,7 @@ export default function RecipeDetailScreen() {
                   </Text>
                   <Pressable
                     onPress={() => {
+                      pendingEditScroll.current = 'instructions';
                       setEditingInstructions(prev =>
                         prev ? [...prev, ''] : null
                       );
@@ -1812,7 +1889,9 @@ export default function RecipeDetailScreen() {
               color: isDark ? '#888' : designTokens.colors.ink2,
               marginBottom: 22,
             }}>
-              Are you sure you want to delete "{recipe.name}"? This action cannot be undone.
+              {recipeInUpcomingPlan
+                ? `"${recipe.name}" is already added to your meal plan for this week or later. Deleting it will also remove it from those meals. Do you want to delete?`
+                : `Are you sure you want to delete "${recipe.name}"? This action cannot be undone.`}
             </Text>
 
             <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>

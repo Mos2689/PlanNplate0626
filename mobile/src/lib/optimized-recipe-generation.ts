@@ -140,7 +140,8 @@ function violatesStrictPreferences(
     (v) =>
       v.includes('DIETARY VIOLATION') ||
       v.includes('ALLERGY VIOLATION') ||
-      v.includes('CUISINE VIOLATION'),
+      v.includes('CUISINE VIOLATION') ||
+      v.includes('TIME VIOLATION'),
   );
 }
 

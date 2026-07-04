@@ -13,6 +13,7 @@ import {
   Users,
   X,
   Check,
+  Utensils,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
@@ -68,6 +69,10 @@ export function MealSlotSheet({
   onToggleCooked,
 }: MealSlotSheetProps) {
   const colors = getThemeColors(isDark);
+  const recipeById = React.useMemo(
+    () => new Map(recipes.map((r) => [r.id, r])),
+    [recipes],
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -160,7 +165,7 @@ export function MealSlotSheet({
             contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}
             showsVerticalScrollIndicator={false}
           >
-            {recipes.length === 0 ? (
+            {slots.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 36 }}>
                 <Text
                   style={{
@@ -173,9 +178,67 @@ export function MealSlotSheet({
                 </Text>
               </View>
             ) : (
-              recipes.map((recipe, idx) => {
-                const slot = slots[idx];
-                if (!slot) return null;
+              slots.map((slot) => {
+                const recipe = slot.recipeId ? recipeById.get(slot.recipeId) : undefined;
+
+                // Placeholder slot (Leftovers / Grab & go / Buy out / Skipped) —
+                // no recipe attached, but still needs to be visible & removable.
+                if (!recipe) {
+                  return (
+                    <View
+                      key={slot.id}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: 12,
+                        borderRadius: 18,
+                        borderWidth: 1,
+                        borderColor: colors.hair,
+                        backgroundColor: colors.bg,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 12,
+                          backgroundColor: '#F4F0E8',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Utensils size={18} color={designTokens.colors.ink2} strokeWidth={1.8} />
+                      </View>
+                      <Text
+                        style={{
+                          flex: 1,
+                          fontFamily: designTokens.font.medium,
+                          fontSize: 14.5,
+                          color: colors.ink,
+                          letterSpacing: -0.145,
+                        }}
+                        numberOfLines={2}
+                      >
+                        {slot.customMealName ?? 'Placeholder'}
+                      </Text>
+                      {!isRestricted && (
+                        <Pressable
+                          onPress={() => {
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            onRemove(slot.id);
+                          }}
+                          hitSlop={6}
+                          style={actionPillStyle}
+                        >
+                          <Trash2 size={15} color={designTokens.colors.olive} strokeWidth={1.8} />
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                }
+
                 const info = allergenMap[recipe.id];
                 const displayServings = slot.servingOverride ?? recipe.servings;
                 const totalMin = (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);

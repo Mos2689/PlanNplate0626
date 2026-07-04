@@ -644,6 +644,9 @@ export interface UserPreferences {
   // Lifetime count of successfully completed plan generations. Used to fire the
   // in-app review prompt after the user has felt the value a few times.
   plansCompletedCount?: number;
+  // Lifetime count of grocery lists the user has generated. Used (with
+  // plansCompletedCount) to time the review prompt.
+  groceryBuildsCount?: number;
 
   // ── DEPRECATED — dormant trial window ──
   // The 30-day client-side trial has been removed. This field is kept in
@@ -1542,11 +1545,13 @@ export const useMealPlanStore = create<MealPlanStore>()(
           if (uid) {
             db.upsertUserPreferences(uid, get().preferences).catch(() => {});
           }
-          // Ask for a review right after the user's FIRST completed plan — the
-          // natural "aha" moment for a new user. maybePrompt still self-gates
-          // (once per session, ≥3-day snooze, never after review/dismiss), so
-          // existing users who are already past their first plan aren't spammed.
-          if (planCount >= 1) {
+          // Ask for a review only once the user has felt real value: at least
+          // THREE completed plans AND they've used the grocery feature at least
+          // once. maybePrompt still self-gates (once per session, ≥3-day snooze,
+          // never after review/dismiss). The grocery path fires the same check,
+          // so whichever milestone is reached last triggers it.
+          const groceryBuilds = get().preferences.groceryBuildsCount ?? 0;
+          if (planCount >= 3 && groceryBuilds >= 1) {
             setTimeout(() => useReviewStore.getState().maybePrompt(), 1200);
           }
           setTimeout(() => {
@@ -2467,15 +2472,6 @@ export const useMealPlanStore = create<MealPlanStore>()(
           }
         }
 
-        // Loving a recipe — if this save brings the library to 3+ saved
-        // recipes, nudge for a review (self-gates on snooze/session).
-        if (newRecipe.isSaved) {
-          const savedCount = get().recipes.filter((r) => r.isSaved).length;
-          if (savedCount >= 3) {
-            setTimeout(() => useReviewStore.getState().maybePrompt(), 800);
-          }
-        }
-
         return tempId;
       },
 
@@ -2541,14 +2537,6 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const userId = getCurrentUserId();
         if (userId && isValidUUID(resolvedSaveId)) {
           db.updateRecipe(userId, resolvedSaveId, { isSaved: newIsSaved });
-        }
-
-        // Loving a recipe — once the library hits 3+ saved, nudge for a review.
-        if (newIsSaved) {
-          const savedCount = get().recipes.filter((r) => r.isSaved).length;
-          if (savedCount >= 3) {
-            setTimeout(() => useReviewStore.getState().maybePrompt(), 800);
-          }
         }
       },
 
@@ -3042,6 +3030,17 @@ export const useMealPlanStore = create<MealPlanStore>()(
         });
         set({ groceryItems });
 
+        // Count this grocery build, then ask for a review once the user has
+        // both generated ≥3 plans AND used the grocery feature at least once.
+        // Mirrors the check in the plan-completion path so whichever milestone
+        // is reached last fires it. maybePrompt self-gates (session/snooze).
+        set((state) => ({
+          preferences: {
+            ...state.preferences,
+            groceryBuildsCount: (state.preferences.groceryBuildsCount ?? 0) + 1,
+          },
+        }));
+
         // Sync to database. replaceUserGroceryItems wipes + reinserts ALL of the
         // user's grocery rows, so we must persist the union of generated +
         // custom items — otherwise regenerating the list silently drops the
@@ -3049,6 +3048,14 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const userId = getCurrentUserId();
         if (userId) {
           db.replaceUserGroceryItems(userId, [...groceryItems, ...get().customGroceryItems]);
+          db.upsertUserPreferences(userId, get().preferences).catch(() => {});
+        }
+
+        {
+          const prefs = get().preferences;
+          if ((prefs.plansCompletedCount ?? 0) >= 3 && (prefs.groceryBuildsCount ?? 0) >= 1) {
+            setTimeout(() => useReviewStore.getState().maybePrompt(), 1200);
+          }
         }
 
         // Find similar ingredients (same name + category but different units)

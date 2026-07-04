@@ -3,7 +3,7 @@ import { ThemeProvider } from '@react-navigation/core';
 import { Stack, useRouter, useSegments, useGlobalSearchParams } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, View, ActivityIndicator, StyleSheet, type AppStateStatus } from 'react-native';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -274,7 +274,19 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     };
   }, [router]);
 
+  // Prevent the first-launch flash of the meal tab: for an un-onboarded user
+  // the tab group can render for a frame before the gate redirects to
+  // signup/onboarding. While that redirect is pending (hydrated, not onboarded,
+  // and not yet on an auth/onboarding screen) we cover everything with a
+  // splash-matching screen so nothing flashes.
+  const seg0 = segments[0];
+  const onAuthOrOnboarding =
+    seg0 === 'login' || seg0 === 'signup' || seg0 === 'reset-password' ||
+    seg0 === 'verify-otp' || seg0 === 'onboarding';
+  const holdForRedirect = storeHydrated && !hasCompletedOnboarding && !onAuthOrOnboarding;
+
   return (
+    <View style={{ flex: 1 }}>
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -405,6 +417,17 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           already-reviewed / snooze / don't-ask-again. */}
       <ReviewPromptModal isDark={colorScheme === 'dark'} />
     </ThemeProvider>
+      {holdForRedirect && (
+        <View
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: '#fefdfb', alignItems: 'center', justifyContent: 'center' },
+          ]}
+        >
+          <ActivityIndicator size="large" color="#6a7d56" />
+        </View>
+      )}
+    </View>
   );
 }
 
