@@ -17,7 +17,6 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { useMealPlanStore, isStockPlaceholderImage, type MealSlot, type Recipe } from '@/lib/store';
-import { useReviewStore } from '@/lib/review-store';
 import { VIBES } from '@/lib/vibe-inference';
 import { useActiveNudge } from '@/hooks/useActiveNudge';
 import { useAuthStore } from '@/lib/auth-store';
@@ -426,6 +425,7 @@ export default function HomeScreen() {
         partial,
         isToday: isSelected,
         monthLabel: showMonth ? MONTH_LABELS[monthIdx] : undefined,
+        isWeekStart: date.getDay() === 1, // Monday — planner uses Monday-start weeks
         disabled: !canSelect(date),
       };
     });
@@ -567,6 +567,18 @@ export default function HomeScreen() {
     },
     [stripDates, canSelect, setSelectedDateInStore],
   );
+
+  // Advance the plan view to the next day (chevron beside the day heading).
+  const handleNextDay = useCallback(() => {
+    const next = new Date(selectedDate);
+    next.setDate(next.getDate() + 1);
+    if (!canSelect(next)) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
+    Haptics.selectionAsync();
+    setSelectedDateInStore(formatLocalDateKey(next));
+  }, [selectedDate, canSelect, setSelectedDateInStore]);
 
   const handleMonthYearChange = useCallback(
     (date: Date) => {
@@ -975,6 +987,15 @@ export default function HomeScreen() {
                 message={activeNudge.cardProps.message}
                 primaryAction={activeNudge.cardProps.primaryAction}
                 secondaryAction={activeNudge.cardProps.secondaryAction}
+                steps={
+                  activeNudge.variant === 'grocery-firsttime'
+                    ? [
+                        { label: 'Plan', state: 'done' },
+                        { label: 'Grocery', state: 'active' },
+                        { label: 'Cook', state: 'todo' },
+                      ]
+                    : undefined
+                }
                 onPrimaryAction={handleNudgePrimary}
                 onSecondaryAction={handleNudgeSecondary}
                 onDismiss={handleNudgeDismiss}
@@ -1017,6 +1038,30 @@ export default function HomeScreen() {
                   {headingSubLabel}
                 </Text>
               </View>
+
+              {/* Next-day chevron — jumps the plan view forward one day. */}
+              <Pressable
+                onPress={handleNextDay}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Next day"
+                style={{
+                  alignSelf: 'center',
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  borderWidth: 1,
+                  borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <ChevronRight
+                  size={20}
+                  color={isDark ? '#fff' : designTokens.colors.ink2}
+                  strokeWidth={2}
+                />
+              </Pressable>
             </View>
 
             {/* Meal cards */}
@@ -1473,11 +1518,6 @@ export default function HomeScreen() {
           );
           setLastWeeklyPromptAt(ratedAt);
           setNudgeSheet(null);
-          // Positive moment — if the user loved at least one meal this week,
-          // ask for an app review (self-gates on snooze / already-reviewed).
-          if (ratings.some((r) => r.stars >= 4)) {
-            setTimeout(() => useReviewStore.getState().maybePrompt(), 700);
-          }
         }}
       />
     </View>

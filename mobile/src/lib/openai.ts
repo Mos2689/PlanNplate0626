@@ -551,6 +551,39 @@ export function recipeMatchesPreferredCuisine(
   return false;
 }
 
+// Which coarse bucket a precise minute value falls into (mirrors
+// mealPrepTimeFromMinutes in store.ts; inlined to avoid a circular value import).
+function bucketForMinutes(m: number): 'quick' | 'moderate' | 'elaborate' {
+  if (m <= 30) return 'quick';
+  if (m <= 60) return 'moderate';
+  return 'elaborate';
+}
+
+// Effective max TOTAL (prep + cook) minutes for a plan. Uses the PRECISE
+// weeknight-minutes value — so "15 min" really means ≤15, not the coarse
+// "quick ≤30" bucket — but only when it's consistent with the (possibly
+// per-plan-overridden) prep-time bucket. If a plan override changed the bucket,
+// the override wins. Returns null for "no limit" (elaborate).
+export function maxPrepMinutes(preferences: UserPreferences): number | null {
+  const wm = preferences.weeknightMinutes;
+  const bucket = preferences.mealPrepTime;
+  if (typeof wm === 'number' && wm > 0 && bucketForMinutes(wm) === bucket) {
+    return wm;
+  }
+  switch (bucket) {
+    case 'quick': return 30;
+    case 'moderate': return 60;
+    default: return null;
+  }
+}
+
+// Small grace window over the target (e.g. 15 min → aim ≤20).
+const PREP_TIME_TOLERANCE_MIN = 5;
+// Fallback ceiling: the prompt pushes for the user's actual window, but we only
+// HARD-reject above this so a very tight window (e.g. 15 min) can't leave a slot
+// empty — we'd rather bump up to 30 min than fail to fill the meal.
+const TIME_FALLBACK_CEILING_MIN = 30;
+
 export function validateRecipeAgainstPreferences(
   recipe: GeneratedRecipeResponse,
   preferences: UserPreferences,
@@ -803,16 +836,17 @@ export function validateRecipeAgainstPreferences(
     }
 
     // ── #3c  PREP TIME ───────────────────────────────────────────
-    if (preferences.mealPrepTime) {
+    // Enforce the user's actual cooking window. A 15-min pick means recipes
+    // must be ≤15 (grace up to 20); 30 → ≤35; 60 → ≤65; elaborate → no limit.
+    const maxMin = maxPrepMinutes(preferences);
+    if (maxMin !== null) {
       const totalTime = recipe.prepTime + recipe.cookTime;
-      const prepTimeLower = preferences.mealPrepTime.toLowerCase();
-
-      if (prepTimeLower === 'quick' && totalTime > 35) {
-        // 35 min with small tolerance over 30
-        violations.push(`TIME VIOLATION: Total time ${totalTime}min exceeds 'quick' limit (≤30min)`);
-      } else if (prepTimeLower === 'moderate' && totalTime > 65) {
-        // 65 min with small tolerance over 60
-        violations.push(`TIME VIOLATION: Total time ${totalTime}min exceeds 'moderate' limit (≤60min)`);
+      // Aim for the user's window (the prompt asks for it), but only HARD-reject
+      // above a fallback ceiling so a too-tight window never leaves a slot
+      // empty — e.g. a 15-min pick still accepts up to 30 min rather than fail.
+      const hardCeiling = Math.max(maxMin + PREP_TIME_TOLERANCE_MIN, TIME_FALLBACK_CEILING_MIN);
+      if (totalTime > hardCeiling) {
+        violations.push(`TIME VIOLATION: Total time ${totalTime}min exceeds the ${hardCeiling}min limit`);
       }
     }
   }
@@ -1055,13 +1089,13 @@ CUISINE PREFERENCE: Prefer these cuisines where it fits: ${cuisineList}.`;
     }
   }
 
-  // 3e. Prep time
+  // 3e. Prep time — enforce the user's ACTUAL cooking window (precise minutes),
+  // not just the coarse quick/moderate/elaborate bucket.
   prompt += `
 PREP TIME: ${preferences.mealPrepTime}.`;
-  if (preferences.mealPrepTime === 'quick') {
-    prompt += ` Total cook + prep time MUST be ≤ 30 minutes.`;
-  } else if (preferences.mealPrepTime === 'moderate') {
-    prompt += ` Total cook + prep time MUST be ≤ 60 minutes.`;
+  const promptMaxMin = maxPrepMinutes(preferences);
+  if (promptMaxMin !== null) {
+    prompt += ` The TOTAL prep + cook time MUST be ≤ ${promptMaxMin} minutes — this is a HARD limit (never exceed ${promptMaxMin + PREP_TIME_TOLERANCE_MIN} minutes). Choose quick-cooking cuts, minimal steps, and fast techniques so it genuinely fits within ${promptMaxMin} minutes.`;
   } else {
     prompt += ` No time limit.`;
   }
@@ -1333,7 +1367,7 @@ ${preferences.allergies.length > 0 ? `✓ NO ingredient contains: ${preferences.
 ${preferences.dietaryRestrictions.length > 0 ? `✓ EVERY ingredient complies with: ${preferences.dietaryRestrictions.join(', ')}` : ''}
 ✓ Servings = ${preferences.servingSize}
 ✓ Skill level = ${preferences.cookingSkillLevel}
-${preferences.mealPrepTime === 'quick' ? '✓ Total time ≤ 30 min' : preferences.mealPrepTime === 'moderate' ? '✓ Total time ≤ 60 min' : ''}
+${maxPrepMinutes(preferences) !== null ? `✓ Total time ≤ ${maxPrepMinutes(preferences)} min` : ''}
 If ANY check fails, fix the recipe before returning.
 
 Only return valid JSON, no markdown or explanation.`;
