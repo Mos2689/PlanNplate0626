@@ -12,7 +12,7 @@ import { View, Text, Pressable, Modal, Linking, Platform } from 'react-native';
 import { Star, X } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import {
   useReviewStore,
   APP_STORE_ID,
@@ -194,7 +194,7 @@ export function ReviewPromptModal({ isDark = false }: ReviewPromptModalProps) {
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontStyle: 'italic',
+                fontStyle: serifItalicFontStyle,
                 fontSize: 25,
               }}
             >

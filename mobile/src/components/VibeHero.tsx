@@ -52,7 +52,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { designTokens, easing } from '@/lib/design-tokens';
+import { designTokens, easing, serifItalicFontStyle } from '@/lib/design-tokens';
 import { VIBE_BY_ID, type VibeId } from '@/lib/vibe-inference';
 import { getVibeTheme } from '@/lib/vibe-theme';
 
@@ -328,7 +328,7 @@ export function VibeHero({
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontStyle: 'italic',
+                fontStyle: serifItalicFontStyle,
                 fontSize: 32,
               }}
             >

@@ -62,7 +62,7 @@ import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 
 import { useColorScheme } from '@/lib/useColorScheme';
-import { designTokens, easing, elevation, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, easing, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import {
   useMealPlanStore,
   type Recipe,
@@ -326,7 +326,7 @@ export default function VibeCookingScreen() {
             }}
           >
             Pick a {''}
-            <Text style={{ fontFamily: designTokens.font.serifItalic, fontStyle: 'italic', fontSize: 26 }}>
+            <Text style={{ fontFamily: designTokens.font.serifItalic, fontStyle: serifItalicFontStyle, fontSize: 26 }}>
               vibe
             </Text>{' '}
             to cook.
@@ -1128,7 +1128,7 @@ export default function VibeCookingScreen() {
               <Text
                 style={{
                   fontFamily: designTokens.font.serifItalic,
-                  fontStyle: 'italic',
+                  fontStyle: serifItalicFontStyle,
                   fontSize: 17,
                   color: '#FAF7F0',
                 }}

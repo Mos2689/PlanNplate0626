@@ -1,5 +1,21 @@
 // PlannPlate Design Tokens
 // Based on Home screen design specifications
+import { androidTokens, t } from './platform-tokens';
+
+// fontStyle for the Instrument Serif accent word ("evening", "recipes",
+// "favorites", …) — the brand's signature flourish, used across most screens.
+//
+// The loaded font file `InstrumentSerif_400Regular_Italic` already contains
+// italic glyphs, so `fontFamily: designTokens.font.serifItalic` renders the
+// italic serif on its own. On iOS, additionally passing `fontStyle: 'italic'`
+// is fine. On Android it is HARMFUL: the OS tries to synthesize italic on top
+// of a custom family and, failing to match a styled variant, drops the serif
+// face entirely — leaving a plain slanted sans (the bug this fixes). So we
+// pass 'normal' on Android and let the font's own italic glyphs show.
+//
+// Always use this instead of a literal `fontStyle: 'italic'` alongside
+// `designTokens.font.serifItalic`.
+export const serifItalicFontStyle = t<'italic' | 'normal'>('italic', 'normal');
 
 export const designTokens = {
   // Core palette
@@ -77,20 +93,23 @@ export const easing = {
 };
 
 // Card elevation presets — subtle, warm, hardware-accelerated.
+// iOS `shadow*` props are the visual source of truth; Android `elevation`
+// is dialed down separately because RN's elevation renders far heavier
+// than the soft iOS shadow at the same nominal value.
 export const elevation = {
   card: {
     shadowColor: '#15140F',
     shadowOpacity: 0.04,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    elevation: t(2, androidTokens.elevation.card),
   },
   thumb: {
     shadowColor: '#15140F',
     shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    elevation: t(4, androidTokens.elevation.thumb),
   },
 } as const;
 

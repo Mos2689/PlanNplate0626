@@ -43,7 +43,7 @@ import {
   // consistent and free of generic-AI iconography.
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import type { UserPreferences } from '@/lib/store';
 import {
   DIETARY_OPTIONS,
@@ -469,7 +469,7 @@ export function PlanTuneSheet({
                   <Text
                     style={{
                       fontFamily: designTokens.font.serifItalic,
-                      fontStyle: 'italic',
+                      fontStyle: serifItalicFontStyle,
                       fontSize: 28,
                       letterSpacing: -0.3,
                     }}

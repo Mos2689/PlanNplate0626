@@ -2,7 +2,8 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { Search, Bell, Crown } from 'lucide-react-native';
-import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 import { UserAvatarDisplay } from './ProfileSetupModal';
 
 interface HomeHeaderProps {
@@ -111,10 +112,10 @@ export function HomeHeader({
           <Text
             style={{
               fontFamily: designTokens.font.medium,
-              fontSize: Platform.OS === 'android' ? 24 : 28,
+              fontSize: t(28, 24),
               color: colors.ink,
-              letterSpacing: Platform.OS === 'android' ? -0.4 : -0.56,
-              lineHeight: Platform.OS === 'android' ? 28 : 31,
+              letterSpacing: t(-0.56, -0.4),
+              lineHeight: t(31, 28),
             }}
             numberOfLines={1}
             adjustsFontSizeToFit={Platform.OS === 'android'}
@@ -124,8 +125,8 @@ export function HomeHeader({
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontSize: Platform.OS === 'android' ? 28 : 32,
-                fontStyle: 'italic',
+                fontSize: t(32, 28),
+                fontStyle: serifItalicFontStyle,
               }}
             >
               {word}
@@ -135,11 +136,11 @@ export function HomeHeader({
           </Text>
           <Text
             style={{
-              marginTop: Platform.OS === 'android' ? 4 : 6,
+              marginTop: t(6, 4),
               color: colors.ink2,
               fontFamily: designTokens.font.regular,
-              fontSize: Platform.OS === 'android' ? 13.5 : 14.5,
-              lineHeight: Platform.OS === 'android' ? 18 : 20,
+              fontSize: t(14.5, 13.5),
+              lineHeight: t(20, 18),
             }}
             numberOfLines={1}
             adjustsFontSizeToFit={Platform.OS === 'android'}

@@ -25,6 +25,7 @@ import {
   Lock,
 } from 'lucide-react-native';
 import { designTokens, elevation, getThemeColors } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 import { VibeHeartIcon } from '@/components/icons/VibeHeartIcon';
 
 export interface QuickActionItem {
@@ -207,8 +208,8 @@ export function QuickActions({
             {
               flexDirection: 'row',
               alignItems: 'center',
-              gap: Platform.OS === 'android' ? 12 : 16,
-              paddingHorizontal: Platform.OS === 'android' ? 16 : 20,
+              gap: t(16, 12),
+              paddingHorizontal: t(20, 16),
               paddingVertical: 14,
               borderRadius: 24,
               backgroundColor: designTokens.colors.brand,
@@ -241,11 +242,11 @@ export function QuickActions({
               <ActionIcon name={primary.icon} size={22} color="#F6F2E9" strokeWidth={1.85} />
             )}
           </View>
-          <View style={{ flex: 1, minWidth: 0, marginRight: Platform.OS === 'android' ? 4 : 8 }}>
+          <View style={{ flex: 1, minWidth: 0, marginRight: t(8, 4) }}>
             <Text
               style={{
                 fontFamily: designTokens.font.semibold,
-                fontSize: Platform.OS === 'android' ? 16 : 17,
+                fontSize: t(17, 16),
                 color: '#fff',
                 letterSpacing: -0.25,
               }}
@@ -259,7 +260,7 @@ export function QuickActions({
               <Text
                 style={{
                   fontFamily: designTokens.font.regular,
-                  fontSize: Platform.OS === 'android' ? 12.5 : 13.5,
+                  fontSize: t(13.5, 12.5),
                   color: 'rgba(246,242,233,0.78)',
                   marginTop: 4,
                   letterSpacing: -0.1,
@@ -319,8 +320,8 @@ export function QuickActions({
                       {
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: Platform.OS === 'android' ? 8 : 11,
-                        paddingHorizontal: Platform.OS === 'android' ? 10 : 12,
+                        gap: t(11, 8),
+                        paddingHorizontal: t(12, 10),
                         paddingVertical: 13,
                         borderRadius: 18,
                         borderWidth: 1,
@@ -359,7 +360,7 @@ export function QuickActions({
                       <Text
                         style={{
                           fontFamily: designTokens.font.semibold,
-                          fontSize: Platform.OS === 'android' ? 12.5 : 13.5,
+                          fontSize: t(13.5, 12.5),
                           color: colors.ink,
                           letterSpacing: -0.15,
                         }}
@@ -373,7 +374,7 @@ export function QuickActions({
                         <Text
                           style={{
                             fontFamily: designTokens.font.regular,
-                            fontSize: Platform.OS === 'android' ? 10.5 : 11.5,
+                            fontSize: t(11.5, 10.5),
                             color: colors.ink2,
                             marginTop: 2,
                             letterSpacing: -0.05,

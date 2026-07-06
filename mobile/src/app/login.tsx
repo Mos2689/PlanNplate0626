@@ -39,7 +39,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useAuthStore } from '@/lib/auth-store';
 import { useMealPlanStore } from '@/lib/store';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { useColorScheme } from '@/lib/useColorScheme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -363,7 +363,7 @@ export default function LoginScreen() {
                     <Text
                       style={{
                         fontFamily: designTokens.font.serifItalic,
-                        fontStyle: 'italic',
+                        fontStyle: serifItalicFontStyle,
                         fontSize: 30,
                         letterSpacing: -0.3,
                       }}
@@ -850,7 +850,7 @@ export default function LoginScreen() {
                 <Text
                   style={{
                     fontFamily: designTokens.font.serifItalic,
-                    fontStyle: 'italic',
+                    fontStyle: serifItalicFontStyle,
                     fontSize: 22,
                     letterSpacing: -0.22,
                   }}

@@ -56,7 +56,7 @@ import Animated, {
   FadeInDown,
 } from 'react-native-reanimated';
 import { SvgXml } from 'react-native-svg';
-import { designTokens, easing, elevation } from '@/lib/design-tokens';
+import { designTokens, easing, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
 import { deviceCurrencySymbol } from '@/lib/currency';
 import { getOptionIcon } from '@/lib/onboarding-icons';
 import { BrandLogo } from '@/components/BrandLogo';
@@ -65,6 +65,7 @@ import { useColorScheme } from '@/lib/useColorScheme';
 import { useAuthStore } from '@/lib/auth-store';
 import { useSubscriptionStore, useUserName } from '@/lib/subscription-store';
 import { logMetaEvent } from '@/lib/meta-sdk';
+import { track } from '@/lib/analytics';
 import {
   useMealPlanStore,
   type Household,
@@ -509,7 +510,7 @@ function StepHeader({
         <Text
           style={{
             fontFamily: designTokens.font.serifItalic,
-            fontStyle: 'italic',
+            fontStyle: serifItalicFontStyle,
             fontSize: 30,
             letterSpacing: -0.3,
           }}
@@ -694,6 +695,7 @@ export default function OnboardingScreen() {
   // Persist current step on each change so the user can resume after exit.
   useEffect(() => {
     setPreferences({ onboardingStep: currentStep });
+    track('onboarding_step_viewed', { step: STEP_NAMES[currentStep] || `Step ${currentStep}` });
   }, [currentStep, setPreferences]);
 
   // Image upload handlers
@@ -892,6 +894,20 @@ export default function OnboardingScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // Log onboarding complete event to Meta SDK
       logMetaEvent('SubmitApplication', { step: 'onboarding_complete' });
+      // Log to PostHog
+      track('onboarding_completed', {
+        dietaryRestrictions,
+        allergies,
+        cuisinePreferences,
+        cookingSkillLevel,
+        household,
+        cookingDaysPerWeek,
+        weeknightMinutes,
+        equipment,
+        mealHabits,
+        priorities,
+        goals,
+      });
 
       // Peak-end reveal: show a brief "profile ready" finale that echoes the
       // user's picks, then hand off to the Plan-Your-Meal screen. The value-
@@ -1228,7 +1244,7 @@ export default function OnboardingScreen() {
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontStyle: 'italic',
+                fontStyle: serifItalicFontStyle,
                 fontSize: 46,
                 lineHeight: 52,
                 letterSpacing: -0.5,
@@ -2220,7 +2236,7 @@ export default function OnboardingScreen() {
                 <Text
                   style={{
                     fontFamily: designTokens.font.serifItalic,
-                    fontStyle: 'italic',
+                    fontStyle: serifItalicFontStyle,
                     fontSize: 38,
                     letterSpacing: -0.4,
                   }}

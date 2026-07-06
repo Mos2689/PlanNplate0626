@@ -43,7 +43,7 @@ import { classifyRecipeByContent } from '@/lib/meal-type-validator';
 import { validateIngredients } from '@/lib/ingredient-validator';
 import { useRecipeFeatureGate } from '@/hooks/useRecipeFeatureGate';
 import { apiCall, apiFormCall } from '@/lib/api-router';
-import { designTokens, elevation, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
 
@@ -951,7 +951,7 @@ export default function AddRecipeScreen() {
               <Text
                 style={{
                   fontFamily: designTokens.font.serifItalic,
-                  fontStyle: 'italic',
+                  fontStyle: serifItalicFontStyle,
                   fontSize: 22,
                   letterSpacing: -0.22,
                 }}

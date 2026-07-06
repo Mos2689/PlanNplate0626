@@ -26,7 +26,8 @@ import { DishImage } from '@/components/DishImage';
 import { ChevronRight, Star } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { designTokens, elevation, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 import type { CuratedMealPlan } from '@/lib/curated-meal-plans';
 import type { CookingLog, MealSlot, UserPreferences, MealPlanRating } from '@/lib/store';
 import { deriveLivePlanStats, pickPersonalFit, compactNumber } from '@/lib/plan-stats';
@@ -111,18 +112,18 @@ export function PnPSpecials({
           <Text
             style={{
               fontFamily: designTokens.font.medium,
-              fontSize: 21,
+              fontSize: t(21, 18),
               color: colors.ink,
-              letterSpacing: -0.42,
+              letterSpacing: t(-0.42, -0.3),
             }}
           >
             PnP{' '}
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontStyle: 'italic',
-                fontSize: 24,
-                letterSpacing: -0.22,
+                fontStyle: serifItalicFontStyle,
+                fontSize: t(24, 21),
+                letterSpacing: t(-0.22, -0.15),
               }}
             >
               Specials

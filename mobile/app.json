@@ -38,6 +38,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
       [
         "expo-build-properties",
         {
@@ -77,6 +78,10 @@
         "projectId": "bfd56b37-eb5f-4ea1-bfbc-162a06547f44"
       }
     },
-    "icon": "./icon.png"
+    "icon": "./icon.png",
+    "notification": {
+      "icon": "./public/notification-icon.png",
+      "color": "#6a7d56"
+    }
   }
 }

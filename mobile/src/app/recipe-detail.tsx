@@ -70,7 +70,7 @@ import { useMealPlanStore, type Recipe, type Ingredient } from '@/lib/store';
 import { formatIngredientDisplay, resolveMeasurementSystem } from '@/lib/unit-conversion';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { uploadFile } from '@/lib/upload';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
@@ -1354,7 +1354,7 @@ export default function RecipeDetailScreen() {
                 Add to meal{' '}
                 <Text style={{
                   fontFamily: designTokens.font.serifItalic,
-                  fontStyle: 'italic',
+                  fontStyle: serifItalicFontStyle,
                   fontSize: 17,
                   color: designTokens.colors.cream,
                 }}>

@@ -67,7 +67,7 @@ import {
   useIsPremiumResolved,
   useSubscriptionStore,
 } from '@/lib/subscription-store';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { useBehaviorInsights } from '@/hooks/useBehaviorInsights';
 import {
   getInferredGenerationContext,
@@ -804,7 +804,7 @@ export default function PlanMealsScreen() {
               numberOfLines={1}
             >
               Plan your{' '}
-              <Text style={{ fontFamily: designTokens.font.serifItalic, fontStyle: 'italic' }}>
+              <Text style={{ fontFamily: designTokens.font.serifItalic, fontStyle: serifItalicFontStyle }}>
                 meals
               </Text>
             </Text>

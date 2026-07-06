@@ -35,7 +35,7 @@ import {
   CURATED_MEAL_PLANS,
   type CuratedMealPlan,
 } from '@/lib/curated-meal-plans';
-import { designTokens, elevation } from '@/lib/design-tokens';
+import { designTokens, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
 import { PlanRatingPrompt } from '@/components/PlanRatingPrompt';
 import { SocialProofRow } from '@/components/PnPSpecials';
 import {
@@ -334,7 +334,7 @@ export default function CuratedPlanDetailScreen() {
               <Text
                 style={{
                   fontFamily: designTokens.font.serifItalic,
-                  fontStyle: 'italic',
+                  fontStyle: serifItalicFontStyle,
                   fontSize: 32,
                   letterSpacing: -0.32,
                 }}

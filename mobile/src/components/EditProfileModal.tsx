@@ -42,7 +42,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { UserAvatarDisplay } from '@/components/ProfileSetupModal';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 // Option vocabularies are shared with PlanTuneSheet via a single
 // module so the two surfaces never drift on a new diet or cuisine.
 import {
@@ -542,7 +542,7 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
               <Text
                 style={{
                   fontFamily: designTokens.font.serifItalic,
-                  fontStyle: 'italic',
+                  fontStyle: serifItalicFontStyle,
                   fontSize: 22,
                   letterSpacing: -0.22,
                 }}

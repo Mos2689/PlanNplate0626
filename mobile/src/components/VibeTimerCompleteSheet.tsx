@@ -18,7 +18,7 @@ import { View, Text, Pressable, Modal } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Clock, RotateCcw, Check } from 'lucide-react-native';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 
 export interface VibeTimerCompleteSheetProps {
   visible: boolean;
@@ -120,7 +120,7 @@ export function VibeTimerCompleteSheet({
               <Text
                 style={{
                   fontFamily: designTokens.font.serifItalic,
-                  fontStyle: 'italic',
+                  fontStyle: serifItalicFontStyle,
                   fontSize: 32,
                   letterSpacing: -0.32,
                 }}

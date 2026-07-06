@@ -32,7 +32,7 @@ import {
   useStickyHeaderScroll,
 } from '@/components/StickyScreenHeader';
 import { useColorScheme } from '@/lib/useColorScheme';
-import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import {
   CURATED_MEAL_PLANS,
   getCuratedPlanRecipes,
@@ -465,7 +465,7 @@ export default function CuratedMealPlanScreen() {
               <Text
                 style={{
                   fontFamily: designTokens.font.serifItalic,
-                  fontStyle: 'italic',
+                  fontStyle: serifItalicFontStyle,
                   fontSize: 42,
                   letterSpacing: -1.05,
                   color: colors.ink,
@@ -625,7 +625,7 @@ export default function CuratedMealPlanScreen() {
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontStyle: 'italic',
+                fontStyle: serifItalicFontStyle,
                 fontSize: 14,
                 color: colors.ink2,
               }}
@@ -704,7 +704,7 @@ export default function CuratedMealPlanScreen() {
               <Text
                 style={{
                   fontFamily: designTokens.font.serifItalic,
-                  fontStyle: 'italic',
+                  fontStyle: serifItalicFontStyle,
                   fontSize: 13,
                   color: colors.ink2,
                 }}

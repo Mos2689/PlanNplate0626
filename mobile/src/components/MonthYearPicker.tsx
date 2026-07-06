@@ -16,7 +16,8 @@ import {
 } from 'react-native';
 import { ChevronDown, Check } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { designTokens, elevation } from '@/lib/design-tokens';
+import { designTokens, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 
 interface MonthYearPickerProps {
   selectedDate: Date;
@@ -159,9 +160,9 @@ export function MonthYearPicker({
               <Text
                 style={{
                   fontFamily: designTokens.font.medium,
-                  fontSize: 28,
+                  fontSize: t(28, 24),
                   color: inkPrimary,
-                  letterSpacing: -0.56,
+                  letterSpacing: t(-0.56, -0.4),
                 }}
               >
                 {MONTHS[selectedDate.getMonth()]}{' '}
@@ -212,18 +213,18 @@ export function MonthYearPicker({
               <Text
                 style={{
                   fontFamily: designTokens.font.medium,
-                  fontSize: 24,
+                  fontSize: t(24, 21),
                   color: inkPrimary,
-                  letterSpacing: -0.48,
+                  letterSpacing: t(-0.48, -0.35),
                 }}
               >
                 Pick a{' '}
                 <Text
                   style={{
                     fontFamily: designTokens.font.serifItalic,
-                    fontStyle: 'italic',
-                    fontSize: 28,
-                    letterSpacing: -0.28,
+                    fontStyle: serifItalicFontStyle,
+                    fontSize: t(28, 24),
+                    letterSpacing: t(-0.28, -0.2),
                   }}
                 >
                   month

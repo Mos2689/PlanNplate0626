@@ -49,7 +49,8 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useIsAccountPaused, useSubscriptionStore, useHasPremiumAccess, useIsPremiumResolved } from '@/lib/subscription-store';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { cn } from '@/lib/cn';
-import { designTokens, getThemeColors, getCategoryTint, elevation } from '@/lib/design-tokens';
+import { designTokens, getThemeColors, getCategoryTint, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 import { transcribeAudioToText, parseGroceryItemsFromTranscript, type ParsedGroceryItem } from '@/lib/voice-grocery';
 import { formatFromBaseUnit, resolveMeasurementSystem, type MeasurementSystem } from '@/lib/unit-conversion';
 import { ShoppingListCompletionModal } from '@/components/ShoppingListCompletionModal';
@@ -1531,22 +1532,22 @@ function SavedListsModal({ visible, onClose, savedLists, onLoadList, onDeleteLis
         }}>
           <Text style={{
             fontFamily: designTokens.font.medium,
-            fontSize: 19,
+            fontSize: t(19, 17),
             color: isDark ? '#fff' : designTokens.colors.ink,
-            letterSpacing: -0.38,
+            letterSpacing: t(-0.38, -0.25),
           }}>
             Shopping{' '}
             <Text style={{
               fontFamily: designTokens.font.serifItalic,
-              fontStyle: 'italic',
-              fontSize: 22,
-              letterSpacing: -0.22,
+              fontStyle: serifItalicFontStyle,
+              fontSize: t(22, 19),
+              letterSpacing: t(-0.22, -0.15),
             }}>
               lists
             </Text>
             <Text style={{
               fontFamily: designTokens.font.regular,
-              fontSize: 14,
+              fontSize: t(14, 13),
               color: isDark ? '#888' : designTokens.colors.ink3,
             }}>
               {'  '}({savedLists.length}/4)
@@ -2255,11 +2256,11 @@ export default function GroceryScreen() {
                 <Text
                   style={{
                     fontFamily: designTokens.font.serifItalic,
-                    fontStyle: 'italic',
-                    fontSize: 32,
+                    fontStyle: serifItalicFontStyle,
+                    fontSize: t(32, 28),
                     color: colors.ink,
-                    letterSpacing: -0.64,
-                    lineHeight: 36,
+                    letterSpacing: t(-0.64, -0.5),
+                    lineHeight: t(36, 32),
                   }}
                   numberOfLines={1}
                 >
@@ -2268,11 +2269,11 @@ export default function GroceryScreen() {
                 {subtitleText ? (
                   <Text
                     style={{
-                      marginTop: 6,
+                      marginTop: t(6, 4),
                       fontFamily: designTokens.font.regular,
-                      fontSize: 14.5,
+                      fontSize: t(14.5, 13.5),
                       color: colors.ink2,
-                      lineHeight: 20,
+                      lineHeight: t(20, 18),
                     }}
                   >
                     {subtitleText}
@@ -2652,9 +2653,9 @@ export default function GroceryScreen() {
               <Text
                 style={{
                   fontFamily: designTokens.font.medium,
-                  fontSize: 18,
+                  fontSize: t(18, 16),
                   color: colors.ink,
-                  letterSpacing: -0.36,
+                  letterSpacing: t(-0.36, -0.25),
                 }}
               >
                 {isSavedListMode ? 'Shopping list' : 'Ingredients'}

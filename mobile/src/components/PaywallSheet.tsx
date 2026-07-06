@@ -50,7 +50,8 @@ import { friendlyPurchaseError } from '@/lib/purchase-errors';
 import { useRouter } from 'expo-router';
 import { useSubscriptionStore } from '@/lib/subscription-store';
 import { MONTHLY_FEATURE_LIMITS } from '@/lib/store';
-import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 import type { PurchasesPackage } from 'react-native-purchases';
 import { logMetaPurchase } from '@/lib/meta-sdk';
 
@@ -300,18 +301,18 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
               <Text
                 style={{
                   fontFamily: designTokens.font.medium,
-                  fontSize: 27,
+                  fontSize: t(27, 23),
                   color: colors.ink,
-                  letterSpacing: -0.54,
-                  lineHeight: 33,
+                  letterSpacing: t(-0.54, -0.38),
+                  lineHeight: t(33, 29),
                 }}
               >
                 Do{' '}
                 <Text
                   style={{
                     fontFamily: designTokens.font.serifItalic,
-                    fontStyle: 'italic',
-                    fontSize: 31,
+                    fontStyle: serifItalicFontStyle,
+                    fontSize: t(31, 27),
                   }}
                 >
                   more

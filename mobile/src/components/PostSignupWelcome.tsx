@@ -15,7 +15,8 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Check } from 'lucide-react-native';
 import { useSubscriptionStore } from '@/lib/subscription-store';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 
 const WELCOME_DURATION_MS = 1200;
 
@@ -92,21 +93,21 @@ const styles = StyleSheet.create({
   },
   headline: {
     fontFamily: designTokens.font.medium,
-    fontSize: 28,
+    fontSize: t(28, 24),
     color: designTokens.colors.ink,
-    letterSpacing: -0.5,
+    letterSpacing: t(-0.5, -0.35),
     textAlign: 'center',
-    lineHeight: 36,
+    lineHeight: t(36, 32),
   },
   headlineItalic: {
     fontFamily: designTokens.font.serifItalic,
-    fontStyle: 'italic',
-    fontSize: 32,
-    letterSpacing: -0.4,
+    fontStyle: serifItalicFontStyle,
+    fontSize: t(32, 28),
+    letterSpacing: t(-0.4, -0.28),
   },
   subline: {
     fontFamily: designTokens.font.regular,
-    fontSize: 15,
+    fontSize: t(15, 14),
     color: designTokens.colors.ink2,
     marginTop: 12,
     letterSpacing: -0.1,

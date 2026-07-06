@@ -6,7 +6,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { CheckCircle2 } from 'lucide-react-native';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 
 interface ShoppingListCompletionModalProps {
   visible: boolean;
@@ -75,7 +75,7 @@ export const ShoppingListCompletionModal: React.FC<ShoppingListCompletionModalPr
           <Text
             style={{
               fontFamily: designTokens.font.serifItalic,
-              fontStyle: 'italic',
+              fontStyle: serifItalicFontStyle,
               fontSize: 24,
               letterSpacing: -0.24,
             }}

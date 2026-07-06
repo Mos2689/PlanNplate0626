@@ -59,7 +59,7 @@ import {
   type CuratedMeal,
 } from '@/lib/curated-meal-plans';
 import { type CookingPreferences } from '@/lib/high-protein-plan';
-import { designTokens, elevation } from '@/lib/design-tokens';
+import { designTokens, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -689,7 +689,7 @@ export default function CuratedPlanBrowseScreen() {
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontStyle: 'italic',
+                fontStyle: serifItalicFontStyle,
                 fontSize: 30,
                 letterSpacing: -0.3,
               }}

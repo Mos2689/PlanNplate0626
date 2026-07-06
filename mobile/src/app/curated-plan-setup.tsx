@@ -75,7 +75,7 @@ import {
   type BatchConfig,
 } from '@/lib/high-protein-plan';
 import { clearMealSlotsInRange } from '@/lib/database';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import {
   StickyScreenHeader,
   useStickyHeaderScroll,
@@ -530,7 +530,7 @@ function ApplyRitualOverlay({
           <Text
             style={{
               fontFamily: designTokens.font.serifItalic,
-              fontStyle: 'italic',
+              fontStyle: serifItalicFontStyle,
               fontSize: 46,
               color: isDark ? '#fff' : designTokens.colors.ink,
               letterSpacing: -0.7,
@@ -1124,7 +1124,7 @@ export default function CuratedPlanSetupScreen() {
               {titleSplit.head}
               {titleSplit.head ? ' ' : ''}
               <Text
-                style={{ fontFamily: designTokens.font.serifItalic, fontStyle: 'italic' }}
+                style={{ fontFamily: designTokens.font.serifItalic, fontStyle: serifItalicFontStyle }}
               >
                 {titleSplit.tail}
               </Text>

@@ -41,7 +41,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useAuthStore } from '@/lib/auth-store';
 import { useSubscriptionStore } from '@/lib/subscription-store';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { logMetaEvent } from '@/lib/meta-sdk';
 
@@ -583,7 +583,7 @@ export default function SignupScreen() {
                     <Text
                       style={{
                         fontFamily: designTokens.font.serifItalic,
-                        fontStyle: 'italic',
+                        fontStyle: serifItalicFontStyle,
                         fontSize: 30,
                         letterSpacing: -0.3,
                       }}

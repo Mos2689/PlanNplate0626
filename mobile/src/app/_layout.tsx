@@ -3,7 +3,7 @@ import { ThemeProvider } from '@react-navigation/core';
 import { Stack, useRouter, useSegments, useGlobalSearchParams } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, type AppStateStatus, Text, TextInput, View, ActivityIndicator, StyleSheet } from 'react-native';
+import { AppState, type AppStateStatus, Text, TextInput, View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -12,6 +12,8 @@ import { StoreHydration } from '@/components/StoreHydration';
 import { useAuthStore } from '@/lib/auth-store';
 import { useNeedsProfileSetup, useSubscriptionLoading, useSubscriptionStore } from '@/lib/subscription-store';
 import { useMealPlanStore } from '@/lib/store';
+import { posthog } from '@/lib/analytics';
+import { PostHogProvider } from 'posthog-react-native';
 import { useEffect } from 'react';
 import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
@@ -28,6 +30,7 @@ import {
 import { InstrumentSerif_400Regular_Italic } from '@expo-google-fonts/instrument-serif';
 import { initializeMetaSDK } from '@/lib/meta-sdk';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { scheduleInactivityNotifications, cancelAllNotifications, requestNotificationPermissions } from '@/lib/notifications';
 
 
 
@@ -40,15 +43,17 @@ SplashScreen.preventAutoHideAsync();
 
 // Globally disable font scaling to ensure UI consistency across devices,
 // especially on Android where system font scaling often breaks layouts.
-// @ts-expect-error - defaultProps is not strictly typed on Text in newer RN versions
-if (Text.defaultProps == null) Text.defaultProps = {};
-// @ts-expect-error
-Text.defaultProps.allowFontScaling = false;
+if (Platform.OS === 'android') {
+  // @ts-expect-error - defaultProps is not strictly typed on Text in newer RN versions
+  if (Text.defaultProps == null) Text.defaultProps = {};
+  // @ts-expect-error
+  Text.defaultProps.allowFontScaling = false;
 
-// @ts-expect-error
-if (TextInput.defaultProps == null) TextInput.defaultProps = {};
-// @ts-expect-error
-TextInput.defaultProps.allowFontScaling = false;
+  // @ts-expect-error
+  if (TextInput.defaultProps == null) TextInput.defaultProps = {};
+  // @ts-expect-error
+  TextInput.defaultProps.allowFontScaling = false;
+}
 
 const queryClient = new QueryClient();
 
@@ -116,6 +121,26 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   const hasCompletedOnboarding = useMealPlanStore(
     (s) => s.preferences.hasCompletedOnboarding,
   );
+  const currentUser = useAuthStore((s) => s.currentUser);
+
+  // PostHog screen tracking
+  useEffect(() => {
+    if (segments.length > 0) {
+      posthog.screen(segments.join('/'));
+    }
+  }, [segments]);
+
+  // PostHog auth tracking
+  useEffect(() => {
+    if (isAuthenticated && currentUser?.id && !isAnonymous) {
+      posthog.identify(currentUser.id, {
+        email: currentUser.email,
+        name: currentUser.user_metadata?.name || '',
+      });
+    } else if (!isAuthenticated) {
+      posthog.reset();
+    }
+  }, [isAuthenticated, isAnonymous, currentUser]);
 
   // AUTH-LAST: onboarding comes FIRST, before the meal-planning screen, for
   // every fresh user. We gate on the locally-persisted `hasCompletedOnboarding`
@@ -190,13 +215,39 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   // stale `isPremium=false` and see the paywall on their next tap.
   useEffect(() => {
     const handleChange = (status: AppStateStatus) => {
-      if (status !== 'active') return;
-      const userId = useAuthStore.getState().currentUser?.id;
-      if (!userId) return;
-      void useSubscriptionStore.getState().syncWithRevenueCat(userId);
+      if (status === 'active') {
+        const userId = useAuthStore.getState().currentUser?.id;
+        if (userId) {
+          void useSubscriptionStore.getState().syncWithRevenueCat(userId);
+        }
+      }
     };
     const sub = AppState.addEventListener('change', handleChange);
     return () => sub.remove();
+  }, []);
+
+  // Handle inactivity notifications scheduling based on AppState
+  useEffect(() => {
+    // We optionally request permissions on first mount in this component 
+    // so we can schedule them when they leave.
+    requestNotificationPermissions().catch(() => {});
+
+    const handleAppStateChange = (status: AppStateStatus) => {
+      if (status === 'active') {
+        // App is foregrounded, cancel all pending inactivity notifications
+        void cancelAllNotifications();
+      } else if (status === 'background' || status === 'inactive') {
+        // App went to background, schedule inactivity notifications
+        const profileName = useSubscriptionStore.getState().profile?.name;
+        const emailName = useAuthStore.getState().currentUser?.email?.split('@')[0];
+        const userName = profileName || emailName || '';
+        
+        void scheduleInactivityNotifications(userName);
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
   }, []);
 
   // Handle deep links for password reset and email verification
@@ -492,17 +543,19 @@ export default function RootLayout() {
   }
 
   return (
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <KeyboardProvider>
-            <StoreHydration>
-              <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-              <RootLayoutNav colorScheme={colorScheme} />
-            </StoreHydration>
-          </KeyboardProvider>
-        </GestureHandlerRootView>
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <PostHogProvider client={posthog} autocapture>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <KeyboardProvider>
+              <StoreHydration>
+                <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+                <RootLayoutNav colorScheme={colorScheme} />
+              </StoreHydration>
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </PostHogProvider>
   );
 }

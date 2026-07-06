@@ -41,7 +41,7 @@ import {
 import { isOpenAIConfigured } from '@/lib/openai';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { useRecipeFeatureGate } from '@/hooks/useRecipeFeatureGate';
-import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 
 type ImportMethod = 'url' | 'text';
 
@@ -215,7 +215,7 @@ export default function ImportRecipeScreen() {
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontStyle: 'italic',
+                fontStyle: serifItalicFontStyle,
                 fontSize: 22,
                 letterSpacing: -0.22,
               }}

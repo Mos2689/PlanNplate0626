@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
+import { t } from '@/lib/platform-tokens';
 import {
   Plus,
   ChevronRight,
@@ -124,9 +125,9 @@ export function MealCard({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 14,
-          paddingTop: 14,
-          paddingBottom: 14,
+          gap: t(14, 12),
+          paddingTop: t(14, 12),
+          paddingBottom: t(14, 12),
           paddingLeft: 16,
           paddingRight: 14,
           borderRadius: 18,
@@ -163,7 +164,7 @@ export function MealCard({
           <Text
             style={{
               fontFamily: designTokens.font.regular,
-              fontSize: 15,
+              fontSize: t(15, 14),
               color: colors.ink,
               marginTop: 2,
             }}
@@ -187,9 +188,9 @@ export function MealCard({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 12,
+          gap: t(12, 10),
           paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingVertical: t(12, 10),
           borderRadius: 18,
           borderWidth: 1,
           borderColor: colors.hair,
@@ -216,7 +217,7 @@ export function MealCard({
           <Text
             style={{
               fontFamily: designTokens.font.regular,
-              fontSize: 14.5,
+              fontSize: t(14.5, 13.5),
               color: colors.ink,
               marginTop: 1,
               letterSpacing: -0.07,
@@ -326,9 +327,9 @@ export function MealCard({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 12,
+          gap: t(12, 10),
           paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingVertical: t(12, 10),
           borderRadius: 18,
           borderWidth: 1,
           borderColor: colors.hair,
@@ -356,7 +357,7 @@ export function MealCard({
           <Text
             style={{
               fontFamily: designTokens.font.medium,
-              fontSize: 14.5,
+              fontSize: t(14.5, 13.5),
               color: leftoverDish ? colors.ink : colors.ink2,
               marginTop: 2,
               letterSpacing: -0.1,
@@ -419,7 +420,7 @@ export function MealCard({
       delayLongPress={500}
       style={{
         flexDirection: 'row',
-        gap: Platform.OS === 'android' ? 10 : 14,
+        gap: t(14, 10),
         padding: 12,
         borderRadius: 20,
         borderWidth: 1,
@@ -451,11 +452,11 @@ export function MealCard({
         <Text
           style={{
             fontFamily: designTokens.font.medium,
-            fontSize: Platform.OS === 'android' ? 14 : 15.5,
+            fontSize: t(15.5, 14),
             color: colors.ink,
             marginTop: 2,
             letterSpacing: -0.155,
-            lineHeight: Platform.OS === 'android' ? 17 : 19,
+            lineHeight: t(19, 17),
           }}
           numberOfLines={2}
           adjustsFontSizeToFit={Platform.OS === 'android'}
@@ -470,8 +471,8 @@ export function MealCard({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: Platform.OS === 'android' ? 4 : 8,
-              marginTop: Platform.OS === 'android' ? 3 : 5,
+              gap: t(8, 4),
+              marginTop: t(5, 3),
             }}
           >
             {metaParts.map((part, idx) => (
@@ -491,7 +492,7 @@ export function MealCard({
                   <Text
                     style={{
                       fontFamily: designTokens.font.regular,
-                      fontSize: Platform.OS === 'android' ? 11.5 : 12.5,
+                      fontSize: t(12.5, 11.5),
                       color: colors.ink2,
                     }}
                     numberOfLines={1}
@@ -513,7 +514,7 @@ export function MealCard({
             justifyContent: 'space-between',
             alignItems: 'center',
             marginTop: 'auto',
-            paddingTop: Platform.OS === 'android' ? 4 : 8,
+            paddingTop: t(8, 4),
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>

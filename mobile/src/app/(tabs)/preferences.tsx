@@ -43,7 +43,8 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useSubscriptionStore, useAccountStatus, useIsPremium, useUserAvatar, useUserName } from '@/lib/subscription-store';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { cn } from '@/lib/cn';
-import { designTokens, elevation, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 import { resolveMeasurementSystem } from '@/lib/unit-conversion';
 import { AccountManagementModal } from '@/components/AccountManagementModal';
 import { UserAvatarDisplay } from '@/components/ProfileSetupModal';
@@ -178,10 +179,10 @@ function StatTile({ icon, tint, value, unit, hint, isDark, index, onPress }: Sta
         <Text
           style={{
             fontFamily: designTokens.font.medium,
-            fontSize: 22,
+            fontSize: t(22, 19),
             color: colors.ink,
-            letterSpacing: -0.44,
-            lineHeight: 22,
+            letterSpacing: t(-0.44, -0.3),
+            lineHeight: t(22, 20),
           }}
         >
           {value}
@@ -713,11 +714,11 @@ export default function ProfileScreen() {
                 <Text
                   style={{
                     fontFamily: designTokens.font.serifItalic,
-                    fontStyle: 'italic',
-                    fontSize: 30,
+                    fontStyle: serifItalicFontStyle,
+                    fontSize: t(30, 26),
                     color: colors.ink,
-                    letterSpacing: -0.6,
-                    lineHeight: 32,
+                    letterSpacing: t(-0.6, -0.45),
+                    lineHeight: t(32, 29),
                   }}
                   numberOfLines={1}
                 >
@@ -885,10 +886,10 @@ export default function ProfileScreen() {
                 style={{
                   marginTop: 6,
                   fontFamily: designTokens.font.medium,
-                  fontSize: 22,
+                  fontSize: t(22, 19),
                   color: colors.ink,
-                  letterSpacing: -0.44,
-                  lineHeight: 28,
+                  letterSpacing: t(-0.44, -0.3),
+                  lineHeight: t(28, 25),
                 }}
               >
                 {householdLine} · {prepStyleItalic(preferences.mealPrepTime)}

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { androidTokens, t } from '@/lib/platform-tokens';
 
 export type DayStatus = 'cooked' | 'planned' | 'skipped' | 'empty' | 'today';
 
@@ -95,7 +96,7 @@ function LegendDot({ color, label, isEmpty }: { color: string; label: string; is
           borderColor: isEmpty ? designTokens.colors.emptyBorder : 'transparent',
         }}
       />
-      <Text style={{ fontSize: 11, color: designTokens.colors.ink3, fontFamily: designTokens.font.regular }}>
+      <Text style={{ fontSize: t(11, androidTokens.weekStrip.legendFontSize), color: designTokens.colors.ink3, fontFamily: designTokens.font.regular }}>
         {label}
       </Text>
     </View>
@@ -167,9 +168,9 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
               style={{
                 width: DAY_WIDTH,
                 alignItems: 'center',
-                gap: 6,
-                paddingTop: 8,
-                paddingBottom: 10,
+                gap: t(6, 5),
+                paddingTop: t(8, androidTokens.weekStrip.dayPaddingTop),
+                paddingBottom: t(10, androidTokens.weekStrip.dayPaddingBottom),
                 borderRadius: 14,
                 backgroundColor: isActive ? designTokens.colors.brand : 'transparent',
               }}
@@ -179,7 +180,7 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
               <Text
                 style={{
                   fontFamily: designTokens.font.semibold,
-                  fontSize: 9.5,
+                  fontSize: t(9.5, androidTokens.weekStrip.monthFontSize),
                   letterSpacing: 0.4,
                   textTransform: 'uppercase',
                   color: isActive ? 'rgba(255,255,255,0.85)' : designTokens.colors.ink2,
@@ -194,7 +195,7 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
               <Text
                 style={{
                   fontFamily: designTokens.font.medium,
-                  fontSize: 11,
+                  fontSize: t(11, androidTokens.weekStrip.dayLetterFontSize),
                   letterSpacing: 0.44,
                   textTransform: 'uppercase',
                   color: isActive ? 'rgba(255,255,255,0.7)' : designTokens.colors.ink3,
@@ -207,7 +208,7 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
               <Text
                 style={{
                   fontFamily: designTokens.font.semibold,
-                  fontSize: 17,
+                  fontSize: t(17, androidTokens.weekStrip.dateFontSize),
                   letterSpacing: -0.34,
                   color: isActive ? '#fff' : colors.ink,
                 }}

@@ -8,12 +8,19 @@ import {
   ShoppingBasket,
   UserRound,
 } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { designTokens } from '@/lib/design-tokens';
+import { androidTokens, t } from '@/lib/platform-tokens';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  // Under Android edge-to-edge the tab bar draws behind the system nav bar,
+  // whose reserved height varies per device (gesture / 3-button / OEM panel).
+  // Pad by the live inset so labels always clear it. iOS keeps its fixed
+  // values via t(), so this is Android-only.
+  const insets = useSafeAreaInsets();
 
   // Active = ink (warm near-black), inactive = ink3 (muted tertiary) — matches every tab-bar
   // mockup in the design handoff (home.jsx / recipes.jsx / grocery.jsx / profile.jsx).
@@ -30,9 +37,9 @@ export default function TabLayout() {
           backgroundColor: isDark ? '#1a1a1a' : '#FFFFFF',
           borderTopColor: isDark ? '#2a2a2a' : designTokens.colors.hair2,
           borderTopWidth: 1,
-          height: 85,
-          paddingTop: 10,
-          paddingBottom: 26,
+          height: t(85, androidTokens.tabBar.contentHeight + insets.bottom),
+          paddingTop: t(10, androidTokens.tabBar.paddingTop),
+          paddingBottom: t(26, insets.bottom + androidTokens.tabBar.paddingBottomBase),
           elevation: 0,
           shadowOpacity: 0,
         },

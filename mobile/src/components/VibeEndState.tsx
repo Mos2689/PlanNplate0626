@@ -45,7 +45,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { designTokens, easing } from '@/lib/design-tokens';
+import { designTokens, easing, serifItalicFontStyle } from '@/lib/design-tokens';
 import { VIBE_BY_ID, type VibeId } from '@/lib/vibe-inference';
 import { getVibeTheme } from '@/lib/vibe-theme';
 
@@ -257,7 +257,7 @@ export function VibeEndState({
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
-                fontStyle: 'italic',
+                fontStyle: serifItalicFontStyle,
                 fontSize: 40,
                 color: '#FFFFFF',
               }}

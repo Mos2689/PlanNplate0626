@@ -39,7 +39,8 @@ import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import { useMealPlanStore, type Recipe } from '@/lib/store';
 import { useColorScheme } from '@/lib/useColorScheme';
-import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 import { CURATED_MEAL_PLANS } from '@/lib/curated-meal-plans';
 import { DuplicateRecipeModal, findDuplicateGroups } from '@/components/DuplicateRecipeModal';
 
@@ -104,16 +105,22 @@ function SourceBadge({ recipe }: { recipe: Recipe }) {
         paddingVertical: 2,
         borderRadius: 999,
         backgroundColor: bgColor,
+        flexShrink: 1,
+        minWidth: 0,
       }}
     >
       {icon}
       <Text
+        numberOfLines={1}
+        ellipsizeMode="tail"
         style={{
           fontFamily: designTokens.font.medium,
           fontSize: 10.5,
           letterSpacing: 0.21,
           textTransform: 'uppercase',
           color: textColor,
+          flexShrink: 1,
+          minWidth: 0,
         }}
       >
         {label}
@@ -325,6 +332,7 @@ function RecipeRow({ recipe, onPress, onToggleSave, onAddToPlan, isDark, index }
               flexDirection: 'row',
               justifyContent: 'space-between',
               alignItems: 'center',
+              gap: 8,
               marginTop: 8,
             }}
           >
@@ -342,6 +350,7 @@ function RecipeRow({ recipe, onPress, onToggleSave, onAddToPlan, isDark, index }
                 paddingHorizontal: 11,
                 paddingVertical: 6,
                 borderRadius: 999,
+                flexShrink: 0,
                 // Theme-aware so the pill stays readable in dark mode
                 // (was static `hair2` cream, which left white text invisible).
                 backgroundColor: colors.pill,
@@ -562,18 +571,18 @@ export default function RecipesScreen() {
                     <Text
                       style={{
                         fontFamily: designTokens.font.medium,
-                        fontSize: 28,
+                        fontSize: t(28, 24),
                         color: colors.ink,
-                        letterSpacing: -0.56,
-                        lineHeight: 31,
+                        letterSpacing: t(-0.56, -0.4),
+                        lineHeight: t(31, 28),
                       }}
                     >
                       Your{' '}
                       <Text
                         style={{
                           fontFamily: designTokens.font.serifItalic,
-                          fontSize: 32,
-                          fontStyle: 'italic',
+                          fontSize: t(32, 28),
+                          fontStyle: serifItalicFontStyle,
                         }}
                       >
                         recipes
@@ -581,11 +590,11 @@ export default function RecipesScreen() {
                     </Text>
                     <Text
                       style={{
-                        marginTop: 6,
+                        marginTop: t(6, 4),
                         fontFamily: designTokens.font.regular,
-                        fontSize: 14.5,
+                        fontSize: t(14.5, 13.5),
                         color: colors.ink2,
-                        lineHeight: 20,
+                        lineHeight: t(20, 18),
                       }}
                     >
                       Saved ideas, weeknight wins, and meals worth repeating.
@@ -665,10 +674,10 @@ export default function RecipesScreen() {
                     <Text
                       style={{
                         fontFamily: designTokens.font.semibold,
-                        fontSize: 22,
+                        fontSize: t(22, 19),
                         color: colors.ink,
-                        lineHeight: 24,
-                        letterSpacing: -0.44,
+                        lineHeight: t(24, 22),
+                        letterSpacing: t(-0.44, -0.3),
                       }}
                     >
                       {uniqueRecipes.length}
@@ -695,10 +704,10 @@ export default function RecipesScreen() {
                     <Text
                       style={{
                         fontFamily: designTokens.font.semibold,
-                        fontSize: 22,
+                        fontSize: t(22, 19),
                         color: colors.ink,
-                        lineHeight: 24,
-                        letterSpacing: -0.44,
+                        lineHeight: t(24, 22),
+                        letterSpacing: t(-0.44, -0.3),
                       }}
                     >
                       {savedRecipesCount}
@@ -971,9 +980,9 @@ export default function RecipesScreen() {
                 <Text
                   style={{
                     fontFamily: designTokens.font.medium,
-                    fontSize: 18,
+                    fontSize: t(18, 16),
                     color: colors.ink,
-                    letterSpacing: -0.36,
+                    letterSpacing: t(-0.36, -0.25),
                   }}
                 >
                   All recipes

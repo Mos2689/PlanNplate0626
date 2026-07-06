@@ -66,7 +66,7 @@ import { useOptimizedGeneration } from '@/lib/use-optimized-generation';
 import { initializeCacheTable } from '@/lib/recipe-cache';
 import { isDateSelectable } from '@/lib/date-restrictions';
 import { validateIngredients } from '@/lib/ingredient-validator';
-import { designTokens, elevation, getThemeColors } from '@/lib/design-tokens';
+import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import { VibeDeck } from '@/components/VibeDeck';
 import { InferredFridgeChips } from '@/components/InferredFridgeChips';
 import {
@@ -1214,7 +1214,7 @@ export default function GenerateRecipeScreen() {
               <Text
                 style={{
                   fontFamily: designTokens.font.serifItalic,
-                  fontStyle: 'italic',
+                  fontStyle: serifItalicFontStyle,
                   fontSize: 22,
                   letterSpacing: -0.22,
                 }}
@@ -3034,7 +3034,7 @@ export default function GenerateRecipeScreen() {
                 <Text
                   style={{
                     fontFamily: designTokens.font.serifItalic,
-                    fontStyle: 'italic',
+                    fontStyle: serifItalicFontStyle,
                     fontSize: 26,
                     letterSpacing: -0.26,
                   }}
