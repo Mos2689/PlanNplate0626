@@ -41,6 +41,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useMealPlanStore } from '@/lib/store';
 import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { useColorScheme } from '@/lib/useColorScheme';
+import { track } from '@/lib/analytics';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -153,6 +154,7 @@ export default function LoginScreen() {
     const result = await login(email, password);
 
     if (result.success) {
+      track('auth_login', { method: 'email' });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace('/(tabs)');
     } else {
