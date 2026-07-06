@@ -44,6 +44,7 @@ import { useSubscriptionStore } from '@/lib/subscription-store';
 import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { logMetaEvent } from '@/lib/meta-sdk';
+import { track } from '@/lib/analytics';
 
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -369,6 +370,7 @@ export default function SignupScreen() {
 
     if (result.success) {
       logMetaEvent('CompleteRegistration', { registration_method: 'email' });
+      track('auth_signup', { method: 'email' });
 
       // Email confirmation is OFF in Supabase, so signUp returns an active
       // session. Drop the user straight into the app and let
