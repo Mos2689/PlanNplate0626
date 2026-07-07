@@ -87,7 +87,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // ───────────────────────────────────────────────────────────────────────────────
 
 const DIETARY_OPTIONS = [
-  { id: 'None', label: 'No preference', icon: '🍽️' },
+  { id: 'None', label: 'None', icon: '🍽️' },
   { id: 'Vegetarian', label: 'Vegetarian', icon: '🥬' },
   { id: 'Vegan', label: 'Vegan', icon: '🌱' },
   { id: 'Pescatarian', label: 'Pescatarian', icon: '🐟' },

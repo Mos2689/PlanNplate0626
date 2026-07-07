@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronRight, AlertTriangle, Trash2 } from 'lucide-react-native';
+import { ChevronRight, ChevronLeft, AlertTriangle, Trash2 } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
   FadeInRight,
@@ -580,6 +580,18 @@ export default function HomeScreen() {
     setSelectedDateInStore(formatLocalDateKey(next));
   }, [selectedDate, canSelect, setSelectedDateInStore]);
 
+  // Go back to the previous day
+  const handlePrevDay = useCallback(() => {
+    const prev = new Date(selectedDate);
+    prev.setDate(prev.getDate() - 1);
+    if (!canSelect(prev)) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
+    Haptics.selectionAsync();
+    setSelectedDateInStore(formatLocalDateKey(prev));
+  }, [selectedDate, canSelect, setSelectedDateInStore]);
+
   const handleMonthYearChange = useCallback(
     (date: Date) => {
       if (!canSelect(date)) {
@@ -1039,29 +1051,52 @@ export default function HomeScreen() {
                 </Text>
               </View>
 
-              {/* Next-day chevron — jumps the plan view forward one day. */}
-              <Pressable
-                onPress={handleNextDay}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Next day"
-                style={{
-                  alignSelf: 'center',
-                  width: 38,
-                  height: 38,
-                  borderRadius: 19,
-                  borderWidth: 1,
-                  borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <ChevronRight
-                  size={20}
-                  color={isDark ? '#fff' : designTokens.colors.ink2}
-                  strokeWidth={2}
-                />
-              </Pressable>
+              {/* Day navigation chevrons */}
+              <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'center' }}>
+                <Pressable
+                  onPress={handlePrevDay}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Previous day"
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    borderWidth: 1,
+                    borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <ChevronLeft
+                    size={20}
+                    color={isDark ? '#fff' : designTokens.colors.ink2}
+                    strokeWidth={2}
+                  />
+                </Pressable>
+
+                <Pressable
+                  onPress={handleNextDay}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Next day"
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    borderWidth: 1,
+                    borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <ChevronRight
+                    size={20}
+                    color={isDark ? '#fff' : designTokens.colors.ink2}
+                    strokeWidth={2}
+                  />
+                </Pressable>
+              </View>
             </View>
 
             {/* Meal cards */}

@@ -8,10 +8,10 @@
 //
 // Design language: editorial header (italic "inspired"), olive eyebrow caps,
 // sage primary, terracotta accent, hairline borders, Geist + Instrument Serif.
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import React, { useCallback, useMemo, useState, useRef } from 'react';
+import { View, Text, Pressable, ScrollView, TextInput, Keyboard, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withSpring, interpolate, Extrapolation } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import {
   Bookmark,
@@ -24,6 +24,8 @@ import {
   Salad,
   Moon,
   Cookie,
+  Search,
+  X,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -273,6 +275,10 @@ export default function CuratedMealPlanScreen() {
   const plans = CURATED_MEAL_PLANS;
   const [selectedPlanId, setSelectedPlanId] = useState<string>(plans[0]?.id ?? '');
   const [mealFilter, setMealFilter] = useState<MealFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const isSearchOpen = useSharedValue(0);
+  const searchInputRef = useRef<TextInput>(null);
 
   const selectedPlan = useMemo(
     () => plans.find((p) => p.id === selectedPlanId) ?? plans[0],
@@ -304,11 +310,57 @@ export default function CuratedMealPlanScreen() {
     return m;
   }, [recipes]);
 
-  // Filtered list — apply meal-type filter only after plan selection.
+  // All entries across all plans for global search
+  const allPlanEntries = useMemo(() => {
+    const seen = new Set<string>();
+    const result: CuratedRecipeEntry[] = [];
+    for (const p of plans) {
+      const entries = getCuratedPlanRecipes(p);
+      for (const e of entries) {
+        if (!seen.has(e.key)) {
+          seen.add(e.key);
+          result.push(e);
+        }
+      }
+    }
+    return result;
+  }, [plans]);
+
+  // Filtered list — apply meal-type filter and search query.
   const filtered = useMemo(() => {
-    if (mealFilter === 'all') return planEntries;
-    return planEntries.filter((e) => e.mealType === mealFilter);
-  }, [planEntries, mealFilter]);
+    const isSearching = searchQuery.trim().length > 0;
+    // When searching, span across all plans. Otherwise, just the selected plan.
+    let result = isSearching ? allPlanEntries : planEntries;
+    
+    if (mealFilter !== 'all') {
+      result = result.filter((e) => e.mealType === mealFilter);
+    }
+    if (isSearching) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((e) => e.recipe.name.toLowerCase().includes(q));
+    }
+    return result;
+  }, [planEntries, allPlanEntries, mealFilter, searchQuery]);
+
+  const handleToggleSearch = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (isSearchOpen.value === 1) {
+      isSearchOpen.value = withSpring(0, { damping: 16, stiffness: 200 });
+      setSearchQuery('');
+      Keyboard.dismiss();
+    } else {
+      isSearchOpen.value = withSpring(1, { damping: 16, stiffness: 200 });
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    }
+  }, [isSearchOpen]);
+
+  const screenWidth = Dimensions.get('window').width;
+  const maxWidth = screenWidth - 40;
+  const searchStyle = useAnimatedStyle(() => {
+    return {
+      width: interpolate(isSearchOpen.value, [0, 1], [50, maxWidth], Extrapolation.CLAMP),
+    };
+  });
 
   // Split into two columns for masonry. Alternating index keeps heights mixed.
   const { leftCol, rightCol } = useMemo(() => {
@@ -403,8 +455,12 @@ export default function CuratedMealPlanScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <Animated.ScrollView
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+          <Animated.ScrollView
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           contentContainerStyle={{ paddingTop: 8, paddingBottom: 120 }}
@@ -781,7 +837,64 @@ export default function CuratedMealPlanScreen() {
             </Pressable>
           </View>
         )}
+
+        {/* ── Floating Search Bar ──────────────────────────── */}
+        <Animated.View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            right: 20,
+            bottom: savedEntries.length > 0 ? 80 : 24,
+            alignItems: 'flex-end',
+            zIndex: 10,
+          }}
+        >
+          <Animated.View
+            style={[{
+              height: 50,
+              borderRadius: 25,
+              backgroundColor: isDark ? colors.surface : '#FFFFFF',
+              shadowColor: '#15140F',
+              shadowOpacity: 0.2,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 6,
+              flexDirection: 'row',
+              alignItems: 'center',
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: isDark ? colors.hair : '#EAEAEA',
+            }, searchStyle]}
+          >
+            <Pressable 
+              onPress={handleToggleSearch}
+              style={{ width: 50, height: 50, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Search size={20} color={colors.ink} strokeWidth={2} />
+            </Pressable>
+            <TextInput
+              ref={searchInputRef}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search recipes..."
+              placeholderTextColor={colors.ink3}
+              style={{
+                flex: 1,
+                height: '100%',
+                fontFamily: designTokens.font.medium,
+                fontSize: 15,
+                color: colors.ink,
+              }}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery('')} style={{ paddingHorizontal: 16, height: '100%', justifyContent: 'center' }}>
+                <X size={18} color={colors.ink3} strokeWidth={2} />
+              </Pressable>
+            )}
+          </Animated.View>
+        </Animated.View>
       </SafeAreaView>
+      </KeyboardAvoidingView>
 
       <StickyScreenHeader scrollY={scrollY} title="Get Inspired" onBack={handleBack} />
     </View>

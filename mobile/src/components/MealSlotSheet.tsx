@@ -19,6 +19,8 @@ import * as Haptics from 'expo-haptics';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
 import type { MealSlot, Recipe } from '@/lib/store';
 import type { RecipeAllergenInfo } from '@/lib/allergy-checker';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { SparklePanIcon } from '@/components/icons/SparklePanIcon';
 
 const actionPillStyle = {
   width: 36,
@@ -48,6 +50,40 @@ interface MealSlotSheetProps {
   onOpenServing: (slot: MealSlot, recipe: Recipe) => void;
   onAllergenPress: (recipe: Recipe, info: RecipeAllergenInfo) => void;
   onToggleCooked: (slot: MealSlot) => void;
+}
+
+function CookButton({ isCooked, onPress, isDark, colors }: any) {
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }]
+  }));
+
+  return (
+    <Pressable
+      onPressIn={() => { scale.value = withSpring(0.85); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
+      onPress={onPress}
+      hitSlop={6}
+    >
+      <Animated.View
+        style={[
+          actionPillStyle,
+          {
+            backgroundColor: isCooked ? '#fff' : (isDark ? colors.surface : '#fff'),
+            borderColor: isCooked ? designTokens.colors.olive : designTokens.colors.hair,
+          },
+          animatedStyle
+        ]}
+      >
+        <SparklePanIcon
+          size={24}
+          color={isCooked ? designTokens.colors.olive : designTokens.colors.ink3}
+          strokeWidth={isCooked ? 2.2 : 1.6}
+        />
+      </Animated.View>
+    </Pressable>
+  );
 }
 
 export function MealSlotSheet({
@@ -399,32 +435,15 @@ export function MealSlotSheet({
                           {(() => {
                             const isCooked = cookedSlotIds.has(slot.id);
                             return (
-                              <Pressable
+                              <CookButton
+                                isCooked={isCooked}
+                                isDark={isDark}
+                                colors={colors}
                                 onPress={() => {
-                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                                   onToggleCooked(slot);
                                 }}
-                                hitSlop={6}
-                                style={[
-                                  actionPillStyle,
-                                  {
-                                    backgroundColor: isCooked
-                                      ? designTokens.colors.olive
-                                      : isDark
-                                      ? colors.surface
-                                      : '#fff',
-                                    borderColor: isCooked
-                                      ? designTokens.colors.olive
-                                      : designTokens.colors.hair,
-                                  },
-                                ]}
-                              >
-                                <Check
-                                  size={15}
-                                  color={isCooked ? '#fff' : designTokens.colors.ink3}
-                                  strokeWidth={isCooked ? 2.4 : 1.8}
-                                />
-                              </Pressable>
+                              />
                             );
                           })()}
                           <Pressable
