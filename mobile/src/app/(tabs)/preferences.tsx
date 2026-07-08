@@ -56,8 +56,7 @@ import {
   formatGapDays,
 } from '@/lib/behavior-insights';
 
-const PRIVACY_POLICY_URL = 'https://www.plannplate.com.au/privacy-policy';
-const TERMS_OF_USE_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+import { TERMS_OF_USE_URL } from '@/lib/legal';
 
 // ── Share-the-app message ──────────────────────────────────────────────
 // Sent via the native share sheet (WhatsApp / iMessage / SMS / etc.). The
@@ -1966,12 +1965,10 @@ export default function ProfileScreen() {
 
               <SettingsRow
                 icon={<Shield size={14} color={designTokens.colors.ink2} strokeWidth={1.7} />}
-                label="Privacy policy"
+                label="Privacy"
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  Linking.openURL(PRIVACY_POLICY_URL).catch(() => {
-                    Alert.alert('Error', 'Unable to open Privacy Policy.');
-                  });
+                  router.push('/privacy');
                 }}
                 isDark={isDark}
               />

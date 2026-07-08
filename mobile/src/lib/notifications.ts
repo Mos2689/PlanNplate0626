@@ -1,36 +1,71 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-// Set how notifications are handled when the app is in the foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// CRITICAL (production launch safety): expo-notifications is a NATIVE module.
+// If the running binary doesn't include it — e.g. an expo-updates OTA pushed
+// this JS onto an older native build, or the app hasn't been rebuilt since the
+// module was added — any call into it throws. Because this file is imported at
+// startup (from _layout.tsx) and `setNotificationHandler` runs at module load,
+// an unguarded throw here fails the whole root import and the app hangs on the
+// splash forever (works in Expo Go, spins in TestFlight/App Store). So we detect
+// availability once and make every entry point a safe no-op when it's missing.
+const isNativeNotificationsAvailable = (() => {
+  if (Platform.OS === 'web') return false;
+  return (
+    typeof (Notifications as { setNotificationHandler?: unknown }).setNotificationHandler ===
+    'function'
+  );
+})();
+
+// Set how notifications are handled when the app is in the foreground.
+if (isNativeNotificationsAvailable) {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        // SDK 54 (expo-notifications 0.32) split the deprecated `shouldShowAlert`
+        // into `shouldShowBanner` (heads-up) + `shouldShowList` (notification centre).
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+  } catch (e) {
+    console.warn('[notifications] setNotificationHandler unavailable:', e);
+  }
+}
 
 export async function requestNotificationPermissions() {
-  if (Platform.OS === 'web') return false;
+  if (!isNativeNotificationsAvailable) return false;
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    return finalStatus === 'granted';
+  } catch (e) {
+    console.warn('[notifications] requestNotificationPermissions failed:', e);
+    return false;
   }
-  
-  return finalStatus === 'granted';
 }
 
 export async function cancelAllNotifications() {
-  if (Platform.OS === 'web') return;
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  if (!isNativeNotificationsAvailable) return;
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  } catch (e) {
+    console.warn('[notifications] cancelAllNotifications failed:', e);
+  }
 }
 
 export async function scheduleInactivityNotifications(userName: string = '') {
-  if (Platform.OS === 'web') return;
+  if (!isNativeNotificationsAvailable) return;
+  try {
 
   // 1. Cancel existing notifications to reset the timer
   await cancelAllNotifications();
@@ -84,4 +119,7 @@ export async function scheduleInactivityNotifications(userName: string = '') {
       repeats: false,
     },
   });
+  } catch (e) {
+    console.warn('[notifications] scheduleInactivityNotifications failed:', e);
+  }
 }

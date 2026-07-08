@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { apiDelete } from './api-router';
 import type {
   Recipe,
   MealSlot,
@@ -403,39 +404,31 @@ export async function deleteUserAccount(userId: string): Promise<boolean> {
     console.log('[DB] Successfully deleted user from users table');
   }
 
-  // Delete the user from Supabase Auth via backend API
+  // Delete the user from Supabase Auth via the `auth-delete` Edge Function.
+  // Removing the auth user requires the service-role key, which only lives
+  // server-side — the function verifies the caller's JWT then admin-deletes it.
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    console.log('[DB] Calling auth-delete Edge Function to remove Supabase Auth user...');
+    const { error: authDeleteError } = await apiDelete('auth-delete');
 
-    if (session?.access_token) {
-      const backendUrl = process.env.EXPO_PUBLIC_VIBECODE_BACKEND_URL || 'http://localhost:3000';
-      console.log('[DB] Calling backend to delete user from Supabase Auth...');
+    // Sign out locally regardless — the session is invalid once the auth
+    // user is gone, and we don't want a half-authenticated state to linger.
+    await supabase.auth.signOut().catch(() => {});
 
-      const response = await fetch(`${backendUrl}/api/auth/delete-account`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        console.log('[DB] Successfully deleted user from Supabase Auth');
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('[DB] Failed to delete user from Auth:', errorData);
-      }
+    if (authDeleteError) {
+      // User data rows were already removed above, but the auth account still
+      // exists. Report failure so the UI can ask the user to retry rather than
+      // falsely claiming the account was fully deleted.
+      console.error('[DB] Failed to delete user from Supabase Auth:', authDeleteError);
+      return false;
     }
 
-    // Sign out locally
-    await supabase.auth.signOut();
-    console.log('[DB] User signed out successfully');
     console.log('[DB] Account deletion completed for user:', userId);
     return true;
   } catch (authError) {
     console.error('Error during auth cleanup:', authError);
-    // Return true anyway since we've deleted the user data
-    return true;
+    await supabase.auth.signOut().catch(() => {});
+    return false;
   }
 }
 

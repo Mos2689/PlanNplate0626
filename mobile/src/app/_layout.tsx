@@ -135,7 +135,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     if (isAuthenticated && currentUser?.id && !isAnonymous) {
       posthog.identify(currentUser.id, {
         email: currentUser.email,
-        name: currentUser.user_metadata?.name || '',
+        name: currentUser.name || '',
       });
     } else if (!isAuthenticated) {
       posthog.reset();
@@ -238,7 +238,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         void cancelAllNotifications();
       } else if (status === 'background' || status === 'inactive') {
         // App went to background, schedule inactivity notifications
-        const profileName = useSubscriptionStore.getState().profile?.name;
+        const profileName = useSubscriptionStore.getState().userSubscription?.name;
         const emailName = useAuthStore.getState().currentUser?.email?.split('@')[0];
         const userName = profileName || emailName || '';
         
@@ -465,6 +465,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           }}
         />
         <Stack.Screen name="plan-meals" options={{ headerShown: false }} />
+        <Stack.Screen name="privacy" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
       {/* Global PaywallSheet — mounted at the root so any caller from
