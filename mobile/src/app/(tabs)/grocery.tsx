@@ -56,7 +56,7 @@ import { formatFromBaseUnit, resolveMeasurementSystem, type MeasurementSystem } 
 import { ShoppingListCompletionModal } from '@/components/ShoppingListCompletionModal';
 import { DuplicateIngredientBanner, DuplicateIngredientModal } from '@/components/DuplicateIngredientModal';
 import { findDuplicateIngredientGroups, type DuplicateIngredientGroup } from '@/lib/duplicate-ingredient-finder';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CATEGORY_CONFIG: Record<Ingredient['category'], { icon: typeof Apple; label: string; color: string }> = {
@@ -1792,11 +1792,43 @@ export default function GroceryScreen() {
 
   // Check if we should automatically open the saved lists modal
   const params = useLocalSearchParams();
+  // True while the saved-lists flow was launched from Profile (deep-link via
+  // `?showSavedLists`). Used to send the user BACK to Profile when they close
+  // the saved list, instead of stranding them on the Grocery tab with the live
+  // list (which was confusing).
+  const openedFromProfileRef = useRef(false);
   useEffect(() => {
     if (params.showSavedLists) {
+      openedFromProfileRef.current = true;
       setShowSavedListsModal(true);
     }
   }, [params.showSavedLists]);
+
+  // Return to Profile when a Profile-launched saved-list view is closed.
+  // Navigate to the Profile tab explicitly — router.back() pops to the tab
+  // navigator's initial route (Meal Plan), not Profile.
+  const returnToProfileIfDeepLinked = useCallback(() => {
+    if (openedFromProfileRef.current) {
+      openedFromProfileRef.current = false;
+      router.navigate('/(tabs)/preferences');
+    }
+  }, [router]);
+
+  // Saved-list mode is an ephemeral "view this saved list" state (e.g. opened
+  // from Profile → Saved shopping lists). When the user leaves the Grocery
+  // screen, exit it so coming back shows the live grocery list — not the
+  // previously-viewed saved list, which was confusing. Any tick changes are
+  // already persisted into savedGroceryLists as they happen, so nothing is lost.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        openedFromProfileRef.current = false;
+        if (useMealPlanStore.getState().currentSavedListId) {
+          useMealPlanStore.getState().unloadSavedGroceryList();
+        }
+      };
+    }, []),
+  );
 
 
   // Group items by category. Generated (meal) and custom items (including voice-
@@ -2287,6 +2319,9 @@ export default function GroceryScreen() {
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       unloadSavedGroceryList();
+                      // If this saved list was opened from Profile, return there
+                      // rather than dropping onto the live Grocery list.
+                      returnToProfileIfDeepLinked();
                     }}
                     style={{
                       width: 40,
@@ -2895,7 +2930,15 @@ export default function GroceryScreen() {
       {/* Shopping Lists Modal */}
       <SavedListsModal
         visible={showSavedListsModal}
-        onClose={() => setShowSavedListsModal(false)}
+        onClose={() => {
+          setShowSavedListsModal(false);
+          // Tapping a list calls onLoadList THEN onClose, so a loaded list has
+          // currentSavedListId set — in that case stay to view it (the X will
+          // return to Profile later). If closed WITHOUT loading, go back now.
+          if (!useMealPlanStore.getState().currentSavedListId) {
+            returnToProfileIfDeepLinked();
+          }
+        }}
         savedLists={savedGroceryLists}
         onLoadList={(listId) => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

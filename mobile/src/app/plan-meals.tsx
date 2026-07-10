@@ -694,7 +694,13 @@ export default function PlanMealsScreen() {
     // Count this build toward the monthly limit (non-premium only).
     if (!hasPremiumAccess) recordMonthlyFeatureUse('planMeals');
 
-    router.replace('/(tabs)');
+    // Land on the Meal Plan tab AT the plan's first day — snap the date strip
+    // and meal slots to the planning start (e.g. an Aug plan opens on Aug 1),
+    // not today. `_ts` forces the snap even when the key matches a prior value.
+    router.replace({
+      pathname: '/(tabs)',
+      params: { scrollToDate: formatDateKey(rangeStart), _ts: String(Date.now()) },
+    });
   }, [
     canGenerate,
     selectedMealTypes,

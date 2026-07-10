@@ -1,10 +1,8 @@
 // HomeHeader Component - PlannPlate Home design
 import React from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
-import { Search, Bell, Crown } from 'lucide-react-native';
+import { View, Text, Platform } from 'react-native';
 import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import { t } from '@/lib/platform-tokens';
-import { UserAvatarDisplay } from './ProfileSetupModal';
 
 interface HomeHeaderProps {
   userName?: string;
@@ -35,15 +33,9 @@ function getTimeGreetingWord() {
 
 export function HomeHeader({
   userName,
-  userInitial = 'U',
-  avatarUrl,
-  isPremium = true,
   isDark = false,
   greetingWord,
   subtitleMessage,
-  onSearchPress,
-  onBellPress,
-  onAvatarPress,
   trailingSlot,
 }: HomeHeaderProps) {
   const colors = getThemeColors(isDark);
@@ -54,50 +46,8 @@ export function HomeHeader({
     `${new Date().toLocaleDateString('en-US', { weekday: 'long' })} is planned. Dinner looks easy tonight.`;
 
   return (
-    <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14 }}>
-      {/* Top row: Avatar + Actions */}
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 12,
-        }}
-      >
-        {/* Avatar */}
-        <Pressable
-          onPress={onAvatarPress}
-          style={{ position: 'relative', width: 44, height: 44 }}
-        >
-          <UserAvatarDisplay
-            size={44}
-            avatarUrl={avatarUrl}
-            name={userName || userInitial}
-          />
-          {/* Premium crown badge */}
-          {isPremium && (
-            <View
-              style={{
-                position: 'absolute',
-                right: -4,
-                bottom: -2,
-                width: 18,
-                height: 18,
-                borderRadius: 999,
-                backgroundColor: designTokens.colors.olive,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: 2,
-                borderColor: colors.bg,
-              }}
-            >
-              <Crown size={10} color="#F4C76A" strokeWidth={2} />
-            </View>
-          )}
-        </Pressable>
-      </View>
-
-      {/* Greeting row — title + subtitle on the left, optional
+    <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 }}>
+      {/* Greeting row — salutation + subtitle on the left, optional
           trailingSlot (e.g. compact MonthYearPicker) top-aligned on the
           right. */}
       <View
@@ -117,7 +67,7 @@ export function HomeHeader({
               letterSpacing: t(-0.56, -0.4),
               lineHeight: t(31, 28),
             }}
-            numberOfLines={1}
+            numberOfLines={2}
             adjustsFontSizeToFit={Platform.OS === 'android'}
             minimumFontScale={0.85}
           >
@@ -134,6 +84,7 @@ export function HomeHeader({
             {', '}
             {firstName}
           </Text>
+          {/* Message of the day — light subline beneath the salutation. */}
           <Text
             style={{
               marginTop: t(6, 4),
@@ -142,7 +93,7 @@ export function HomeHeader({
               fontSize: t(14.5, 13.5),
               lineHeight: t(20, 18),
             }}
-            numberOfLines={1}
+            numberOfLines={2}
             adjustsFontSizeToFit={Platform.OS === 'android'}
             minimumFontScale={0.85}
           >

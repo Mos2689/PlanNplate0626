@@ -114,6 +114,7 @@ const ALLERGY_OPTIONS = [
 ];
 
 const CUISINE_OPTIONS = [
+  { id: 'Any', label: 'Any', icon: '🌍' },
   { id: 'Italian', label: 'Italian', icon: '🍝' },
   { id: 'Mexican', label: 'Mexican', icon: '🌮' },
   { id: 'Asian', label: 'Asian', icon: '🥢' },
@@ -1268,7 +1269,7 @@ export default function OnboardingScreen() {
               subStyle,
             ]}
           >
-            Tell us what you like — a full week of personalized meals in under a
+            Tell us what you like. A full week of personalised meals in under a
             minute. No account, no catch.
           </Animated.Text>
 
@@ -1298,7 +1299,7 @@ export default function OnboardingScreen() {
                 color: 'rgba(255,255,255,0.72)',
               }}
             >
-              Personalized for 20+ diets & allergies
+              Personalised for 20+ diets & allergies
             </Text>
           </Animated.View>
 
@@ -1375,7 +1376,7 @@ export default function OnboardingScreen() {
       <StepHeader
         prefix="Nice to meet "
         italic="you"
-        subtitle="Just a few details to personalize PlannPlate."
+        subtitle="Just a few details to personalise PlanNplate."
         isDark={isDark}
       />
 
@@ -1560,7 +1561,7 @@ export default function OnboardingScreen() {
           marginBottom: 12,
         }}
       >
-        Tap any you're allergic to — you'll be flagged if a recipe contains the allergen.
+        Tap any you're allergic to. You'll be flagged if a recipe contains the allergen.
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
         {ALLERGY_OPTIONS.map((opt) => (
@@ -1650,8 +1651,8 @@ export default function OnboardingScreen() {
         italic="cuisine"
         suffix=" style"
         subtitle={firstName
-          ? `Pick a few favorites, ${firstName} — we'll mix it up.`
-          : "Pick a few favorites — we'll mix it up."}
+          ? `Pick a few favorites, ${firstName}. We'll mix it up.`
+          : "Pick a few favorites. We'll mix it up."}
         isDark={isDark}
       />
 
@@ -1663,7 +1664,16 @@ export default function OnboardingScreen() {
             emoji={opt.icon}
             label={opt.label}
             selected={cuisinePreferences.includes(opt.id)}
-            tone="slate"            onPress={() => toggleInList(opt.id, cuisinePreferences, setCuisinePreferences)}
+            tone="slate"            onPress={() => {
+              if (opt.id === 'Any') {
+                // "Any" is exclusive — selecting it clears specific cuisines.
+                setCuisinePreferences(cuisinePreferences.includes('Any') ? [] : ['Any']);
+              } else {
+                // Selecting a specific cuisine drops "Any".
+                const withoutAny = cuisinePreferences.filter((c) => c !== 'Any');
+                toggleInList(opt.id, withoutAny, setCuisinePreferences);
+              }
+            }}
             isDark={isDark}
           />
         ))}
@@ -1764,7 +1774,7 @@ export default function OnboardingScreen() {
             marginBottom: 20,
           }}
         >
-          Cooking solo — single-serving recipes welcome.
+          Cooking solo. Single-serving recipes welcome.
         </Text>
       ) : (
         <View style={{ height: 20 }} />
@@ -1988,7 +1998,7 @@ export default function OnboardingScreen() {
           prefix="What matters "
           italic="most"
           suffix="?"
-          subtitle="Pick up to 2 — we'll optimize for these."
+          subtitle="Pick up to 2. We'll optimise for these."
           isDark={isDark}
         />
 
@@ -2232,7 +2242,7 @@ export default function OnboardingScreen() {
                   color: isDark ? '#fff' : designTokens.colors.ink,
                 }}
               >
-                {firstName ? `Ready, ` : 'All set —'}
+                {firstName ? `Ready, ` : 'All set,'}
                 <Text
                   style={{
                     fontFamily: designTokens.font.serifItalic,

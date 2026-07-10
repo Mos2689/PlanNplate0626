@@ -813,8 +813,22 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         console.error('[Auth] OTP send error:', error.message);
         console.error('[Auth] Full error:', error);
 
+        const msg = error.message.toLowerCase();
+
+        // "Signups not allowed for otp" — signInWithOtp with shouldCreateUser
+        // false could not find an OTP-eligible user for this email (account
+        // doesn't exist for this address, isn't confirmed yet, or email OTP is
+        // disabled in the Supabase project). Show something the user can act on
+        // instead of the raw gotrue string.
+        if (msg.includes('signups not allowed') || msg.includes('otp')) {
+          return {
+            success: false,
+            error: "We couldn't find an account for that email. Double-check the address you signed up with, or create an account first."
+          };
+        }
+
         // Check if it's an email configuration issue
-        if (error.message.includes('email') || error.message.includes('provider')) {
+        if (msg.includes('email') || msg.includes('provider')) {
           return {
             success: false,
             error: 'Email sending is not configured in Supabase. Please contact support to set up email authentication.'

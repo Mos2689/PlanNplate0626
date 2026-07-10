@@ -71,6 +71,26 @@ export const PREP_TIME_OPTIONS = [
 // uses so the values round-trip cleanly into preferences.
 export const WEEKNIGHT_MINUTE_OPTIONS: readonly WeeknightMinutes[] = [15, 30, 45, 60, 90] as const;
 
+// Labelled weeknight-time pills — same buckets/labels as onboarding's
+// "How long on a weeknight?" step, so the profile editor and onboarding
+// stay in lock-step on the cooking-time question.
+export const WEEKNIGHT_TIME_OPTIONS: { id: WeeknightMinutes; label: string }[] = [
+  { id: 15, label: '15 min' },
+  { id: 30, label: '30 min' },
+  { id: 45, label: '45 min' },
+  { id: 60, label: '1 hour' },
+  { id: 90, label: '90+ min' },
+];
+
+// "What matters most" — top priorities the plan optimises for. Same ids as the
+// store's Priority type and onboarding's PRIORITY_OPTIONS (top-2, ordered).
+export const PRIORITY_OPTIONS: { id: 'time' | 'cost' | 'variety' | 'health'; label: string; description: string }[] = [
+  { id: 'time',    label: 'Time',    description: 'Fast, simple recipes' },
+  { id: 'cost',    label: 'Cost',    description: 'Budget-friendly meals' },
+  { id: 'variety', label: 'Variety', description: 'Different cuisines & formats' },
+  { id: 'health',  label: 'Health',  description: 'Balanced & nourishing' },
+];
+
 // ── Household ────────────────────────────────────────────────────────────────
 export const HOUSEHOLD_OPTIONS = [
   { id: 'solo' as const,         label: 'Just me' },

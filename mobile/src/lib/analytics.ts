@@ -21,9 +21,45 @@ const cleanProps = (props?: Record<string, any>) => {
   return cleaned;
 };
 
-export const posthog = new PostHog(process.env.EXPO_PUBLIC_POSTHOG_API_KEY || '', {
-  host: process.env.EXPO_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
-});
+// PostHog throws at construction if no API key is passed. When the key is
+// absent (e.g. it isn't in .env / this build's env), we must NOT construct a
+// real client — otherwise the throw crashes the whole app at import time
+// (analytics.ts is pulled in by the root layout). Fall back to a no-op stub so
+// analytics is simply disabled and the app boots normally.
+const POSTHOG_API_KEY = process.env.EXPO_PUBLIC_POSTHOG_API_KEY || '';
+export const posthogEnabled = POSTHOG_API_KEY.length > 0;
+
+function createPostHogStub(): PostHog {
+  const noop = () => {};
+  return {
+    capture: noop,
+    flush: noop,
+    screen: noop,
+    identify: noop,
+    reset: noop,
+    register: noop,
+    unregister: noop,
+    optIn: noop,
+    optOut: noop,
+  } as unknown as PostHog;
+}
+
+export const posthog: PostHog = (() => {
+  if (!posthogEnabled) {
+    if (__DEV__) {
+      console.log('[Analytics] EXPO_PUBLIC_POSTHOG_API_KEY not set — analytics disabled.');
+    }
+    return createPostHogStub();
+  }
+  try {
+    return new PostHog(POSTHOG_API_KEY, {
+      host: process.env.EXPO_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
+    });
+  } catch (e) {
+    console.warn('[Analytics] PostHog init failed — analytics disabled.', e);
+    return createPostHogStub();
+  }
+})();
 
 const postHogSink: Sink = (event, props) => {
   posthog.capture(event, cleanProps(props));

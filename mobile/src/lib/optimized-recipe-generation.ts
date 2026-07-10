@@ -1,6 +1,7 @@
 import { generateRecipe, regenerateSingleRecipe, parseFridgeIngredientsWithQuantity, extractProteinsFromRecipe, validateRecipeAgainstPreferences, type GenerateRecipeParams, type GeneratedRecipeResponse, type MealType } from './openai';
 import { getCachedRecipes, cacheRecipe, generatePreferencesHash } from './recipe-cache';
-import { createCuratedMatcher, type CuratedMatcher } from './curated-recipe-source';
+import { type CuratedMatcher } from './curated-recipe-source';
+import { createInspiredMatcher } from './inspired-plan-source';
 import type { UserPreferences } from './store';
 
 interface BatchGenerationOptions {
@@ -35,6 +36,26 @@ interface BatchGenerationOptions {
    * weekends (cooked). Defaults to today when omitted.
    */
   startDate?: string;
+  /**
+   * Names of recipes the user cooked in the prior 14 days. The inspired-library
+   * source avoids these when "Variety" is a priority (unless the recipe is a
+   * favourite). Optional — omit to only de-dupe within the current plan.
+   */
+  recentCookedNames?: string[];
+  /**
+   * Favourite recipe names the user opted to allow even if recently cooked
+   * (overrides the 14-day variety exclusion).
+   */
+  favouriteNames?: string[];
+  /**
+   * Learned behaviour signals (behavior-insights.computeBehaviorSignals) — make
+   * recommendations personal: reward cooked cuisines, avoid skipped/swapped/low-
+   * rated cuisines + dishes, and lean quick when the user's cooks skew short.
+   */
+  boostCuisines?: string[];
+  avoidCuisines?: string[];
+  avoidRecipeNames?: string[];
+  preferQuick?: boolean;
 }
 
 interface GenerationProgress {
@@ -262,11 +283,19 @@ export async function generateRecipesOptimized(
   const usedFormats: string[] = [];
   const usedTechniques: string[] = [];
 
-  // Item 3: curated-first sourcing. Pre-validate the "Get Inspired" bank
-  // against the user's allergies + dietary restrictions once; every slot below
-  // tries this before falling back to an OpenAI call. `curatedCount` is folded
-  // into `generatedCount` for progress, and tracked separately just for logs.
-  const curatedMatcher: CuratedMatcher = createCuratedMatcher(preferences);
+  // Inspired-library-first sourcing. Every slot below draws from the 667-recipe
+  // Get Inspired library (dietary/allergy-strict → cuisine → cooking level →
+  // time → what-matters-most cascade) BEFORE falling back to an OpenAI call.
+  // `curatedCount` is folded into `generatedCount` for progress, and tracked
+  // separately just for logs.
+  const curatedMatcher: CuratedMatcher = createInspiredMatcher(preferences, {
+    recentCookedNames: options.recentCookedNames,
+    favouriteNames: options.favouriteNames,
+    boostCuisines: options.boostCuisines,
+    avoidCuisines: options.avoidCuisines,
+    avoidRecipeNames: options.avoidRecipeNames,
+    preferQuick: options.preferQuick,
+  });
   let curatedCount = 0;
   console.log(
     `[OptimizedGeneration] Curated bank available: breakfast=${curatedMatcher.countFor('breakfast')}, lunch=${curatedMatcher.countFor('lunch')}, dinner=${curatedMatcher.countFor('dinner')}, snack=${curatedMatcher.countFor('snack')} (after preference filter)`

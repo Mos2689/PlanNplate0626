@@ -67,6 +67,7 @@ import * as Linking from 'expo-linking';
 import * as Clipboard from 'expo-clipboard';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useMealPlanStore, type Recipe, type Ingredient } from '@/lib/store';
+import { inspiredToRecipe, findInspiredById } from '@/lib/inspired-adapters';
 import { formatIngredientDisplay, resolveMeasurementSystem } from '@/lib/unit-conversion';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { uploadFile } from '@/lib/upload';
@@ -85,7 +86,10 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function RecipeDetailScreen() {
   const router = useRouter();
-  const { id, slotId } = useLocalSearchParams<{ id: string; slotId?: string }>();
+  const { id, slotId, sourceId, readOnly } = useLocalSearchParams<{ id: string; slotId?: string; sourceId?: string; readOnly?: string }>();
+  // Opened from the Get Inspired library — read-only preview: hide edit/delete
+  // and render the pristine library entry (never a personal edited copy).
+  const isLibraryView = readOnly === '1';
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
@@ -126,7 +130,26 @@ export default function RecipeDetailScreen() {
   const heartScale = useSharedValue(1);
 
   const recipe = useMemo(() => {
-    const found = recipes.find((r) => r.id === id);
+    // Primary lookup by id. When a recipe was just added (e.g. opened straight
+    // from Get Inspired), addRecipe swaps its temp id for a real DB id
+    // asynchronously — so the `id` param can go stale. Fall back to the stable
+    // curatedSourceId (`inspired::<id>`) passed alongside it.
+    const storeCopy =
+      recipes.find((r) => r.id === id) ??
+      (sourceId ? recipes.find((r) => r.curatedSourceId === sourceId) : undefined);
+
+    // Read-only library preview: always render the PRISTINE library entry, so a
+    // personal copy the user edited elsewhere never leaks into Get Inspired.
+    // Keep the store copy's id (if one exists) so save / add-to-plan resolve.
+    if (isLibraryView) {
+      const lib = findInspiredById(sourceId);
+      if (lib) {
+        const pristine = inspiredToRecipe(lib, storeCopy?.isSaved ?? false);
+        return { ...pristine, id: storeCopy?.id ?? id ?? '' };
+      }
+    }
+
+    const found = storeCopy;
     if (found) {
       console.log('[recipe-detail] Recipe loaded:', {
         name: found.name,
@@ -136,7 +159,7 @@ export default function RecipeDetailScreen() {
       });
     }
     return found;
-  }, [recipes, id]);
+  }, [recipes, id, sourceId, isLibraryView]);
 
   const mealSlot = useMemo(() => {
     if (!slotId) return null;
@@ -352,9 +375,16 @@ export default function RecipeDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push({
       pathname: '/select-recipe',
-      params: { recipeId: id, mode: 'add-to-plan' }
+      params: {
+        // Prefer the resolved recipe's current id (survives the temp→DB id
+        // swap); fall back to the raw param. Forward sourceId so select-recipe
+        // can resolve it too if the id is mid-swap.
+        recipeId: recipe?.id ?? id,
+        mode: 'add-to-plan',
+        ...(sourceId ? { sourceId } : {}),
+      }
     });
-  }, [router, id]);
+  }, [router, id, recipe?.id, sourceId]);
 
   const handleOpenSourceUrl = useCallback(async () => {
     if (!recipe?.sourceUrl) {
@@ -622,12 +652,19 @@ export default function RecipeDetailScreen() {
                 <ArrowLeft size={18} color="#fff" strokeWidth={1.8} />
               </Pressable>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Pressable onPress={handleEditPress} style={headerButton}>
-                  <Edit2 size={16} color="#fff" strokeWidth={1.8} />
-                </Pressable>
-                <Pressable onPress={handleDeletePress} style={headerButton}>
-                  <Trash2 size={16} color="#fff" strokeWidth={1.8} />
-                </Pressable>
+                {/* Edit & delete are hidden for the Get Inspired library preview
+                    — the library is read-only. Users edit/delete only from
+                    their personal Recipes page. */}
+                {!isLibraryView && (
+                  <>
+                    <Pressable onPress={handleEditPress} style={headerButton}>
+                      <Edit2 size={16} color="#fff" strokeWidth={1.8} />
+                    </Pressable>
+                    <Pressable onPress={handleDeletePress} style={headerButton}>
+                      <Trash2 size={16} color="#fff" strokeWidth={1.8} />
+                    </Pressable>
+                  </>
+                )}
                 <Pressable onPress={handleToggleSave} style={headerButton}>
                   <Animated.View style={heartAnimStyle}>
                     <Heart

@@ -16,6 +16,7 @@ import {
   composeTasteSignalsForGeneration,
   type TasteProfile,
 } from './taste-profile';
+import { computeBehaviorInsights } from './behavior-insights';
 import { getSkipReasonEffect } from './skip-reason-handler';
 import { findExistingRecipe, normalizeRecipeSourceUrl } from './recipe-identity';
 import { CURATED_GROCERY_CACHE } from './curated-grocery-cache';
@@ -1318,6 +1319,36 @@ export const useMealPlanStore = create<MealPlanStore>()(
         }
 
         const preferences = get().preferences;
+        // 14-day cooked history (for the "Variety" priority): names of recipes
+        // cooked in the prior 14 days, so the inspired-library source avoids
+        // re-suggesting them. Saved recipes are exempt — the user opted them in
+        // as favourites, so they may still be included.
+        const { recipes: allRecipesForHistory, cookingLogs: logsForHistory } = get();
+        const recipeNameById = new Map(allRecipesForHistory.map((r) => [r.id, r.name]));
+        const historyCutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+        const recentCookedNames = Array.from(
+          new Set(
+            logsForHistory
+              .filter((l) => l.recipeId && Date.parse(l.cookedAt) >= historyCutoff)
+              .map((l) => recipeNameById.get(l.recipeId as string))
+              .filter((n): n is string => !!n),
+          ),
+        );
+        const favouriteNames = allRecipesForHistory
+          .filter((r) => r.isSaved)
+          .map((r) => r.name);
+        // Learned behaviour signals — reward cuisines the user cooks, avoid ones
+        // they skip/swap/rate poorly (and the specific rejected dishes), and lean
+        // quick when their cooks skew short. Feeds BOTH the library matcher and
+        // the OpenAI prompt so "Plan My Meals" gets more personal over time.
+        const behaviourSignals = computeBehaviorInsights({
+          now: new Date(),
+          planningEvents: get().planningEvents,
+          cookingLogs: logsForHistory,
+          mealSlots: get().mealSlots,
+          recipes: allRecipesForHistory,
+          recipeRatings: get().recipeRatings,
+        }).signals;
         const totalMeals = days * Math.max(selectedMealTypes.length, 1);
         const lunchHabit = preferences.mealHabits?.lunch;
         const wantsLeftovers = lunchHabit === 'leftovers';
@@ -1688,6 +1719,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
                         customCookingInstructions: finalInstructions,
                         numberOfDays: days,
                         startDate: formatDateKey(startDate),
+                        recentCookedNames,
+                        favouriteNames,
+                        boostCuisines: behaviourSignals.boostCuisines,
+                        avoidCuisines: behaviourSignals.avoidCuisines,
+                        avoidRecipeNames: behaviourSignals.avoidDishNames,
+                        preferQuick: behaviourSignals.preferQuick,
                       },
                       {
                         onProgress: (p) =>
@@ -1901,6 +1938,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 // weekend no-cook/cooked rules).
                 numberOfDays: days,
                 startDate: formatDateKey(startDate),
+                recentCookedNames,
+                favouriteNames,
+                boostCuisines: behaviourSignals.boostCuisines,
+                avoidCuisines: behaviourSignals.avoidCuisines,
+                avoidRecipeNames: behaviourSignals.avoidDishNames,
+                preferQuick: behaviourSignals.preferQuick,
               },
               {
                 onProgress: (p) => {

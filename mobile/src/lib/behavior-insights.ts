@@ -82,12 +82,27 @@ export interface BehaviorInsights {
   planningHabit: PlanningHabitInsight;
   cooking: CookingMomentumInsight;
   taste: TasteSignalsInsight;
+  signals: BehaviorSignals;
+}
+
+// Actionable recommendation signals derived from what the user actually did —
+// not just what they cooked (positive), but what they SKIPPED, SWAPPED away
+// from, or rated poorly (negative). Consumed by both the library matcher
+// (createInspiredMatcher) and the OpenAI prompt so recommendations get
+// steadily more personal.
+export interface BehaviorSignals {
+  boostCuisines: string[];   // cuisines the user cooks most — reward in ranking
+  avoidCuisines: string[];   // skipped/swapped ≥2× or avg rating ≤2.5 — avoid
+  avoidDishNames: string[];  // specific dishes rejected (skipped/swapped/rated ≤2)
+  preferQuick: boolean;      // their cooked meals skew ≤30 min
 }
 
 export interface InferredGenerationContext {
   topCuisines: string[];
   preferQuick: boolean;
   usualMealTypes: Array<'breakfast' | 'lunch' | 'dinner' | 'snack'>;
+  avoidCuisines: string[];
+  avoidDishNames: string[];
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -457,6 +472,75 @@ function computeTasteSignals(
   };
 }
 
+// Canonical cuisine of a recipe from its tags (first vocab match), or null.
+function recipeCuisine(r: Recipe | undefined): string | null {
+  if (!r?.tags) return null;
+  for (const tag of r.tags) {
+    const c = CUISINE_LOOKUP.get(tag.toLowerCase());
+    if (c) return c;
+  }
+  return null;
+}
+
+// Negative + positive recommendation signals. `taste` is passed in so we reuse
+// its already-computed cooked-cuisine ranking + speed for the "boost" side.
+function computeBehaviorSignals(
+  cookingLogs: CookingLog[],
+  recipeRatings: RecipeRating[],
+  recipes: Recipe[],
+  taste: TasteSignalsInsight,
+): BehaviorSignals {
+  const recipeById = new Map(recipes.map((r) => [r.id, r]));
+
+  const cuisineNeg = new Map<string, number>();      // skip/swap counts per cuisine
+  const cuisineRatings = new Map<string, number[]>(); // star ratings per cuisine
+  const avoidDishSet = new Set<string>();
+
+  // Skips + swaps → the user rejected this dish (and nudges its cuisine down).
+  for (const log of cookingLogs) {
+    if (!log.recipeId) continue;
+    if (log.status !== 'skipped' && log.status !== 'swapped') continue;
+    const r = recipeById.get(log.recipeId);
+    if (!r) continue;
+    avoidDishSet.add(r.name);
+    const c = recipeCuisine(r);
+    if (c) cuisineNeg.set(c, (cuisineNeg.get(c) ?? 0) + 1);
+  }
+
+  // Low ratings (≤2★) → rejected dish; collect ratings per cuisine for averages.
+  for (const rating of recipeRatings) {
+    const r = recipeById.get(rating.recipeId);
+    if (!r) continue;
+    if (rating.stars <= 2) avoidDishSet.add(r.name);
+    const c = recipeCuisine(r);
+    if (c) {
+      const arr = cuisineRatings.get(c) ?? [];
+      arr.push(rating.stars);
+      cuisineRatings.set(c, arr);
+    }
+  }
+
+  const boost = new Set(taste.topCuisines.map((c) => c.name));
+  const avoidCuisines: string[] = [];
+  const candidates = new Set<string>([...cuisineNeg.keys(), ...cuisineRatings.keys()]);
+  for (const c of candidates) {
+    if (boost.has(c)) continue; // a cuisine they cook a lot isn't an "avoid"
+    const neg = cuisineNeg.get(c) ?? 0;
+    const ratings = cuisineRatings.get(c) ?? [];
+    const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+    if (neg >= 2 || (avg !== null && ratings.length >= 2 && avg <= 2.5)) {
+      avoidCuisines.push(c);
+    }
+  }
+
+  return {
+    boostCuisines: taste.topCuisines.map((c) => c.name),
+    avoidCuisines,
+    avoidDishNames: Array.from(avoidDishSet),
+    preferQuick: taste.preferredSpeed === 'quick',
+  };
+}
+
 // ───────────────────────────────────────────────────────────────────────────────
 // PUBLIC API
 // ───────────────────────────────────────────────────────────────────────────────
@@ -473,6 +557,11 @@ export interface ComputeBehaviorInsightsInput {
 export function computeBehaviorInsights(
   input: ComputeBehaviorInsightsInput,
 ): BehaviorInsights {
+  const taste = computeTasteSignals(
+    input.cookingLogs,
+    input.recipeRatings,
+    input.recipes,
+  );
   return {
     planningHabit: computePlanningHabit(input.planningEvents, input.now),
     cooking: computeCookingMomentum(
@@ -480,10 +569,12 @@ export function computeBehaviorInsights(
       input.mealSlots,
       input.now,
     ),
-    taste: computeTasteSignals(
+    taste,
+    signals: computeBehaviorSignals(
       input.cookingLogs,
       input.recipeRatings,
       input.recipes,
+      taste,
     ),
   };
 }
@@ -496,9 +587,11 @@ export function getInferredGenerationContext(
 ): InferredGenerationContext {
   return {
     topCuisines: insights.taste.topCuisines.map((c) => c.name),
-    preferQuick: insights.taste.preferredSpeed === 'quick',
+    preferQuick: insights.signals.preferQuick,
     usualMealTypes: [], // intentionally empty — derived directly at call site
                        // from planningEvents if we ever decide to lean on it.
+    avoidCuisines: insights.signals.avoidCuisines,
+    avoidDishNames: insights.signals.avoidDishNames,
   };
 }
 
@@ -522,8 +615,18 @@ export function composeEnrichedInstructions(
       'Default to quick weeknight meals (≤30 min total) unless context says otherwise.',
     );
   }
+  if (soft.avoidCuisines.length > 0) {
+    parts.push(
+      `Avoid cuisines the user has skipped, swapped away from, or rated poorly: ${soft.avoidCuisines.join(', ')}.`,
+    );
+  }
+  if (soft.avoidDishNames.length > 0) {
+    parts.push(
+      `Do not repeat or closely mimic dishes the user rejected: ${soft.avoidDishNames.slice(0, 8).join(', ')}.`,
+    );
+  }
   if (parts.length === 0) return personaInstructions;
-  return `${personaInstructions}\n\nObserved taste signals: ${parts.join(' ')}`;
+  return `${personaInstructions}\n\nObserved behaviour signals: ${parts.join(' ')}`;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────

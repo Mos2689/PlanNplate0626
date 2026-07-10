@@ -12,7 +12,7 @@ import { StoreHydration } from '@/components/StoreHydration';
 import { useAuthStore } from '@/lib/auth-store';
 import { useNeedsProfileSetup, useSubscriptionLoading, useSubscriptionStore } from '@/lib/subscription-store';
 import { useMealPlanStore } from '@/lib/store';
-import { posthog } from '@/lib/analytics';
+import { posthog, posthogEnabled } from '@/lib/analytics';
 import { PostHogProvider } from 'posthog-react-native';
 import { useEffect } from 'react';
 import * as Linking from 'expo-linking';
@@ -339,14 +339,26 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
 
   // Prevent the first-launch flash of the meal tab: for an un-onboarded user
   // the tab group can render for a frame before the gate redirects to
-  // signup/onboarding. While that redirect is pending (hydrated, not onboarded,
-  // and not yet on an auth/onboarding screen) we cover everything with a
-  // splash-matching screen so nothing flashes.
+  // signup/onboarding. We only hold while a redirect is ACTUALLY going to
+  // happen — i.e. the user will be sent to signup (unauthenticated/anonymous)
+  // or to onboarding (a fresh account that still needs profile setup).
+  //
+  // CRITICAL: a returning account (authenticated, profileCompleted → so
+  // needsProfileSetup is false) is intentionally kept on the tabs by the
+  // redirect effect even when its locally-loaded preferences report
+  // hasCompletedOnboarding=false (e.g. the server has no preferences row yet).
+  // In that case NO navigation occurs, so gating the overlay purely on
+  // !hasCompletedOnboarding left it covering the loaded tabs forever — an
+  // infinite spinner. Aligning the hold with the redirect decision fixes it.
   const seg0 = segments[0];
   const onAuthOrOnboarding =
     seg0 === 'login' || seg0 === 'signup' || seg0 === 'reset-password' ||
     seg0 === 'verify-otp' || seg0 === 'onboarding';
-  const holdForRedirect = storeHydrated && !hasCompletedOnboarding && !onAuthOrOnboarding;
+  const willRedirectAway =
+    !hasCompletedOnboarding &&
+    !isSigningUp &&
+    (!isAuthenticated || isAnonymous || needsProfileSetup);
+  const holdForRedirect = storeHydrated && willRedirectAway && !onAuthOrOnboarding;
 
   return (
     <View style={{ flex: 1 }}>
@@ -543,20 +555,29 @@ export default function RootLayout() {
     return null;
   }
 
-  return (
+  const tree = (
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <KeyboardProvider>
+            <StoreHydration>
+              <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+              <RootLayoutNav colorScheme={colorScheme} />
+            </StoreHydration>
+          </KeyboardProvider>
+        </GestureHandlerRootView>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  );
+
+  // Only mount PostHogProvider when analytics is actually configured — with no
+  // API key `posthog` is a no-op stub and the provider's autocapture would have
+  // nothing valid to talk to.
+  return posthogEnabled ? (
     <PostHogProvider client={posthog} autocapture>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <StoreHydration>
-                <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                <RootLayoutNav colorScheme={colorScheme} />
-              </StoreHydration>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
-      </ErrorBoundary>
+      {tree}
     </PostHogProvider>
+  ) : (
+    tree
   );
 }

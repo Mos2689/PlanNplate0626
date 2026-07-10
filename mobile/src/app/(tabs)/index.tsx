@@ -884,10 +884,10 @@ export default function HomeScreen() {
   const getGreetingSubtitle = () => {
     const dayLabel = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
     const plannedCount = selectedDayMeals.filter((m) => m.state !== 'empty').length;
-    if (plannedCount === 0) return `${dayLabel} — ready to fill your plate?`;
-    if (plannedCount === 1) return `${dayLabel} — one meal planned, nice start!`;
-    if (plannedCount === 2) return `${dayLabel} — two meals planned, looking good!`;
-    return `${dayLabel} — ${plannedCount} meals planned, you're all set!`;
+    if (plannedCount === 0) return `${dayLabel} ready to fill your plate?`;
+    if (plannedCount === 1) return `${dayLabel} one meal planned, nice start!`;
+    if (plannedCount === 2) return `${dayLabel} two meals planned, looking good!`;
+    return `${dayLabel} ${plannedCount} meals planned, you're all set!`;
   };
 
   const isTodaySelected = sameDay(selectedDate, new Date());
@@ -935,15 +935,6 @@ export default function HomeScreen() {
                 Haptics.selectionAsync();
                 router.push('/(tabs)/preferences' as any);
               }}
-              trailingSlot={
-                <MonthYearPicker
-                  selectedDate={selectedDate}
-                  onDateChange={handleMonthYearChange}
-                  minDate={minAllowedDate}
-                  isDark={isDark}
-                  compact
-                />
-              }
             />
           </Animated.View>
 
@@ -952,8 +943,27 @@ export default function HomeScreen() {
               when complete or on failure tap-to-retry. */}
           <PendingGenerationBanner isDark={isDark} />
 
-          {/* Week strip + weekly stats */}
+          {/* Week strip + weekly stats. Month/year picker is hidden for now —
+              restore the block below to bring it back above the date strip. */}
           <Animated.View entering={FadeInDown.delay(180).springify()}>
+            {false && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 20,
+                  marginBottom: 10,
+                }}
+              >
+                <MonthYearPicker
+                  selectedDate={selectedDate}
+                  onDateChange={handleMonthYearChange}
+                  minDate={minAllowedDate}
+                  isDark={isDark}
+                  compact
+                />
+              </View>
+            )}
             <WeekStrip
               days={weekDays}
               onDayPress={handleDayPress}
@@ -964,7 +974,7 @@ export default function HomeScreen() {
               style={{
                 alignItems: 'center',
                 marginTop: -6,
-                paddingBottom: 10,
+                paddingBottom: 20,
               }}
             >
               <Text
@@ -1018,7 +1028,7 @@ export default function HomeScreen() {
           {/* Selected day's meals */}
           <Animated.View
             entering={FadeInDown.delay(300).springify()}
-            style={{ paddingHorizontal: 16, paddingBottom: 26 }}
+            style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 26 }}
           >
             <View
               style={{
@@ -1161,7 +1171,7 @@ export default function HomeScreen() {
                 { icon: 'cart', title: 'Get Groceries', subtitle: 'Ready for this week' },
                 // Sits beside grocery in the secondary 2-col row. Routes to
                 // the curated catalog (PnP Specials / special plan options).
-                { icon: 'compass', title: 'Get Inspired', subtitle: 'PnP curated recipes' },
+                { icon: 'lightbulb', title: 'Get Inspired', subtitle: 'PnP curated recipes' },
               ]}
               onActionPress={handleQuickAction}
               isDark={isDark}

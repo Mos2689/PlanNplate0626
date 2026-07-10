@@ -130,8 +130,29 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollToIndex]);
 
+  // Elevated cream card ("toolbar" feel) that the date strip floats in.
+  const cardBg = isDark ? '#181814' : designTokens.colors.cream;
+  const cardBorder = isDark ? '#2a2a2a' : designTokens.colors.hair;
+
   return (
-    <View style={{ paddingTop: 4, paddingBottom: 16 }}>
+    <View style={{ paddingTop: 4, paddingBottom: 16, paddingHorizontal: 16 }}>
+      {/* Elevated cream card wrapping the scrollable days. Outer layer carries
+          the shadow + border; inner layer clips the horizontal scroll to the
+          rounded corners. */}
+      <View
+        style={{
+          borderRadius: 16,
+          backgroundColor: cardBg,
+          borderWidth: 1,
+          borderColor: cardBorder,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: isDark ? 0.28 : 0.06,
+          shadowRadius: 8,
+          elevation: 2,
+        }}
+      >
+      <View style={{ borderRadius: 15, overflow: 'hidden', paddingVertical: 6 }}>
       {/* Scrollable days */}
       <ScrollView
         ref={scrollRef}
@@ -222,6 +243,8 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
           );
         })}
       </ScrollView>
+      </View>
+      </View>
 
       {/* Legend */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 14, marginTop: 12 }}>

@@ -21,6 +21,7 @@ import {
   ShoppingCart,
   UtensilsCrossed,
   Compass,
+  Lightbulb,
   ChevronRight,
   Lock,
 } from 'lucide-react-native';
@@ -29,7 +30,7 @@ import { t } from '@/lib/platform-tokens';
 import { VibeHeartIcon } from '@/components/icons/VibeHeartIcon';
 
 export interface QuickActionItem {
-  icon: 'cart' | 'utensils' | 'compass' | 'flame';
+  icon: 'cart' | 'utensils' | 'compass' | 'lightbulb' | 'flame';
   title: string;
   subtitle?: string;
   variant?: 'primary' | 'secondary';
@@ -70,6 +71,8 @@ function ActionIcon({
       return <UtensilsCrossed size={size} color={color} strokeWidth={strokeWidth} />;
     case 'compass':
       return <Compass size={size} color={color} strokeWidth={strokeWidth} />;
+    case 'lightbulb':
+      return <Lightbulb size={size} color={color} strokeWidth={strokeWidth} />;
     case 'flame':
       return <VibeHeartIcon size={size} color={color} strokeWidth={strokeWidth} />;
     default:
@@ -168,6 +171,10 @@ const SECONDARY_ACCENTS: Record<string, { bg: string; fg: string }> = {
   },
   compass: {
     bg: designTokens.colors.olive,      // #E46D46 — terracotta
+    fg: '#F6F2E9',
+  },
+  lightbulb: {
+    bg: designTokens.colors.olive,      // #E46D46 — terracotta (inspiration)
     fg: '#F6F2E9',
   },
   flame: {

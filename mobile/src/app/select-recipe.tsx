@@ -13,7 +13,6 @@ import {
   Flame,
   Plus,
   Download,
-  Sparkles,
   CheckSquare,
   Square,
 } from 'lucide-react-native';
@@ -196,6 +195,8 @@ export default function SelectRecipeScreen() {
     slotId?: string;
     /** When 'true', hide the multi-date picker — user is locked to params.date */
     lockDate?: string;
+    /** Stable curatedSourceId (`inspired::<id>`) for resolving a swapped id. */
+    sourceId?: string;
   }>();
 
   const colorScheme = useColorScheme();
@@ -234,12 +235,20 @@ export default function SelectRecipeScreen() {
     const found = recipes.find((r) => r.id === currentId);
     if (found) return; // ID is still valid
 
-    // The ID was swapped — find the recipe by scanning for one that was
-    // just added. The most reliable signal is that the recipe list
-    // contains a row whose ID differs from params.recipeId but didn't
-    // exist before (i.e. it's the swapped version). We match by looking
-    // for the most recently created AI-generated recipe tagged with
-    // 'vibe-cooking', or fall back to the most recently created recipe.
+    // The ID was swapped by addRecipe's async DB callback. Prefer the stable
+    // curatedSourceId (passed from Get Inspired) — it resolves to the exact
+    // recipe regardless of the id swap.
+    if (params.sourceId) {
+      const bySource = recipes.find((r) => r.curatedSourceId === params.sourceId);
+      if (bySource && bySource.id !== currentId) {
+        setSelectedRecipeIds([bySource.id]);
+        return;
+      }
+    }
+
+    // Fallback (e.g. vibe-cooking) — find the recipe by scanning for one that
+    // was just added: most recently created 'vibe-cooking' recipe, else the
+    // most recently created recipe.
     const vibeRecipes = recipes
       .filter((r) => r.tags?.includes('vibe-cooking'))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -247,7 +256,7 @@ export default function SelectRecipeScreen() {
     if (replacement && replacement.id !== currentId) {
       setSelectedRecipeIds([replacement.id]);
     }
-  }, [recipes, params.recipeId, selectedRecipeIds]);
+  }, [recipes, params.recipeId, params.sourceId, selectedRecipeIds]);
 
   const [dateMealTypeMap, setDateMealTypeMap] = useState<Record<string, string[]>>({
     [initialDate]: initialMealTypes,
@@ -666,13 +675,6 @@ export default function SelectRecipeScreen() {
                     <Download size={16} color={designTokens.colors.brand} strokeWidth={1.8} />
                   ),
                   onPress: () => router.push('/import-recipe'),
-                },
-                {
-                  label: 'AI',
-                  icon: (
-                    <Sparkles size={16} color={designTokens.colors.olive} strokeWidth={1.8} />
-                  ),
-                  onPress: () => router.push('/generate-recipe'),
                 },
               ].map((btn) => (
                 <Pressable

@@ -62,7 +62,7 @@ export function PnPFavorites({ favorites, onRecipePress, isDark = false }: PnPFa
               color: designTokens.colors.olive,
             }}
           >
-            The Favorites
+            The Favourites
           </Text>
         </View>
         <Text
@@ -82,7 +82,7 @@ export function PnPFavorites({ favorites, onRecipePress, isDark = false }: PnPFa
               letterSpacing: t(-0.22, -0.15),
             }}
           >
-            favorites
+            favourites
           </Text>
           .
         </Text>
@@ -282,7 +282,7 @@ function EmptyFavorites({ isDark }: { isDark: boolean }) {
             textAlign: 'center',
           }}
         >
-          No favorites yet
+          No favourites yet
         </Text>
         <Text
           style={{
@@ -294,7 +294,7 @@ function EmptyFavorites({ isDark }: { isDark: boolean }) {
             marginTop: 5,
           }}
         >
-          Save the recipes you love, or rate the meals you cook — they'll gather here.
+          Save the recipes you love, or rate the meals you cook. They'll gather here.
         </Text>
       </View>
     </Animated.View>
