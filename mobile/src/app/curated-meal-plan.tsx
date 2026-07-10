@@ -838,9 +838,9 @@ export default function CuratedMealPlanScreen() {
               position: 'absolute',
               top: menuPos.top,
               right: menuPos.right,
-              width: 184,
+              width: 232,
               backgroundColor: isDark ? colors.surface : '#FFFFFF',
-              borderRadius: 16,
+              borderRadius: 18,
               shadowColor: '#15140F',
               shadowOpacity: 0.22,
               shadowRadius: 24,
@@ -851,15 +851,36 @@ export default function CuratedMealPlanScreen() {
             {/* Clip layer — rounds the row highlights to the card corners. */}
             <View
               style={{
-                borderRadius: 16,
+                borderRadius: 18,
                 overflow: 'hidden',
                 borderWidth: 1,
                 borderColor: isDark ? colors.hair : '#ECE8DE',
                 backgroundColor: isDark ? colors.surface : '#FFFFFF',
+                paddingVertical: 6,
               }}
             >
+              {/* Menu header — anchors the list and signals what the options do. */}
+              <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8 }}>
+                <Text
+                  allowFontScaling={false}
+                  style={{
+                    fontFamily: designTokens.font.semibold,
+                    fontSize: 11,
+                    letterSpacing: 0.8,
+                    textTransform: 'uppercase',
+                    color: colors.ink3,
+                  }}
+                >
+                  Filter by
+                </Text>
+              </View>
+
+              {/* Divider between header and options */}
+              <View style={{ height: 1, backgroundColor: isDark ? colors.hair : '#F1EEE6' }} />
+
               {DIMENSIONS.map((d, idx) => {
                 const on = d.id === dimension;
+                const RowIcon = d.Icon;
                 return (
                   <Pressable
                     key={d.id}
@@ -868,39 +889,64 @@ export default function CuratedMealPlanScreen() {
                       handleSelectDimension(d.id);
                     }}
                     style={({ pressed }) => ({
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      paddingHorizontal: 16,
-                      paddingVertical: 13,
-                      borderTopWidth: idx === 0 ? 0 : 1,
-                      borderTopColor: isDark ? colors.hair : '#F1EEE6',
+                      marginHorizontal: 6,
+                      marginTop: idx === 0 ? 4 : 2,
+                      borderRadius: 12,
                       backgroundColor: pressed
                         ? isDark
                           ? colors.hair2
-                          : '#F6F3EC'
+                          : '#F1EDE4'
                         : on
                         ? isDark
-                          ? 'rgba(228,109,70,0.12)'
+                          ? 'rgba(228,109,70,0.14)'
                           : 'rgba(228,109,70,0.08)'
                         : 'transparent',
                     })}
                   >
-                    <Text
-                      allowFontScaling={false}
-                      numberOfLines={1}
+                    {/* Row layout lives on a plain View with an OBJECT style —
+                        function styles on Pressable weren't applying flexDirection
+                        here, which stacked icon/label/check vertically. */}
+                    <View
                       style={{
-                        fontFamily: on ? designTokens.font.semibold : designTokens.font.medium,
-                        fontSize: 15,
-                        letterSpacing: -0.15,
-                        color: on ? colors.ink : colors.ink2,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        minHeight: 48,
+                        paddingHorizontal: 12,
                       }}
                     >
-                      {d.label}
-                    </Text>
-                    {on ? (
-                      <Check size={16} color={olive} strokeWidth={2.6} style={{ marginLeft: 8, flexShrink: 0 }} />
-                    ) : null}
+                      {/* Leading icon — fixed-width rail so every label starts on
+                          the same vertical line. */}
+                      <View style={{ width: 26, alignItems: 'center', justifyContent: 'center' }}>
+                        <RowIcon
+                          size={18}
+                          color={on ? olive : colors.ink3}
+                          strokeWidth={on ? 2.4 : 2}
+                        />
+                      </View>
+
+                      {/* Label — flex:1 fills the middle and pushes the trailing
+                          check hard against the right rail (never wraps). */}
+                      <Text
+                        allowFontScaling={false}
+                        numberOfLines={1}
+                        style={{
+                          flex: 1,
+                          marginLeft: 12,
+                          fontFamily: on ? designTokens.font.semibold : designTokens.font.medium,
+                          fontSize: 15.5,
+                          letterSpacing: -0.2,
+                          color: on ? colors.ink : colors.ink2,
+                        }}
+                      >
+                        {d.label}
+                      </Text>
+
+                      {/* Trailing check — fixed-width slot keeps every row's right
+                          edge aligned whether or not the check is shown. */}
+                      <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+                        {on ? <Check size={17} color={olive} strokeWidth={2.8} /> : null}
+                      </View>
+                    </View>
                   </Pressable>
                 );
               })}
