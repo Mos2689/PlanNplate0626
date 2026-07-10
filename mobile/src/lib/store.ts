@@ -46,6 +46,12 @@ export function isStockPlaceholderImage(url: string | undefined | null): boolean
 // can resolve a temp ID to the real one.
 const tempIdToRealId = new Map<string, string>();
 
+// Cooperative cancel flag for in-flight plan generation. Set true by
+// cancelGeneration(), reset false at the start of each startBackgroundGeneration
+// run. The engine (via shouldCancel) and the recipe-placement handler both check
+// it so a cancelled run stops placing recipes promptly.
+let generationCancelRequested = false;
+
 /**
  * Canonical category mapping for ingredients
  * This ensures the same ingredient always goes to the same category
@@ -813,7 +819,17 @@ interface MealPlanStore {
     // Only read when cookStyle === 'batch': which weekdays to cook on
     // (0 = Sun … 6 = Sat) and how many distinct recipes to cook each cook day.
     batch?: { cookDays: number[]; recipesPerCookDay: number };
+    // Per-plan preference overrides from the "Tune for this plan" sheet. Merged
+    // on top of the saved profile for THIS generation only — so the tuned diet /
+    // cuisine / time / budget actually drive the library matcher AND OpenAI's
+    // structured params + validation (not just the prompt text). Empty/undefined
+    // → identical to using the saved profile.
+    overrides?: Partial<UserPreferences>;
   }) => void;
+  // User-initiated cancel of an in-flight plan generation. Stops the engine
+  // cooperatively (no more recipes are placed) and clears the progress banner.
+  // Recipes already placed stay in the plan; the user can add more manually.
+  cancelGeneration: () => void;
 
   // ───── Vibe Cooking hand-off (ephemeral) ─────
   // Set by generate-recipe.tsx when a vibe-flow generation succeeds.
@@ -1308,7 +1324,15 @@ export const useMealPlanStore = create<MealPlanStore>()(
       //   3. pendingGeneration drives the top-of-tab progress banner —
       //      the only place the user sees the work happening.
       // ─────────────────────────────────────────────────────────────────
-      startBackgroundGeneration: ({ selectedMealTypes, days, enrichedInstructions, startDate: startDateParam, mealHabits: planMealHabits, presetFavoriteIds, cookStyle, batch: batchConfig }) => {
+      cancelGeneration: () => {
+        // Signal the engine + placement handler to stop, then drop the banner.
+        // Recipes already placed stay in the plan (user can add more manually).
+        generationCancelRequested = true;
+        set({ pendingGeneration: null, pendingGenerationHint: '' });
+        console.log('[BG-GEN] Generation cancelled by user.');
+      },
+
+      startBackgroundGeneration: ({ selectedMealTypes, days, enrichedInstructions, startDate: startDateParam, mealHabits: planMealHabits, presetFavoriteIds, cookStyle, batch: batchConfig, overrides: planOverrides }) => {
         // Guard: never let two generations run concurrently. The screen
         // disables its CTA when pendingGeneration.active is true, but
         // double-guard here in case anything slips through.
@@ -1317,8 +1341,14 @@ export const useMealPlanStore = create<MealPlanStore>()(
           console.warn('[BG-GEN] Refusing to start — generation already in flight.');
           return;
         }
+        // Fresh run — clear any stale cancel request from a previous plan.
+        generationCancelRequested = false;
 
-        const preferences = get().preferences;
+        // Effective preferences for THIS plan: saved profile + any "Tune for
+        // this plan" overrides. Everything downstream (library matcher, OpenAI
+        // params, strict validation) reads this, so tuning actually governs the
+        // selection — not just the prompt text.
+        const preferences = { ...get().preferences, ...(planOverrides ?? {}) };
         // 14-day cooked history (for the "Variety" priority): names of recipes
         // cooked in the prior 14 days, so the inspired-library source avoids
         // re-suggesting them. Saved recipes are exempt — the user opted them in
@@ -1341,14 +1371,26 @@ export const useMealPlanStore = create<MealPlanStore>()(
         // they skip/swap/rate poorly (and the specific rejected dishes), and lean
         // quick when their cooks skew short. Feeds BOTH the library matcher and
         // the OpenAI prompt so "Plan My Meals" gets more personal over time.
-        const behaviourSignals = computeBehaviorInsights({
-          now: new Date(),
-          planningEvents: get().planningEvents,
-          cookingLogs: logsForHistory,
-          mealSlots: get().mealSlots,
-          recipes: allRecipesForHistory,
-          recipeRatings: get().recipeRatings,
-        }).signals;
+        // Pure in-memory compute; empty for a first-time user. Guarded so it can
+        // NEVER delay or block recipe generation — any error → no signals.
+        let behaviourSignals = {
+          boostCuisines: [] as string[],
+          avoidCuisines: [] as string[],
+          avoidDishNames: [] as string[],
+          preferQuick: false,
+        };
+        try {
+          behaviourSignals = computeBehaviorInsights({
+            now: new Date(),
+            planningEvents: get().planningEvents,
+            cookingLogs: logsForHistory,
+            mealSlots: get().mealSlots,
+            recipes: allRecipesForHistory,
+            recipeRatings: get().recipeRatings,
+          }).signals;
+        } catch (err) {
+          console.warn('[BG-GEN] behaviour signals failed — generating without them', err);
+        }
         const totalMeals = days * Math.max(selectedMealTypes.length, 1);
         const lunchHabit = preferences.mealHabits?.lunch;
         const wantsLeftovers = lunchHabit === 'leftovers';
@@ -1431,6 +1473,9 @@ export const useMealPlanStore = create<MealPlanStore>()(
             ? any
             : any,
         ) => {
+          // User cancelled — stop placing any further recipes (in-flight engine
+          // callbacks may still fire once or twice before it notices).
+          if (generationCancelRequested) return;
           try {
             const idx = streamSlotIndex++;
 
@@ -1725,6 +1770,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
                         avoidCuisines: behaviourSignals.avoidCuisines,
                         avoidRecipeNames: behaviourSignals.avoidDishNames,
                         preferQuick: behaviourSignals.preferQuick,
+                        shouldCancel: () => generationCancelRequested,
                       },
                       {
                         onProgress: (p) =>
@@ -1944,6 +1990,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 avoidCuisines: behaviourSignals.avoidCuisines,
                 avoidRecipeNames: behaviourSignals.avoidDishNames,
                 preferQuick: behaviourSignals.preferQuick,
+                shouldCancel: () => generationCancelRequested,
               },
               {
                 onProgress: (p) => {

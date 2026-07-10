@@ -4,6 +4,25 @@ import { type CuratedMatcher } from './curated-recipe-source';
 import { createInspiredMatcher } from './inspired-plan-source';
 import type { UserPreferences } from './store';
 
+// Hard cap on a single OpenAI recipe attempt. The edge-function client has no
+// fetch timeout, so without this a hung request could freeze the whole plan.
+// On timeout the attempt is abandoned (caught like any failure), so the loop
+// retries or falls back to the INSTANT library — nothing stays stuck.
+const OPENAI_ATTEMPT_TIMEOUT_MS = 35000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 interface BatchGenerationOptions {
   mealTypes: MealType[];
   preferences: UserPreferences;
@@ -56,6 +75,12 @@ interface BatchGenerationOptions {
   avoidCuisines?: string[];
   avoidRecipeNames?: string[];
   preferQuick?: boolean;
+  /**
+   * Cooperative cancel — checked between slots (and before each OpenAI call).
+   * When it returns true the engine stops generating and returns what it has,
+   * so a user "Cancel" takes effect promptly instead of running to completion.
+   */
+  shouldCancel?: () => boolean;
 }
 
 interface GenerationProgress {
@@ -378,6 +403,7 @@ export async function generateRecipesOptimized(
     // Generate the unique pool (tagged with the style it was generated for).
     const pool: { recipe: GeneratedRecipeResponse; style: 'no-cook' | 'cooked' }[] = [];
     for (let p = 0; p < poolStyles.length; p++) {
+      if (options.shouldCancel?.()) { console.log('[OptimizedGeneration] Cancelled — stopping breakfast pass.'); break; }
       const style = poolStyles[p];
       const excludeNames = [...usedRecipeNames];
       const threshold = optimizeGrocery ? 0.8 : 0.6;
@@ -402,7 +428,7 @@ export async function generateRecipesOptimized(
       // Fall back to OpenAI only when nothing in the bank qualified.
       for (let attempt = 0; !made && attempt < 5; attempt++) {
         try {
-          const recipe = await regenerateSingleRecipe(
+          const recipe = await withTimeout(regenerateSingleRecipe(
             {
               mealTypes: ['breakfast'],
               preferences,
@@ -413,7 +439,7 @@ export async function generateRecipesOptimized(
               customCookingInstructions,
             },
             excludeNames
-          );
+          ), OPENAI_ATTEMPT_TIMEOUT_MS, 'OpenAI breakfast');
           if (usedRecipeNames.some((n) => areRecipeNamesTooSimilar(recipe.name, n, threshold))) {
             excludeNames.push(recipe.name);
             continue;
@@ -440,8 +466,23 @@ export async function generateRecipesOptimized(
         if (useCache && !madeFromCurated) await cacheRecipe(preferencesHash, 'breakfast', made);
         console.log(`[OptimizedGeneration] Breakfast pool +1 (${style}): "${made.name}"`);
       } else {
-        failedCount++;
-        console.error(`[OptimizedGeneration] Failed to generate a ${style} breakfast after 5 attempts`);
+        // Guaranteed fill: OpenAI couldn't produce this breakfast — take an
+        // instant diet/allergen-safe library breakfast of the right style so
+        // the slot isn't left empty.
+        const relaxed = curatedMatcher.takeRelaxed?.('breakfast', usedRecipeNames, {
+          predicate: (r) => (style === 'no-cook' ? r.cookTime === 0 : r.cookTime > 0),
+          similarityThreshold: threshold,
+        });
+        if (relaxed && !curatedFailsAllergyOrDiet(relaxed, preferences)) {
+          relaxed.mealType = 'breakfast';
+          curatedCount++;
+          usedRecipeNames.push(relaxed.name);
+          pool.push({ recipe: relaxed, style });
+          console.log(`[OptimizedGeneration] Breakfast pool +1 from library fallback (${style}): "${relaxed.name}"`);
+        } else {
+          failedCount++;
+          console.error(`[OptimizedGeneration] Failed to generate a ${style} breakfast after 5 attempts (no library fallback available)`);
+        }
       }
     }
 
@@ -730,6 +771,7 @@ export async function generateRecipesOptimized(
     );
 
     for (let i = 0; i < recipesNeeded; i++) {
+      if (options.shouldCancel?.()) { console.log('[OptimizedGeneration] Cancelled — stopping generation.'); break; }
       const mealType = remainingSequence[i] || mealTypes[i % mealTypes.length];
 
       // Build exclusion list for this recipe
@@ -880,7 +922,7 @@ export async function generateRecipesOptimized(
       let recipeAccepted = false;
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
-          const recipe = await regenerateSingleRecipe({
+          const recipe = await withTimeout(regenerateSingleRecipe({
             mealTypes: [mealType],
             preferences,
             additionalInstructions: recipeAdditionalInstructions, // Use recipe-specific instructions
@@ -894,7 +936,7 @@ export async function generateRecipesOptimized(
             recipeIndex: currentRecipePosition, // Pass position for prompt-side logic
             mealCount: uniqueRecipesToGenerate, // Pass meal count for prompt-side logic
             customCookingInstructions: slotCookingInstructions, // user instructions (+ fish nudge when needed)
-          }, excludeNames);
+          }, excludeNames), OPENAI_ATTEMPT_TIMEOUT_MS, `OpenAI ${mealType}`);
 
           // Check for name similarity with ALL existing recipes (even when allowRepeats=true)
           const threshold = optimizeGrocery ? 0.8 : 0.6;
@@ -951,8 +993,32 @@ export async function generateRecipesOptimized(
       }
 
       if (!recipeAccepted) {
-        failedCount++;
-        console.error(`[OptimizedGeneration] Failed to generate unique recipe for ${mealType} after 5 attempts`);
+        // Guaranteed fill: the OpenAI path couldn't produce a valid recipe for
+        // this slot — take an INSTANT diet/allergen-safe recipe from the 667
+        // library so the slot is never left empty.
+        const relaxed = curatedMatcher.takeRelaxed?.(mealType, [...usedRecipeNames], {
+          similarityThreshold: optimizeGrocery ? 0.8 : 0.6,
+        });
+        if (relaxed && !curatedFailsAllergyOrDiet(relaxed, preferences)) {
+          relaxed.mealType = mealType;
+          curatedCount++;
+          generatedCount++;
+          usedRecipeNames.push(relaxed.name);
+          results.push(relaxed);
+          onRecipeReady?.(relaxed, streamIndex++);
+          const proteins = extractProteinsFromRecipe(relaxed);
+          usedProteins.push(...proteins);
+          const format = extractCookingFormat(relaxed);
+          if (format) usedFormats.push(format);
+          const technique = extractCookingTechnique(relaxed);
+          if (technique) usedTechniques.push(technique);
+          console.log(
+            `[OptimizedGeneration] Slot ${i + 1}/${recipesNeeded} filled from library fallback: "${relaxed.name}" (${mealType})`
+          );
+        } else {
+          failedCount++;
+          console.error(`[OptimizedGeneration] Failed to generate unique recipe for ${mealType} after 5 attempts (no library fallback available)`);
+        }
       }
 
       onProgress?.({

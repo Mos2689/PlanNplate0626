@@ -689,6 +689,9 @@ export default function PlanMealsScreen() {
       // gaps with leftovers (mirrors the curated batch scheduler).
       cookStyle,
       batch: cookStyle === 'batch' ? batch : undefined,
+      // "Tune for this plan" overrides — applied on top of the saved profile so
+      // the tuned diet / cuisine / time / budget actually govern selection.
+      overrides,
     });
 
     // Count this build toward the monthly limit (non-premium only).

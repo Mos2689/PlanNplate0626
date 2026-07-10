@@ -28,11 +28,12 @@ import {
   Text,
   Pressable,
   LayoutChangeEvent,
+  Modal,
   Animated as RNAnimated,
   Easing as RNEasing,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { CookingPot, Check, AlertCircle } from 'lucide-react-native';
+import { CookingPot, Check, AlertCircle, X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   FadeInUp,
@@ -250,6 +251,8 @@ function DayPill({ progress, isActive, width }: DayPillProps) {
 export function PendingGenerationBanner({ isDark = false }: PendingGenerationBannerProps) {
   const router = useRouter();
   const pending = useMealPlanStore((s) => s.pendingGeneration);
+  const cancelGeneration = useMealPlanStore((s) => s.cancelGeneration);
+  const [showCancelConfirm, setShowCancelConfirm] = React.useState(false);
   const colors = getThemeColors(isDark);
   const cardBorder = isDark ? '#2a2a2a' : designTokens.colors.hair;
 
@@ -416,6 +419,7 @@ export function PendingGenerationBanner({ isDark = false }: PendingGenerationBan
   };
 
   return (
+    <>
     <Animated.View
       entering={FadeInUp.springify().damping(18).stiffness(220)}
       exiting={FadeOutUp.duration(220).easing(EASE)}
@@ -433,6 +437,31 @@ export function PendingGenerationBanner({ isDark = false }: PendingGenerationBan
         ...elevation.card,
       }}
     >
+      {/* Cancel (X) — only while generation is actively running. */}
+      {isInFlight && (
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setShowCancelConfirm(true);
+          }}
+          hitSlop={10}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 2,
+            width: 28,
+            height: 28,
+            borderRadius: 999,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: isDark ? '#2a2a2a' : designTokens.colors.hair2,
+          }}
+          accessibilityLabel="Cancel recipe generation"
+        >
+          <X size={15} color={colors.ink2} strokeWidth={2.2} />
+        </Pressable>
+      )}
       <Pressable
         onPress={isFailed ? handleRetry : undefined}
         disabled={!isFailed}
@@ -565,5 +594,109 @@ export function PendingGenerationBanner({ isDark = false }: PendingGenerationBan
         )}
       </Pressable>
     </Animated.View>
+
+    {/* Cancel confirmation */}
+    <Modal
+      visible={showCancelConfirm}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowCancelConfirm(false)}
+    >
+      <Pressable
+        onPress={() => setShowCancelConfirm(false)}
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(21,20,15,0.45)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 32,
+        }}
+      >
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={{
+            width: '100%',
+            maxWidth: 340,
+            backgroundColor: colors.bg,
+            borderRadius: 22,
+            padding: 22,
+            ...elevation.card,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: designTokens.font.semibold,
+              fontSize: 17,
+              color: colors.ink,
+              letterSpacing: -0.3,
+            }}
+          >
+            Cancel recipe generation?
+          </Text>
+          <Text
+            style={{
+              fontFamily: designTokens.font.regular,
+              fontSize: 14,
+              lineHeight: 20,
+              color: colors.ink2,
+              marginTop: 8,
+            }}
+          >
+            Recipe generation will be cancelled, but you can still add meals
+            manually to the plan.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+            <Pressable
+              onPress={() => setShowCancelConfirm(false)}
+              style={{
+                flex: 1,
+                paddingVertical: 13,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: cardBorder,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: designTokens.font.medium,
+                  fontSize: 14.5,
+                  color: colors.ink,
+                }}
+              >
+                Keep generating
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowCancelConfirm(false);
+                cancelGeneration();
+              }}
+              style={{
+                flex: 1,
+                paddingVertical: 13,
+                borderRadius: 14,
+                backgroundColor: designTokens.colors.olive,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: designTokens.font.medium,
+                  fontSize: 14.5,
+                  color: '#fff',
+                }}
+              >
+                Cancel generation
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+    </>
   );
 }

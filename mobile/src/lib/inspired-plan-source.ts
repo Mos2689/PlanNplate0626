@@ -515,9 +515,56 @@ export function createInspiredMatcher(
     return eligible[cat].filter((r) => !usedNames.has(r.recipe.name)).length;
   }
 
+  // Guaranteed-fill fallback: only DIETARY + ALLERGEN safety is enforced (the
+  // non-negotiables). Cuisine / skill / time / behaviour are all dropped so a
+  // slot the OpenAI path couldn't fill still lands an INSTANT library recipe
+  // rather than coming back empty. Prefers quicker, cheaper recipes. Returns
+  // null only if the 667-library genuinely has no diet/allergen-safe recipe of
+  // this meal type left.
+  function takeRelaxed(
+    mealType: MealType,
+    excludeNames: string[],
+    opts?: CuratedTakeOptions,
+  ): GeneratedRecipeResponse | null {
+    const cat = planCategory(mealType);
+    if (!cat) return null;
+    const threshold = opts?.similarityThreshold ?? 0.6;
+    const predicate = opts?.predicate;
+    const exclude = new Set(excludeNames.map((n) => norm(n)));
+
+    const passesPredicate = (rec: EnrichedRecord) => {
+      if (!predicate) return true;
+      return predicate(toGenerated(rec.recipe, rec.isNoCook, targetServings, mealType));
+    };
+
+    // First choice: unused, not-in-plan, predicate-passing.
+    let pool = eligible[cat].filter((rec) => {
+      if (usedNames.has(rec.recipe.name)) return false;
+      if (exclude.has(norm(rec.recipe.name))) return false;
+      return passesPredicate(rec);
+    });
+    // Last resort: allow within-plan repeats (still diet/allergen-safe) so a
+    // slot is filled rather than left empty.
+    if (pool.length === 0) {
+      pool = eligible[cat].filter(passesPredicate);
+    }
+    if (pool.length === 0) return null;
+
+    const best = pool
+      .slice()
+      .sort(
+        (a, b) =>
+          a.recipe.totalMinutes - b.recipe.totalMinutes ||
+          a.recipe.costPerServe - b.recipe.costPerServe,
+      )[0];
+    usedNames.add(best.recipe.name);
+    return toGenerated(best.recipe, best.isNoCook, targetServings, mealType);
+  }
+
   return {
     countFor,
     take,
+    takeRelaxed,
     // Pescatarian fish-ratio balancing isn't tracked by the library source;
     // dietary strictness already guarantees pescatarian-safe picks.
     record: () => {},

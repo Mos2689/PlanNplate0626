@@ -118,6 +118,17 @@ export interface CuratedMatcher {
     opts?: CuratedTakeOptions,
   ): GeneratedRecipeResponse | null;
   /**
+   * Guaranteed-fill fallback: enforces ONLY dietary + allergen safety (drops
+   * cuisine / skill / time / behaviour) so a slot the OpenAI path couldn't fill
+   * still lands an instant library recipe instead of coming back empty.
+   * Optional — only the inspired-library matcher implements it.
+   */
+  takeRelaxed?(
+    mealType: MealType,
+    excludeNames: string[],
+    opts?: CuratedTakeOptions,
+  ): GeneratedRecipeResponse | null;
+  /**
    * Record a recipe the engine sourced ELSEWHERE (cache / OpenAI / safety net)
    * so the pescatarian fish-vs-veg composition stays accurate across the whole
    * plan, not just the curated picks. No-op for non-pescatarian plans and for
