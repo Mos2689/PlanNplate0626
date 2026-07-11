@@ -303,7 +303,7 @@ async function parseRecipeFromText(text: string): Promise<ParsedRecipe> {
   "instructions": ["Step 1", "Step 2"],
   "tags": ["tag1", "tag2"]
 }
-Only output valid JSON, no markdown or explanations. If information is missing, make reasonable estimates.`,
+The spoken text may mix languages or use non-English words/script (e.g. code-switched Hindi/English). Translate every field (name, description, ingredient names, instructions, tags) into English, regardless of the language(s) used in the input. Only output valid JSON, no markdown or explanations. If information is missing, make reasonable estimates.`,
       },
       {
         role: 'user',

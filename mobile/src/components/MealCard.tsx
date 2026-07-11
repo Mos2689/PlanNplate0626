@@ -188,27 +188,35 @@ export function MealCard({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: t(12, 10),
-          paddingHorizontal: 14,
-          paddingVertical: t(12, 10),
-          borderRadius: 18,
+          gap: t(14, 10),
+          padding: 12,
+          borderRadius: 20,
           borderWidth: 1,
           borderColor: colors.hair,
           backgroundColor: colors.bg,
         }}
       >
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 12,
-            backgroundColor: designTokens.colors.brand,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Leaf size={18} color="#fff" strokeWidth={1.6} />
-        </View>
+        {image ? (
+          <Image
+            source={{ uri: image }}
+            style={{ width: 88, height: 88, borderRadius: 14 }}
+            contentFit="cover"
+            transition={150}
+          />
+        ) : (
+          <View
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: 14,
+              backgroundColor: designTokens.colors.brand,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Leaf size={28} color="#fff" strokeWidth={1.6} />
+          </View>
+        )}
 
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={eyebrowStyle}>
