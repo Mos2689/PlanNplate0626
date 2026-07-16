@@ -309,6 +309,19 @@ export default function HomeScreen() {
     recipeRatings.forEach((r) => consider(r.recipeId, r.stars, r.ratedAt));
     cookingLogs.forEach((l) => consider(l.recipeId, l.vibeRating ?? 0, l.cookedAt));
 
+    // 1b) Cooked this week — recipes the user actually cooked in the past 7
+    //     days, regardless of rating. Surfaces what they've been making, not
+    //     just what they rated. Doesn't clobber a recipe already captured as a
+    //     recent rating (the higher signal).
+    cookingLogs.forEach((l) => {
+      if (l.status !== 'cooked' || !l.recipeId || byId.has(l.recipeId)) return;
+      const at = new Date(l.cookedAt).getTime();
+      if (Number.isNaN(at) || at < weekAgo) return;
+      const recipe = recipeById.get(l.recipeId);
+      if (!recipe) return;
+      byId.set(l.recipeId, { recipe, stars: 0, at, kind: 'cooked' });
+    });
+
     // 2) Loved recipes — hearted in the Recipes section. Don't clobber a
     //    recipe already captured as a recent rating (that's the higher signal).
     recipes.forEach((r) => {
@@ -1532,6 +1545,10 @@ export default function HomeScreen() {
               actualMealEaten: l.actualMealEaten,
             })),
           );
+          // Dismiss the weekly look-back for this week so it doesn't pop back up
+          // after the user has completed the review (logging alone resolves it,
+          // but this guarantees it closes even if a slot edge-case remains).
+          if (activeNudge) dismissNudge(activeNudge.dismissKey);
           setNudgeSheet(null);
         }}
       />

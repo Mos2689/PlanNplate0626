@@ -209,13 +209,19 @@ export default function ImportReviewScreen() {
       updatedTags.push(mealType);
     }
 
-    // Fetch a relevant image for the recipe
+    // Image: prefer the source post's own photo (og:image) — the real dish —
+    // and only fall back to a Pexels search when the import didn't capture one.
     let imageUrl = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
-    try {
-      const ingredientsForImage = validatedIngredients.map(ing => ({ name: ing.name, category: ing.category }));
-      imageUrl = await generateRecipeImage(name, description, ingredientsForImage);
-    } catch (error) {
-      console.log('[IMPORT-REVIEW] Failed to fetch recipe image, using fallback:', error);
+    const sourceImage = initialRecipe?.imageUrl;
+    if (sourceImage && /^https?:\/\//i.test(sourceImage)) {
+      imageUrl = sourceImage;
+    } else {
+      try {
+        const ingredientsForImage = validatedIngredients.map(ing => ({ name: ing.name, category: ing.category }));
+        imageUrl = await generateRecipeImage(name, description, ingredientsForImage);
+      } catch (error) {
+        console.log('[IMPORT-REVIEW] Failed to fetch recipe image, using fallback:', error);
+      }
     }
 
     const newRecipe: Recipe = {

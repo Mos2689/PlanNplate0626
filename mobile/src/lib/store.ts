@@ -1544,6 +1544,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
               date: formatDateKey(recipeDate),
               mealType,
               recipeId,
+              // Per-plan serving lives on the SLOT, not the shared recipe row.
+              // The card shows `servingOverride ?? recipe.servings` and the
+              // grocery list scales by `servingOverride / recipe.servings`, so
+              // this plan reads the tuned serving even when the recipe row is a
+              // shared library row saved at a different serving by another plan.
+              servingOverride: preferences.servingSize,
             };
             get().addMealToSlot(slot);
 
@@ -2491,7 +2497,10 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const existing = findExistingRecipe(get().recipes, recipe);
         if (existing) {
           // Backfill a real image if the existing row lacks one and the
-          // incoming copy has it — but never create a second row.
+          // incoming copy has it — but never create a second row, and never
+          // mutate the shared row's serving/ingredients. Per-plan serving lives
+          // on the meal SLOT (servingOverride), so the same recipe can appear in
+          // different plans at different servings without conflict.
           if (!existing.imageUrl && recipe.imageUrl) {
             get().updateRecipe(existing.id, { imageUrl: recipe.imageUrl });
           }

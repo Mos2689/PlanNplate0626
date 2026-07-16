@@ -38,6 +38,7 @@ import { useMealPlanStore, type Recipe, type Ingredient } from '@/lib/store';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { cn } from '@/lib/cn';
 import { isOpenAIConfigured, generateRecipeImage } from '@/lib/openai';
+import { uploadRecipeImage } from '@/lib/uploadRecipeImage';
 import { supabase } from '@/lib/supabase';
 import { classifyRecipeByContent } from '@/lib/meal-type-validator';
 import { validateIngredients } from '@/lib/ingredient-validator';
@@ -65,6 +66,10 @@ interface ParsedRecipe {
   ingredients: Array<{ name: string; quantity: string; unit: string; category: string }>;
   instructions: string[];
   tags: string[];
+  // True ONLY when the source image is a photograph of the finished/plated
+  // dish — so we can use the user's own photo as the recipe hero. False for
+  // recipe cards, screenshots, handwritten notes, or any text-only image.
+  isFoodPhoto?: boolean;
 }
 
 async function parseRecipeFromImage(imageUri: string): Promise<ParsedRecipe> {
@@ -96,8 +101,10 @@ async function parseRecipeFromImage(imageUri: string): Promise<ParsedRecipe> {
     {"name": "ingredient", "quantity": "1", "unit": "cup", "category": "produce|dairy|meat|pantry|frozen|bakery|other"}
   ],
   "instructions": ["Step 1", "Step 2"],
-  "tags": ["tag1", "tag2"]
+  "tags": ["tag1", "tag2"],
+  "isFoodPhoto": true
 }
+Set "isFoodPhoto" to true ONLY if this image is a photograph of the finished/plated dish (real food). Set it to false for recipe cards, screenshots, handwritten notes, printed pages, or any image that is primarily text.
 Only output valid JSON, no markdown or explanations. If information is missing, make reasonable estimates based on what you can see.`,
       },
       {
@@ -339,6 +346,10 @@ export default function AddRecipeScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const colors = getThemeColors(isDark);
+  // When the user snaps a photo of the ACTUAL dish (not a recipe card), we keep
+  // its URI here so Save can upload it and use it as the recipe hero instead of
+  // a Pexels search. Null for text/speak or recipe-card snaps → Pexels fallback.
+  const [foodPhotoUri, setFoodPhotoUri] = useState<string | null>(null);
   // One free use, then the paywall (independent per-feature gate).
   const recipeGate = useRecipeFeatureGate('add', 'generic');
 
@@ -469,6 +480,8 @@ export default function AddRecipeScreen() {
 
       // Parse recipe from transcription
       const parsedRecipe = await parseRecipeFromText(transcription);
+      // Spoken recipe — no source photo, so use the Pexels fallback on Save.
+      setFoodPhotoUri(null);
 
       // Fill in the form with parsed data
       setName(parsedRecipe.name || '');
@@ -565,6 +578,8 @@ export default function AddRecipeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
       const parsedRecipe = await parseRecipeFromText(uploadText);
+      // Typed recipe — no source photo, so use the Pexels fallback on Save.
+      setFoodPhotoUri(null);
       fillFormWithRecipe(parsedRecipe);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -665,6 +680,11 @@ export default function AddRecipeScreen() {
       const parsedRecipe = uploadedImages.length === 1
         ? await parseRecipeFromImage(uploadedImages[0])
         : await parseRecipeFromMultipleImages(uploadedImages);
+
+      // If the snapped image is a real photo of the dish, keep it to use as the
+      // recipe hero on Save. Recipe cards / screenshots (isFoodPhoto=false) fall
+      // through to the Pexels search instead.
+      setFoodPhotoUri(parsedRecipe.isFoodPhoto ? uploadedImages[0] : null);
 
       fillFormWithRecipe(parsedRecipe);
 
@@ -787,11 +807,20 @@ export default function AddRecipeScreen() {
     }
 
     let imageUrl = FALLBACK_IMAGE;
-    try {
-      const ingredientsForImage = validIngredients.map(ing => ({ name: ing.name, category: ing.category }));
-      imageUrl = await generateRecipeImage(name.trim(), description.trim() || `A delicious ${name.trim()} recipe`, ingredientsForImage);
-    } catch (error) {
-      console.log('[AddRecipe] Failed to fetch Pexels image, using fallback:', error);
+    // 1) Prefer the user's OWN photo of the dish (snapped food photo) — exact by
+    //    definition. Upload it for a persistent, syncable URL.
+    if (foodPhotoUri) {
+      const uploaded = await uploadRecipeImage(foodPhotoUri);
+      if (uploaded) imageUrl = uploaded;
+    }
+    // 2) No dish photo → fall back to a Pexels search.
+    if (imageUrl === FALLBACK_IMAGE) {
+      try {
+        const ingredientsForImage = validIngredients.map(ing => ({ name: ing.name, category: ing.category }));
+        imageUrl = await generateRecipeImage(name.trim(), description.trim() || `A delicious ${name.trim()} recipe`, ingredientsForImage);
+      } catch (error) {
+        console.log('[AddRecipe] Failed to fetch Pexels image, using fallback:', error);
+      }
     }
 
     const recipe: Recipe = {

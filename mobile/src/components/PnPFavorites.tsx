@@ -15,7 +15,7 @@
 import React from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
-import { Heart, Star } from 'lucide-react-native';
+import { Heart, Star, Flame } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
@@ -26,7 +26,7 @@ export interface FavoriteRecipe {
   recipe: Recipe;
   stars: number; // 1–5 (the highest rating seen this week); 0 for loved-only
   at: number; // epoch ms of the most recent love/rating
-  kind: 'rated' | 'loved'; // 'rated' shows the star score, 'loved' shows a heart
+  kind: 'rated' | 'loved' | 'cooked'; // star score / heart / flame respectively
 }
 
 interface PnPFavoritesProps {
@@ -95,7 +95,7 @@ export function PnPFavorites({ favorites, onRecipePress, isDark = false }: PnPFa
             lineHeight: 17,
           }}
         >
-          Recipes you loved or rated highly, updated weekly.
+          Recipes you cooked, loved, or rated highly this week.
         </Text>
       </View>
 
@@ -141,7 +141,8 @@ function FavoriteCard({
   const inkPrimary = isDark ? '#fff' : designTokens.colors.ink;
 
   const { recipe, kind } = fav;
-  const isLoved = kind === 'loved' || fav.stars <= 0;
+  const isCooked = kind === 'cooked';
+  const isLoved = !isCooked && (kind === 'loved' || fav.stars <= 0);
 
   return (
     <Animated.View entering={FadeInDown.delay(index * 60).springify()} style={{ width: TILE_WIDTH }}>
@@ -151,7 +152,11 @@ function FavoriteCard({
           onPress();
         }}
         accessibilityLabel={
-          isLoved ? `${recipe.name}, loved` : `${recipe.name}, rated ${fav.stars} stars`
+          isCooked
+            ? `${recipe.name}, cooked this week`
+            : isLoved
+              ? `${recipe.name}, loved`
+              : `${recipe.name}, rated ${fav.stars} stars`
         }
       >
         {({ pressed }) => (
@@ -183,7 +188,7 @@ function FavoriteCard({
                 />
               ) : null}
 
-              {/* Signal badge — heart for loved, star score for rated. */}
+              {/* Signal badge — flame for cooked, heart for loved, star for rated. */}
               <View
                 style={{
                   position: 'absolute',
@@ -198,7 +203,20 @@ function FavoriteCard({
                   backgroundColor: 'rgba(0,0,0,0.55)',
                 }}
               >
-                {isLoved ? (
+                {isCooked ? (
+                  <>
+                    <Flame size={9} color="#E46D46" fill="#E46D46" strokeWidth={0} />
+                    <Text
+                      style={{
+                        fontFamily: designTokens.font.semibold,
+                        fontSize: 9.5,
+                        color: '#F6F2E9',
+                      }}
+                    >
+                      Cooked
+                    </Text>
+                  </>
+                ) : isLoved ? (
                   <Heart size={9} color="#F6F2E9" fill="#F6F2E9" strokeWidth={0} />
                 ) : (
                   <>

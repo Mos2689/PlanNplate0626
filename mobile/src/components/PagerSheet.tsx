@@ -19,6 +19,8 @@ import {
   FlatList,
   Dimensions,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -157,7 +159,13 @@ export function PagerSheet({
       statusBarTranslucent
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={styles.backdrop}>
+        {/* KeyboardAvoidingView lifts the bottom-anchored sheet above the
+            keyboard so text inputs (e.g. the "what really happened" swap note)
+            stay visible while typing. Must live INSIDE the Modal to take effect. */}
+        <KeyboardAvoidingView
+          style={styles.backdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           {/* Invisible backdrop layer — closes sheet on tap, but doesn't wrap the sheet
               (so gestures inside the sheet aren't intercepted) */}
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
@@ -229,7 +237,7 @@ export function PagerSheet({
           {/* Footer */}
           {!!footer && <View style={styles.footer}>{renderFooter()}</View>}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </GestureHandlerRootView>
     </Modal>
   );

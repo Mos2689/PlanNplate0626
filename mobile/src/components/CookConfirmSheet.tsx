@@ -10,8 +10,6 @@ import {
   Image,
   TextInput,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { Check, ArrowRight, Utensils } from 'lucide-react-native';
@@ -80,7 +78,25 @@ export function CookConfirmSheet({
     );
   }, [entries]);
 
-  const total = orderedEntries.length;
+  // One review page per UNIQUE recipe — a recipe used across several slots
+  // (e.g. leftovers) is asked about only once. Custom meals (no recipeId) stay
+  // per-slot. On submit the answer is applied to EVERY slot sharing that recipe
+  // so no slot is left unlogged (which is what keeps the "look back" nudge open).
+  const dedupedEntries = useMemo(() => {
+    const seen = new Set<string>();
+    const out: SlotEntry[] = [];
+    for (const e of orderedEntries) {
+      const rid = e.slot.recipeId;
+      if (rid) {
+        if (seen.has(rid)) continue;
+        seen.add(rid);
+      }
+      out.push(e);
+    }
+    return out;
+  }, [orderedEntries]);
+
+  const total = dedupedEntries.length;
   const [logs, setLogs] = useState<Record<string, SlotLog>>({});
   const [modes, setModes] = useState<Record<string, PageMode>>({});
   const [pageIndex, setPageIndex] = useState(0);
@@ -88,7 +104,7 @@ export function CookConfirmSheet({
   const isComplete = (l?: SlotLog) =>
     !!l && (l.status !== 'skipped' || !!l.skipReason);
 
-  const loggedCount = orderedEntries.filter((e) => isComplete(logs[e.slot.id])).length;
+  const loggedCount = dedupedEntries.filter((e) => isComplete(logs[e.slot.id])).length;
   const allLogged = total > 0 && loggedCount === total;
 
   // ─────── Handlers ───────
@@ -155,15 +171,32 @@ export function CookConfirmSheet({
   };
 
   const handleSubmit = () => {
-    const out = orderedEntries
-      .filter((e) => isComplete(logs[e.slot.id]))
-      .map((e) => ({
-        slotId: e.slot.id,
-        recipeId: e.slot.recipeId,
-        status: logs[e.slot.id].status,
-        skipReason: logs[e.slot.id].skipReason,
-        actualMealEaten: logs[e.slot.id].actualMealEaten,
-      }));
+    // Expand each reviewed recipe's answer to EVERY slot that uses it, so all
+    // past-week slots get logged (custom meals apply to just their own slot).
+    const out: Array<{
+      slotId: string;
+      recipeId: string | null;
+      status: CookStatus;
+      skipReason?: SkipReason;
+      actualMealEaten?: string;
+    }> = [];
+    for (const rep of dedupedEntries) {
+      const log = logs[rep.slot.id];
+      if (!isComplete(log)) continue;
+      const rid = rep.slot.recipeId;
+      const targets = rid
+        ? orderedEntries.filter((e) => e.slot.recipeId === rid)
+        : [rep];
+      for (const t of targets) {
+        out.push({
+          slotId: t.slot.id,
+          recipeId: t.slot.recipeId,
+          status: log.status,
+          skipReason: log.skipReason,
+          actualMealEaten: log.actualMealEaten,
+        });
+      }
+    }
     if (out.length === 0) {
       handleClose();
       return;
@@ -186,7 +219,7 @@ export function CookConfirmSheet({
 
   const pages = useMemo(
     () =>
-      orderedEntries.map((entry) => (
+      dedupedEntries.map((entry) => (
         <MealPage
           key={entry.slot.id}
           entry={entry}
@@ -201,13 +234,13 @@ export function CookConfirmSheet({
         />
       )),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [orderedEntries, logs, modes],
+    [dedupedEntries, logs, modes],
   );
 
   const completionPage = (
     <CompletionPage
-      title="That's the whole day."
-      subtitle="Nice and honest — we’ll work that into tomorrow’s plan."
+      title="That's the whole week."
+      subtitle="Nice and honest — we’ll work that into your next plan."
       loggedCount={loggedCount}
     />
   );
@@ -237,27 +270,24 @@ export function CookConfirmSheet({
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 0 }}
-    >
-      <PagerSheet
-        visible={visible}
-        header={{
-          eyebrow: `A look back · ${dateLabel}`,
-          // Brand rule: ONE italic word per screen (the *kitchen* below).
-          title: 'Yesterday in your *kitchen*.',
-          subtitle: 'No judgment — just what really happened.',
-        }}
-        pages={pages}
-        completion={completionPage}
-        currentIndex={pageIndex}
-        onIndexChange={setPageIndex}
-        onClose={handleClose}
-        isDark={isDark}
-        footer={footer}
-      />
-    </KeyboardAvoidingView>
+    <PagerSheet
+      visible={visible}
+      header={{
+        eyebrow: `A look back · ${dateLabel}`,
+        // Brand rule: ONE italic word per screen (the *kitchen* below).
+        title: 'Yesterday in your *kitchen*.',
+        subtitle: 'No judgment — just what really happened.',
+      }}
+      pages={pages}
+      completion={completionPage}
+      currentIndex={pageIndex}
+      onIndexChange={setPageIndex}
+      onClose={handleClose}
+      isDark={isDark}
+      footer={footer}
+    />
+    // Keyboard avoidance now lives INSIDE PagerSheet's Modal (the only place
+    // it can take effect), so the outer KeyboardAvoidingView is removed.
   );
 }
 

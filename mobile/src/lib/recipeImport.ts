@@ -39,6 +39,9 @@ export interface ImportedRecipe {
   tags: string[];
   calories: number;
   sourceUrl?: string;
+  // The source post's own image (e.g. Instagram og:image) when the import
+  // parser can extract it — the real dish photo. Preferred over a Pexels search.
+  imageUrl?: string;
 }
 
 export interface ImportJob {
@@ -54,7 +57,26 @@ export interface ImportJob {
 /**
  * Fetch webpage content and clean it for recipe extraction
  */
-async function fetchWebpageContent(url: string): Promise<string> {
+// Pull the source post's hero image from its Open Graph / Twitter meta tags —
+// this is the real dish photo (Instagram, blogs, etc.), preferred over a Pexels
+// search. Returns an absolute http(s) URL or undefined.
+function extractOgImage(html: string): string | undefined {
+  const patterns = [
+    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["']/i,
+    /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
+  ];
+  for (const re of patterns) {
+    const m = html.match(re);
+    const src = m?.[1]?.trim();
+    if (src && /^https?:\/\//i.test(src)) return src;
+  }
+  return undefined;
+}
+
+async function fetchWebpageContent(
+  url: string,
+): Promise<{ content: string; ogImage?: string }> {
   console.log('Fetching webpage content from:', url);
 
   try {
@@ -75,15 +97,16 @@ async function fetchWebpageContent(url: string): Promise<string> {
     const html = await response.text();
     console.log('Fetched HTML length:', html.length);
 
+    const ogImage = extractOgImage(html);
     // Clean HTML and extract text content
     const cleanedContent = cleanHtmlContent(html, url);
-    console.log('Cleaned content length:', cleanedContent.length);
+    console.log('Cleaned content length:', cleanedContent.length, '| ogImage:', ogImage ? 'found' : 'none');
 
-    return cleanedContent;
+    return { content: cleanedContent, ogImage };
   } catch (error) {
     console.error('Error fetching webpage:', error);
     // Return the URL as fallback so AI can try to infer
-    return `Unable to fetch page content. URL: ${url}`;
+    return { content: `Unable to fetch page content. URL: ${url}` };
   }
 }
 
@@ -259,8 +282,8 @@ function normalizeAndValidateUrl(url: string): string {
 export async function extractRecipeFromUrl(url: string): Promise<ImportedRecipe> {
   console.log('Extracting recipe from URL:', url);
 
-  // First, fetch the webpage content
-  const webpageContent = await fetchWebpageContent(url);
+  // First, fetch the webpage content (+ the post's own hero image if present).
+  const { content: webpageContent, ogImage } = await fetchWebpageContent(url);
 
   const prompt = `You are a recipe extraction expert. Given the following webpage content, extract the recipe information.
 
@@ -312,6 +335,9 @@ Only return valid JSON, no markdown or explanation.`;
   // Normalize and validate the URL
   const normalizedUrl = normalizeAndValidateUrl(url);
   recipe.sourceUrl = normalizedUrl;
+  // Attach the source post's own photo (og:image) so import-review uses it as
+  // the hero instead of a Pexels search. Undefined → Pexels fallback.
+  if (ogImage) recipe.imageUrl = ogImage;
 
   console.log('[RecipeImport] Extracted recipe with sourceUrl:', {
     recipeName: recipe.name,
