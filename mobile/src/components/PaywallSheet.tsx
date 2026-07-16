@@ -54,6 +54,7 @@ import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design
 import { t } from '@/lib/platform-tokens';
 import type { PurchasesPackage } from 'react-native-purchases';
 import { logMetaPurchase } from '@/lib/meta-sdk';
+import { track } from '@/lib/analytics';
 
 // ── Feature rows ────────────────────────────────────────────────────────────
 // One ordered list of features; each tier supplies its own value per feature.
@@ -151,11 +152,12 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
 
   const handleClose = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    track('paywall_dismissed', { trigger: trigger ?? 'unknown' });
     // Onboarding's only route forward is this sheet — skipping lands the user
     // on the home tab (gated actions re-fire the paywall later).
     if (isOnboarding) router.replace('/(tabs)');
     closeSheet();
-  }, [closeSheet, isOnboarding, router]);
+  }, [closeSheet, isOnboarding, router, trigger]);
 
   const handlePurchase = useCallback(async () => {
     if (!monthly) {
@@ -163,11 +165,21 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    track('purchase_started', {
+      trigger: trigger ?? 'unknown',
+      package: monthly.product.identifier,
+    });
     setIsPurchasing(true);
     const result = await purchasePackage(monthly);
     setIsPurchasing(false);
     if (result.ok) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      track('purchase_completed', {
+        trigger: trigger ?? 'unknown',
+        package: monthly.product.identifier,
+        price: (monthly.product as any).price ?? 0,
+        currency: (monthly.product as any).currencyCode ?? 'AUD',
+      });
 
       const price = (monthly.product as any).price || 0;
       const currency = (monthly.product as any).currencyCode || 'AUD';
@@ -195,6 +207,12 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
         result.reason,
         result.error as Error | undefined,
       );
+      track('purchase_failed', {
+        trigger: trigger ?? 'unknown',
+        package: monthly.product.identifier,
+        reason: result.reason ?? 'unknown',
+        cancelled: !friendly, // user-initiated cancel
+      });
       if (!friendly) return; // user-initiated cancel — stay silent
       Alert.alert(
         friendly.title,
@@ -206,7 +224,7 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
         ],
       );
     }
-  }, [monthly, closeSheet, isOnboarding, router]);
+  }, [monthly, closeSheet, isOnboarding, router, trigger]);
 
   const handleRestore = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

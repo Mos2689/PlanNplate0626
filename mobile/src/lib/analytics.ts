@@ -1,11 +1,37 @@
 import PostHog from 'posthog-react-native';
 
-export type AnalyticsEvent = 
+// Known events are documented here to prevent typos and give autocomplete,
+// but `track()` accepts ANY string so new critical-path events can be added
+// at the call site without editing this union first.
+export type KnownAnalyticsEvent =
+  // Lifecycle
+  | 'app_installed'
+  | 'app_opened'
+  // Onboarding
   | 'onboarding_step_viewed'
   | 'onboarding_completed'
-  | 'ui_button_tapped'
+  // Auth
   | 'auth_signup'
-  | 'auth_login';
+  | 'auth_login'
+  // Paywall / purchase
+  | 'paywall_viewed'
+  | 'paywall_dismissed'
+  | 'purchase_started'
+  | 'purchase_completed'
+  | 'purchase_failed'
+  // Core funnels
+  | 'recipe_generate_started'
+  | 'recipe_generate_succeeded'
+  | 'recipe_generate_failed'
+  | 'meal_plan_created'
+  | 'recipe_added_to_plan'
+  | 'grocery_list_generated'
+  // Generic UI
+  | 'ui_button_tapped';
+
+// `(string & {})` keeps the literal autocomplete from KnownAnalyticsEvent while
+// still permitting arbitrary event names.
+export type AnalyticsEvent = KnownAnalyticsEvent | (string & {});
 
 type Sink = (event: AnalyticsEvent, props?: Record<string, any>) => void;
 

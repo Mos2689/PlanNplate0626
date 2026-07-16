@@ -31,7 +31,9 @@
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_NihKFWAv5fqC1iyZRlHDHA_yuvikvsI",
         "EXPO_PUBLIC_META_APP_ID": "986931690923533",
         "EXPO_PUBLIC_META_CLIENT_TOKEN": "5938fbffd345bc485d7f6be76d0d9982",
-        "EXPO_PUBLIC_META_DISPLAY_NAME": "PlanNplate"
+        "EXPO_PUBLIC_META_DISPLAY_NAME": "PlanNplate",
+        "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_r6o5ybmwrWfKxvgyWFwM9kBi2APgUvwC3QcdUxuTMXWx",
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com"
       },
       "ios": {
         "distribution": "store"

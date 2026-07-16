@@ -1,9 +1,17 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, ActivityIndicator, Text, ScrollView } from 'react-native';
+import { View, ActivityIndicator, Text, ScrollView, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { useMealPlanStore } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
 import { reclassifyAllRecipes } from '@/lib/recipe-reclassifier';
 import { prefetchPlanHeroImages } from '@/lib/image-prefetch';
+import { track } from '@/lib/analytics';
+
+// Persisted flag so `app_installed` fires exactly once per install (survives
+// app restarts; cleared on uninstall / data-clear, which is the correct
+// "new install" semantics).
+const INSTALLED_FLAG_KEY = '@analytics/installed';
 
 // Adapter: read the signup-in-progress flag without subscribing to it. The
 // signup flow may briefly desync isAuthenticated as Supabase swaps the anon
@@ -57,6 +65,28 @@ export function StoreHydration({ children }: StoreHydrationProps) {
     console.log('[StoreHydration] Initializing auth...');
     initializeAuth();
   }, [initializeAuth]);
+
+  // Lifecycle analytics — runs once per cold start. `app_opened` fires every
+  // launch; `app_installed` fires only on the very first launch after install
+  // (gated by a persisted AsyncStorage flag), which is our signal that a user
+  // actually installed the app.
+  useEffect(() => {
+    const appVersion = Constants.expoConfig?.version ?? 'unknown';
+
+    track('app_opened', { platform: Platform.OS, app_version: appVersion });
+
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(INSTALLED_FLAG_KEY);
+        if (!seen) {
+          track('app_installed', { platform: Platform.OS, app_version: appVersion });
+          await AsyncStorage.setItem(INSTALLED_FLAG_KEY, new Date().toISOString());
+        }
+      } catch (e) {
+        console.warn('[Analytics] Failed to record app_installed flag', e);
+      }
+    })();
+  }, []);
 
   // Load user data when authenticated
   const loadData = useCallback(async (userId: string) => {

@@ -16,6 +16,7 @@ import {
   type UserSubscription,
   type AccountStatus,
 } from './database';
+import { track } from './analytics';
 
 // The trigger that opened the PaywallSheet — useful for analytics +
 // for the sheet to show context-aware headline copy (e.g. "Keep cooking
@@ -82,6 +83,11 @@ export const useSubscriptionStore = create<SubscriptionStore>()((set, get) => ({
   paywallSheetTrigger: null,
 
   openPaywallSheet: (trigger: PaywallTrigger) => {
+    // Only count a genuine open (ignore re-sets to the same trigger while
+    // already visible).
+    if (get().paywallSheetTrigger !== trigger) {
+      track('paywall_viewed', { trigger });
+    }
     set({ paywallSheetTrigger: trigger });
   },
   closePaywallSheet: () => {

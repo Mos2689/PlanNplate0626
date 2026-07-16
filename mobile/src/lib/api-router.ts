@@ -30,10 +30,11 @@ interface EdgeFunctionResponse<T> {
 /**
  * Get a valid access token, refreshing if needed.
  *
- * Self-healing: if the current token is expired AND a server-side refresh
- * fails (e.g. the refresh token is also expired — common after long idle
- * periods in Expo Go), we sign out the dead session and create a fresh
- * anonymous guest session so API calls can proceed.
+ * If the current token is expired AND a server-side refresh fails (e.g. the
+ * refresh token is also expired — common after long idle periods), the session
+ * is dead. Anonymous sign-ins are disabled (hard registration only), so there
+ * is no silent guest fallback: we return null and let the auth-gated routing
+ * send the user to /signup to re-authenticate.
  */
 async function getValidAccessToken(): Promise<string | null> {
   if (isRefreshing && refreshPromise) {
@@ -67,17 +68,13 @@ async function getValidAccessToken(): Promise<string | null> {
         return data.session.access_token;
       }
 
-      // Attempt 2: refresh genuinely failed — only now fall back to a fresh
-      // anonymous guest so the app can keep working.
-      console.warn('[API] Session refresh failed — creating fresh anonymous session...');
+      // Refresh genuinely failed — the session is dead. With anonymous
+      // sign-ins disabled there is no guest fallback: clear the stale session
+      // and return null so the caller fails cleanly and routing forces
+      // re-authentication at /signup.
+      console.warn('[API] Session refresh failed — clearing dead session (re-auth required).');
       await supabase.auth.signOut().catch(() => {});
-      const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-      if (anonError || !anonData.session?.access_token) {
-        console.error('[API] Anonymous sign-in recovery failed:', anonError?.message);
-        return null;
-      }
-      console.log('[API] Fresh anonymous session created — token recovered');
-      return anonData.session.access_token;
+      return null;
     } finally {
       isRefreshing = false;
       refreshPromise = null;

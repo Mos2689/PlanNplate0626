@@ -45,6 +45,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useMealPlanStore, MONTHLY_FEATURE_LIMITS, type GroceryItem, type Ingredient, type SavedGroceryList } from '@/lib/store';
+import { track } from '@/lib/analytics';
 import { useAuthStore } from '@/lib/auth-store';
 import { useIsAccountPaused, useSubscriptionStore, useHasPremiumAccess, useIsPremiumResolved } from '@/lib/subscription-store';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -1895,6 +1896,7 @@ export default function GroceryScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     generateGroceryList(startDate, endDate);
     setGroceryDateRange(startDate, endDate);
+    track('grocery_list_generated', { source: 'meal_plan', start_date: startDate, end_date: endDate });
   }, [generateGroceryList, setGroceryDateRange]);
 
   const handleCombineDuplicates = useCallback(
@@ -1968,6 +1970,7 @@ export default function GroceryScreen() {
 
     // Regenerate grocery list with the previously selected date range
     generateGroceryList(groceryStartDate, groceryEndDate);
+    track('grocery_list_generated', { source: 'refresh', start_date: groceryStartDate, end_date: groceryEndDate });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [groceryStartDate, groceryEndDate, generateGroceryList]);
 

@@ -60,6 +60,7 @@ import {
 } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
 import { useSubscriptionStore, useHasPremiumAccess, useIsPremiumResolved } from '@/lib/subscription-store';
+import { track } from '@/lib/analytics';
 import {
   CURATED_MEAL_PLANS,
   applyCuratedMealPlan,
@@ -972,6 +973,12 @@ export default function CuratedPlanSetupScreen() {
         await wait(200);
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        track('meal_plan_created', {
+          source: 'curated',
+          mode,
+          meal_count: scheduledMeals.length,
+          duration_days: durationDays,
+        });
         setApplyStage('success');
         await wait(1200);
         router.replace('/(tabs)' as any);

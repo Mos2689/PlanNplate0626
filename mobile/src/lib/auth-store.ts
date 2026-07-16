@@ -106,8 +106,12 @@ const mapSupabaseUser = (user: User): AuthUser => ({
 // (email-verified) account OR a silent anonymous guest. Anonymous users have
 // no email to confirm, so they bypass the email-verified requirement.
 const isAnonUser = (user?: User | null): boolean => !!user?.is_anonymous;
+// Hard registration only: anonymous sessions are NOT usable. A user is only
+// promoted to authenticated once their email is verified. Any leftover cached
+// anonymous session (from before anonymous sign-ins were disabled) fails this
+// check and gets signed out by the caller.
 const isUsableSession = (user?: User | null): boolean =>
-  !!user && (isAnonUser(user) || !!user.email_confirmed_at);
+  !!user && !isAnonUser(user) && !!user.email_confirmed_at;
 
 /**
  * Ensures a user entry exists in the users table.
@@ -243,18 +247,16 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         return;
       }
 
-      // AUTH-LAST: a fresh install has no session. Rather than forcing the
-      // login screen, sign in SILENTLY as an anonymous guest so the user can
-      // go straight into onboarding → first plan → first grocery. Signup later
-      // links this same user (keeping all their data). Requires "Anonymous
-      // sign-ins" enabled in the Supabase project; if it's disabled the call
-      // errors and we fall back to an unauthenticated state.
+      // AUTH-FIRST: hard registration only. A fresh install has no session and
+      // no silent anonymous guest is created — the routing gate sends
+      // unauthenticated users straight to /signup. Only a previously
+      // signed-in (email-verified) user's cached session is restored here.
 
       // ── Guard: validate that an existing session's JWT is actually usable ──
       // Supabase caches sessions in AsyncStorage and getSession() returns them
       // even when the access_token has expired. If the JWT is expired, try a
       // server-side refresh. If that also fails the session is truly dead —
-      // sign it out so we can fall through to a fresh anonymous session below.
+      // sign it out and fall through to the unauthenticated state below.
       if (session?.access_token) {
         let tokenAlive = false;
         try {
@@ -273,7 +275,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           if (refreshError || !refreshData.session) {
             console.warn('[Auth] Refresh failed — clearing stale session:', refreshError?.message);
             await supabase.auth.signOut().catch(() => {});
-            session = null; // fall through to anonymous sign-in below
+            session = null; // fall through to the unauthenticated state below
           } else {
             console.log('[Auth] Session refreshed successfully');
             session = refreshData.session;
@@ -281,37 +283,20 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         }
       }
 
-      if (!session?.user) {
-        console.log('[Auth] No session - creating anonymous guest session...');
-        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-        if (anonError) {
-          console.error(
-            '[Auth] Anonymous sign-in failed (is "Anonymous sign-ins" enabled in Supabase?):',
-            anonError.message,
-          );
-        } else {
-          session = anonData.session;
-        }
-      }
-
-      // Promote a session that is usable: anonymous guest OR verified real user.
+      // Promote a session that is usable (email-verified real user only).
       if (session?.user && session?.access_token && isUsableSession(session.user)) {
-        const anonymous = isAnonUser(session.user);
-        console.log(
-          `[Auth] Active session for ${anonymous ? 'anonymous guest' : 'user'}:`,
-          session.user.id,
-        );
+        console.log('[Auth] Active session for user:', session.user.id);
         const authUser = mapSupabaseUser(session.user);
         set({
           session,
           currentUser: authUser,
           isAuthenticated: true,
-          isAnonymous: anonymous,
+          isAnonymous: false,
           _hasHydrated: true,
           isLoading: false,
         });
 
-        // Initialize subscription for the session (guest or real).
+        // Initialize subscription for the session.
         console.log('[Auth] Initializing subscription...');
         useSubscriptionStore.getState().initializeSubscription(
           authUser.id,
@@ -319,9 +304,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           authUser.name
         );
       } else if (session?.user) {
-        // Real user with an unverified email — keep the existing security
-        // behaviour: do not authenticate, sign the stale session out.
-        console.log('[Auth] Session found but email not verified - signing out');
+        // Not usable — either an unverified real user OR a leftover anonymous
+        // guest session (from before anonymous sign-ins were disabled). Do not
+        // authenticate; sign the stale session out so routing sends the user
+        // to /signup.
+        console.log('[Auth] Session not usable (unverified or anonymous) - signing out');
         await supabase.auth.signOut();
         set({
           _hasHydrated: true,
@@ -335,9 +322,9 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         // state while there's no usable session.
         useSubscriptionStore.getState().clearSubscription();
       } else {
-        // No session at all (e.g. anonymous sign-in unavailable). Don't hang —
-        // onboarding routing keys off the local flag, and the subscription gate
-        // is settled so downstream screens render.
+        // No session at all — the normal state for a fresh install with hard
+        // registration. Don't hang: settle the subscription gate and let the
+        // routing gate send the user to /signup.
         console.log('[Auth] No valid session found');
         set({
           _hasHydrated: true,

@@ -66,6 +66,7 @@ import { useOptimizedGeneration } from '@/lib/use-optimized-generation';
 import { initializeCacheTable } from '@/lib/recipe-cache';
 import { isDateSelectable } from '@/lib/date-restrictions';
 import { validateIngredients } from '@/lib/ingredient-validator';
+import { track } from '@/lib/analytics';
 import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import { VibeDeck } from '@/components/VibeDeck';
 import { InferredFridgeChips } from '@/components/InferredFridgeChips';
@@ -771,6 +772,10 @@ export default function GenerateRecipeScreen() {
     },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      track('recipe_generate_succeeded', {
+        mode: 'single',
+        vibe: Boolean(selectedVibeId),
+      });
       recipeGate.markUsed(); // successful generation — spend the free vibe use
       setGeneratedRecipe(data);
       setGeneratedMealPlan([]);
@@ -790,6 +795,10 @@ export default function GenerateRecipeScreen() {
     },
     onError: (error) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      track('recipe_generate_failed', {
+        mode: 'single',
+        reason: error instanceof Error ? error.message : String(error),
+      });
       console.error('Generate recipe error:', error);
     },
   });
@@ -817,6 +826,16 @@ export default function GenerateRecipeScreen() {
     },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      track('recipe_generate_succeeded', {
+        mode: 'meal_plan',
+        count: Array.isArray(data) ? data.length : recipesToGenerate,
+      });
+      track('meal_plan_created', {
+        source: 'ai_generated',
+        count: Array.isArray(data) ? data.length : recipesToGenerate,
+        optimize_grocery: optimizeGrocery,
+        allow_repeats: allowRepeats,
+      });
       recipeGate.markUsed(); // successful generation — spend the free vibe use
       setGeneratedMealPlan(data);
       setGeneratedRecipe(null);
@@ -824,6 +843,10 @@ export default function GenerateRecipeScreen() {
     },
     onError: (error) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      track('recipe_generate_failed', {
+        mode: 'meal_plan',
+        reason: error instanceof Error ? error.message : String(error),
+      });
       console.error('Generate meal plan error:', error);
     },
   });
@@ -843,12 +866,19 @@ export default function GenerateRecipeScreen() {
     console.log('=== GENERATE CLICKED ===');
     console.log('Days:', numberOfDays, 'Meals:', selectedMealTypes.length, 'Total:', recipesToGenerate);
 
+    track('recipe_generate_started', {
+      mode: isMealPlan ? 'meal_plan' : 'single',
+      count: isMealPlan ? recipesToGenerate : 1,
+      meal_types: selectedMealTypes.join(','),
+      vibe: Boolean(selectedVibeId),
+    });
+
     if (isMealPlan) {
       mutateMealPlan(recipesToGenerate);
     } else {
       mutateSingle();
     }
-  }, [isMealPlan, mutateSingle, mutateMealPlan, recipesToGenerate, numberOfDays, selectedMealTypes]);
+  }, [isMealPlan, mutateSingle, mutateMealPlan, recipesToGenerate, numberOfDays, selectedMealTypes, selectedVibeId]);
 
   const [isSavingRecipe, setIsSavingRecipe] = useState(false);
 

@@ -573,10 +573,13 @@ export default function RootLayout() {
   // Only mount PostHogProvider when analytics is actually configured — with no
   // API key `posthog` is a no-op stub and the provider's autocapture would have
   // nothing valid to talk to.
+  // Cast to `any`: posthog-react-native's provider return type (`Element | null`)
+  // trips React 19's stricter JSX component typing. Runtime is unaffected.
+  const Provider = PostHogProvider as any;
   return posthogEnabled ? (
-    <PostHogProvider client={posthog} autocapture>
+    <Provider client={posthog} autocapture>
       {tree}
-    </PostHogProvider>
+    </Provider>
   ) : (
     tree
   );

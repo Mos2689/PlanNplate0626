@@ -21,6 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { useMealPlanStore, type Recipe, type MealSlot } from '@/lib/store';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { track } from '@/lib/analytics';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 function formatLocalDateKey(date: Date): string {
@@ -352,9 +353,16 @@ export default function SelectRecipeScreen() {
     const slotId = params.slotId;
     if (isSwapMode && slotId) {
       updateMealSlot(slotId, { recipeId: selectedRecipeIds[0] });
+      track('recipe_added_to_plan', { mode: 'swap', recipe_count: 1, slot_count: 1 });
       router.back();
       return;
     }
+
+    track('recipe_added_to_plan', {
+      mode: 'add',
+      recipe_count: selectedRecipeIds.length,
+      slot_count: totalSlotCount,
+    });
 
     selectedRecipeIds.forEach((recipeId) => {
       Object.entries(dateMealTypeMap).forEach(([date, mealTypes]) => {
