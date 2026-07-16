@@ -45,7 +45,7 @@ We only collect information we need to run the Services. The categories below re
 
 | Category | Examples | Notes |
 |---|---|---|
-| **Account information** | Email address, password, display name | Passwords are handled by our authentication provider and are stored **hashed** — we never see or store your plaintext password. |
+| **Account information** | Email address, password, display name, profile image, and connected sign-in provider | Passwords are handled by our authentication provider and are stored **hashed** — we never see or store your plaintext password. If you use Google, Facebook, or Apple sign-in, we receive the account identifier and profile information you authorize that provider to share, which may include your name, email address, profile image, or an Apple private-relay email address. We never receive your provider password. |
 | **Dietary & health preferences** *(sensitive information)* | Allergies and intolerances, dietary restrictions (e.g. vegetarian, halal, gluten-free) | Treated as **sensitive/health information** — collected only **with your consent** (see Section 5). |
 | **Cooking preferences** | Preferred cuisines, cooking time/window, skill level, household size, servings, weekly/monthly budget, units (metric/imperial) | Used to personalise meal plans and grocery lists. |
 | **Content you create** | Meal plans, saved and imported recipes, grocery lists, cooking logs, meal ratings and feedback | Stored to your account so it syncs across sessions. |
@@ -63,6 +63,7 @@ We only collect information we need to run the Services. The categories below re
 
 ### 3.3 Information from third parties
 
+- **Google, Meta/Facebook, or Apple (optional account sign-in):** provider account identifier and the profile fields you authorize, such as verified email, name, profile image, or Apple private-relay email. You can decline and use email/password authentication instead.
 - **Apple / Google (in-app purchases):** transaction and subscription validation data.
 - **RevenueCat (subscription management):** subscription state and anonymised purchase identifiers.
 - We do **not** buy personal information from data brokers.
@@ -116,6 +117,7 @@ We disclose personal information only to trusted service providers (“sub-proce
 | Sub-processor | Purpose | Data involved |
 |---|---|---|
 | **Supabase** | Cloud database, authentication, and secure backend functions | Account, profile/preferences, app content |
+| **Google, Meta/Facebook, or Apple** | Optional social sign-in and identity verification | Provider account identifier and authorized profile fields, such as email, name, and profile image |
 | **OpenAI** | Recipe generation and voice transcription (via our backend) | Preferences/prompts; voice audio for transcription (not retained by us) |
 | **RevenueCat** | Subscription and entitlement management | Purchase/subscription identifiers and status |
 | **Apple App Store / Google Play** | In-app purchases and billing | Transaction and subscription data |

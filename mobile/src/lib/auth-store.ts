@@ -5,6 +5,13 @@ import { useSubscriptionStore } from './subscription-store';
 import { sendWelcomeEmail, sendVerificationEmail } from './email';
 import { logoutUser as revenuecatLogout } from './revenuecatClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  completeAuthCallback,
+  getSocialAuthErrorMessage,
+  startSocialAuth,
+  type SocialProvider,
+} from './social-auth';
+import type { AuthCallbackType } from './auth-callback';
 
 /**
  * AUTH ARCHITECTURE:
@@ -49,6 +56,19 @@ export interface AuthUser {
   createdAt: string;
 }
 
+export interface SocialSignInResult {
+  success: boolean;
+  cancelled?: boolean;
+  error?: string;
+  isNewUser?: boolean;
+  user?: AuthUser;
+}
+
+export interface AuthRedirectResult extends SocialSignInResult {
+  handled: boolean;
+  type: AuthCallbackType;
+}
+
 interface AuthStore {
   // Hydration
   _hasHydrated: boolean;
@@ -70,6 +90,7 @@ interface AuthStore {
   // or during a re-signup attempt) cannot race the defensive signOut() and
   // briefly route the user into the app. Always cleared in finally.
   _isSigningUp: boolean;
+  _isCompletingOAuth: boolean;
 
   // OTP state for password reset
   otpEmail: string | null;
@@ -81,6 +102,8 @@ interface AuthStore {
   checkEmailExists: (email: string) => Promise<{ exists: boolean; error?: string }>;
   signUp: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signInWithProvider: (provider: SocialProvider) => Promise<SocialSignInResult>;
+  handleAuthRedirect: (url: string) => Promise<AuthRedirectResult>;
   sendPasswordResetOTP: (email: string) => Promise<{ success: boolean; error?: string }>;
   verifyOTP: (otp: string) => Promise<{ success: boolean; error?: string }>;
   resetPasswordWithOTP: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
@@ -98,9 +121,21 @@ interface AuthStore {
 const mapSupabaseUser = (user: User): AuthUser => ({
   id: user.id,
   email: user.email || '',
-  name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+  name:
+    user.user_metadata?.name ||
+    user.user_metadata?.full_name ||
+    user.user_metadata?.preferred_username ||
+    user.email?.split('@')[0] ||
+    'User',
   createdAt: user.created_at,
 });
+
+const wasRecentlyCreated = (user: User): boolean => {
+  const createdAt = new Date(user.created_at).getTime();
+  return Number.isFinite(createdAt) && Date.now() - createdAt < 2 * 60 * 1000;
+};
+
+let authStateSubscription: { unsubscribe: () => void } | null = null;
 
 // A session may be promoted to authenticated when its user is either a real
 // (email-verified) account OR a silent anonymous guest. Anonymous users have
@@ -220,6 +255,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   otpSessionId: null,
   isPasswordResetFlow: false,
   _isSigningUp: false,
+  _isCompletingOAuth: false,
 
   // Initialize - check for existing session
   initialize: async () => {
@@ -338,7 +374,8 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       }
 
       // Listen for auth changes
-      supabase.auth.onAuthStateChange((event, session) => {
+      authStateSubscription?.unsubscribe();
+      const { data: authStateData } = supabase.auth.onAuthStateChange((event, session) => {
         console.log('[Auth] Auth state changed:', event, session?.user?.id);
 
         // Skip INITIAL_SESSION if we already handled it above
@@ -371,6 +408,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             console.log('[Auth] Ignoring SIGNED_IN during signup flow (guard)');
             return;
           }
+          if (get()._isCompletingOAuth) {
+            console.log('[Auth] Deferring SIGNED_IN until OAuth finalization completes');
+            return;
+          }
           // Verified real user OR anonymous guest may authenticate.
           if (!isUsableSession(session.user)) {
             console.log('[Auth] User signed in but email not verified - not authenticating');
@@ -392,6 +433,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           // Same guard as above for any non-SIGNED_IN session promotion.
           if (get()._isSigningUp) {
             console.log('[Auth] Ignoring session promotion during signup flow (guard)');
+            return;
+          }
+          if (get()._isCompletingOAuth) {
+            console.log('[Auth] Deferring session promotion until OAuth finalization completes');
             return;
           }
           // Verified real user OR anonymous guest may authenticate.
@@ -417,6 +462,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           });
         }
       });
+      authStateSubscription = authStateData.subscription;
     } catch (error) {
       console.error('[Auth] Auth initialization error:', error);
       set({
@@ -768,6 +814,143 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     }
   },
 
+  signInWithProvider: async (provider) => {
+    if (!isSupabaseConfigured()) {
+      return { success: false, error: 'Authentication is not configured.' };
+    }
+
+    set({ _isCompletingOAuth: true });
+    try {
+      const result = await startSocialAuth(provider);
+      if (result.cancelled) {
+        return { success: false, cancelled: true };
+      }
+      if (result.error || !result.session?.user) {
+        return {
+          success: false,
+          error: getSocialAuthErrorMessage(provider, result.error),
+        };
+      }
+
+      const { session } = result;
+      if (!session.user.email) {
+        await supabase.auth.signOut().catch(() => {});
+        return {
+          success: false,
+          error: getSocialAuthErrorMessage(provider, 'Email is missing'),
+        };
+      }
+      if (!isUsableSession(session.user)) {
+        await supabase.auth.signOut().catch(() => {});
+        return {
+          success: false,
+          error: `${provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google' : 'Facebook'} could not verify this email address.`,
+        };
+      }
+
+      const authUser = mapSupabaseUser(session.user);
+      const isNewUser = wasRecentlyCreated(session.user);
+      await ensureUserTableEntry(authUser.id, authUser.email, authUser.name);
+      set({
+        session,
+        currentUser: authUser,
+        isAuthenticated: true,
+        isAnonymous: false,
+        _hasHydrated: true,
+        isLoading: false,
+      });
+      useSubscriptionStore.getState().initializeSubscription(
+        authUser.id,
+        authUser.email,
+        authUser.name,
+      );
+
+      return { success: true, isNewUser, user: authUser };
+    } catch (error) {
+      console.error('[Auth] Social sign in failed:', error instanceof Error ? error.message : error);
+      return {
+        success: false,
+        error: getSocialAuthErrorMessage(
+          provider,
+          error instanceof Error ? error.message : undefined,
+        ),
+      };
+    } finally {
+      set({ _isCompletingOAuth: false });
+    }
+  },
+
+  handleAuthRedirect: async (url) => {
+    set({ _isCompletingOAuth: true });
+    try {
+      const result = await completeAuthCallback(url);
+      if (!result.handled) {
+        return { handled: false, type: result.type, success: false };
+      }
+      if (result.error || !result.session?.user) {
+        return {
+          handled: true,
+          type: result.type,
+          success: false,
+          error: result.error || 'The authentication link is invalid or expired.',
+        };
+      }
+
+      if (result.type === 'recovery') {
+        set({
+          session: result.session,
+          isPasswordResetFlow: true,
+          isAuthenticated: false,
+        });
+        return { handled: true, type: result.type, success: true };
+      }
+
+      if (!result.session.user.email || !isUsableSession(result.session.user)) {
+        await supabase.auth.signOut().catch(() => {});
+        return {
+          handled: true,
+          type: result.type,
+          success: false,
+          error: 'The provider could not supply a verified email address.',
+        };
+      }
+
+      const authUser = mapSupabaseUser(result.session.user);
+      const isNewUser = wasRecentlyCreated(result.session.user);
+      await ensureUserTableEntry(authUser.id, authUser.email, authUser.name);
+      set({
+        session: result.session,
+        currentUser: authUser,
+        isAuthenticated: true,
+        isAnonymous: false,
+        _hasHydrated: true,
+        isLoading: false,
+      });
+      useSubscriptionStore.getState().initializeSubscription(
+        authUser.id,
+        authUser.email,
+        authUser.name,
+      );
+      return {
+        handled: true,
+        type: result.type,
+        success: true,
+        isNewUser,
+        user: authUser,
+      };
+    } catch (error) {
+      console.error('[Auth] Auth redirect failed:', error instanceof Error ? error.message : error);
+      return {
+        handled: true,
+        type: null,
+        success: false,
+        error: 'We could not complete sign in. Please try again.',
+      };
+    } finally {
+      set({ _isCompletingOAuth: false });
+    }
+  },
+
   // Send OTP for password reset
   sendPasswordResetOTP: async (email: string) => {
     if (!isSupabaseConfigured()) {
@@ -1079,6 +1262,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       isAnonymous: false,
       isLoading: false,
       _isSigningUp: false,
+      _isCompletingOAuth: false,
       otpEmail: null,
       otpSessionId: null,
       isPasswordResetFlow: false,

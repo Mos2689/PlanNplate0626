@@ -42,6 +42,8 @@ import { useMealPlanStore } from '@/lib/store';
 import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { track } from '@/lib/analytics';
+import { SocialAuthButtons } from '@/components/SocialAuthButtons';
+import type { SocialProvider } from '@/lib/social-auth';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -60,6 +62,7 @@ function getTimeOfDayGreeting(): { greeting: string; accent: string } {
 export default function LoginScreen() {
   const router = useRouter();
   const login = useAuthStore((s) => s.login);
+  const signInWithProvider = useAuthStore((s) => s.signInWithProvider);
   const sendPasswordResetOTP = useAuthStore((s) => s.sendPasswordResetOTP);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   // AUTH-LAST: a guest may open login (via "already have an account") while on
@@ -118,6 +121,8 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [socialLoadingProvider, setSocialLoadingProvider] = useState<SocialProvider | null>(null);
+  const [pendingSocialProvider, setPendingSocialProvider] = useState<SocialProvider | null>(null);
   // Confirm before a guest's local setup is replaced by an existing account.
   const [showGuestWarning, setShowGuestWarning] = useState(false);
 
@@ -148,6 +153,7 @@ export default function LoginScreen() {
 
   const performLogin = useCallback(async () => {
     setShowGuestWarning(false);
+    setPendingSocialProvider(null);
     setError('');
     setIsLoading(true);
 
@@ -171,11 +177,43 @@ export default function LoginScreen() {
     // Confirm first; otherwise sign in straight away.
     if (isAnonymous && hasGuestSetup) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setPendingSocialProvider(null);
       setShowGuestWarning(true);
       return;
     }
     performLogin();
   }, [isAnonymous, hasGuestSetup, performLogin]);
+
+  const performSocialLogin = useCallback(async (provider: SocialProvider) => {
+    setShowGuestWarning(false);
+    setPendingSocialProvider(null);
+    setError('');
+    setSocialLoadingProvider(provider);
+
+    const result = await signInWithProvider(provider);
+    setSocialLoadingProvider(null);
+
+    if (result.cancelled) return;
+    if (!result.success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(result.error || 'Sign in failed. Please try again.');
+      return;
+    }
+
+    track('auth_login', { method: provider });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.replace('/(tabs)');
+  }, [router, signInWithProvider]);
+
+  const handleSocialLogin = useCallback((provider: SocialProvider) => {
+    if (isAnonymous && hasGuestSetup) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setPendingSocialProvider(provider);
+      setShowGuestWarning(true);
+      return;
+    }
+    void performSocialLogin(provider);
+  }, [hasGuestSetup, isAnonymous, performSocialLogin]);
 
   const navigateToSignup = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -484,6 +522,13 @@ export default function LoginScreen() {
               </Animated.View>
             ) : null}
 
+            <SocialAuthButtons
+              disabled={isLoading}
+              isDark={isDark}
+              loadingProvider={socialLoadingProvider}
+              onPress={handleSocialLogin}
+            />
+
             {/* Email */}
             <View style={{ marginBottom: 14 }}>
               <Text style={eyebrowStyle}>Email</Text>
@@ -515,7 +560,7 @@ export default function LoginScreen() {
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => passwordRef.current?.focus()}
-                  editable={!isLoading}
+                  editable={!isLoading && !socialLoadingProvider}
                 />
               </View>
             </View>
@@ -550,7 +595,7 @@ export default function LoginScreen() {
                   textContentType="password"
                   returnKeyType="done"
                   onSubmitEditing={handleLogin}
-                  editable={!isLoading}
+                  editable={!isLoading && !socialLoadingProvider}
                 />
                 <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={10}>
                   {showPassword ? (
@@ -583,7 +628,7 @@ export default function LoginScreen() {
                 onPress={handleLogin}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
-                disabled={isLoading}
+                disabled={isLoading || Boolean(socialLoadingProvider)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -617,7 +662,7 @@ export default function LoginScreen() {
             {/* Secondary CTA — hair-bordered ghost pill for new accounts */}
             <Pressable
               onPress={navigateToSignup}
-              disabled={isLoading}
+              disabled={isLoading || Boolean(socialLoadingProvider)}
               style={{
                 marginTop: 10,
                 paddingVertical: 14,
@@ -717,7 +762,10 @@ export default function LoginScreen() {
         visible={showGuestWarning}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowGuestWarning(false)}
+        onRequestClose={() => {
+          setShowGuestWarning(false);
+          setPendingSocialProvider(null);
+        }}
       >
         <View
           style={{
@@ -768,6 +816,7 @@ export default function LoginScreen() {
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setShowGuestWarning(false);
+                  setPendingSocialProvider(null);
                 }}
                 style={{
                   flex: 1,
@@ -783,19 +832,25 @@ export default function LoginScreen() {
                 </Text>
               </Pressable>
               <Pressable
-                onPress={performLogin}
-                disabled={isLoading}
+                onPress={() => {
+                  if (pendingSocialProvider) {
+                    void performSocialLogin(pendingSocialProvider);
+                  } else {
+                    void performLogin();
+                  }
+                }}
+                disabled={isLoading || Boolean(socialLoadingProvider)}
                 style={{
                   flex: 1,
                   paddingVertical: 14,
                   borderRadius: 14,
                   backgroundColor: designTokens.colors.olive,
                   alignItems: 'center',
-                  opacity: isLoading ? 0.6 : 1,
+                  opacity: isLoading || socialLoadingProvider ? 0.6 : 1,
                 }}
               >
                 <Text style={{ fontFamily: designTokens.font.semibold, fontSize: 15, color: '#FFFFFF' }}>
-                  {isLoading ? 'Signing in…' : 'Continue'}
+                  {isLoading || socialLoadingProvider ? 'Signing in…' : 'Continue'}
                 </Text>
               </Pressable>
             </View>

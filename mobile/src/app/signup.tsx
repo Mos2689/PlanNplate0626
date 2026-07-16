@@ -45,6 +45,8 @@ import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { logMetaEvent } from '@/lib/meta-sdk';
 import { track } from '@/lib/analytics';
+import { SocialAuthButtons } from '@/components/SocialAuthButtons';
+import type { SocialProvider } from '@/lib/social-auth';
 
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -106,6 +108,7 @@ const RequirementItem = ({
 export default function SignupScreen() {
   const router = useRouter();
   const signUp = useAuthStore((s) => s.signUp);
+  const signInWithProvider = useAuthStore((s) => s.signInWithProvider);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   // AUTH-LAST: a guest reaches this screen while authenticated-but-anonymous,
   // so only bounce REAL (non-anonymous) signed-in users away from signup.
@@ -139,6 +142,7 @@ export default function SignupScreen() {
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [socialLoadingProvider, setSocialLoadingProvider] = useState<SocialProvider | null>(null);
   const [emailExists, setEmailExists] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
@@ -390,6 +394,34 @@ export default function SignupScreen() {
 
     setIsLoading(false);
   }, [email, password, confirmPassword, name, signUp, router, emailExists, validateName, validatePassword, showPostSignupWelcome]);
+
+  const handleSocialSignup = useCallback(async (provider: SocialProvider) => {
+    setError('');
+    setSocialLoadingProvider(provider);
+    const result = await signInWithProvider(provider);
+    setSocialLoadingProvider(null);
+
+    if (result.cancelled) return;
+    if (!result.success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(result.error || 'Sign up failed. Please try again.');
+      return;
+    }
+
+    if (result.isNewUser) {
+      logMetaEvent('CompleteRegistration', { registration_method: provider });
+      track('auth_signup', { method: provider });
+    } else {
+      track('auth_login', { method: provider });
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.replace('/(tabs)');
+    if (result.isNewUser && result.user) {
+      const firstName = result.user.name.split(' ')[0] || result.user.name;
+      showPostSignupWelcome(firstName);
+    }
+  }, [router, showPostSignupWelcome, signInWithProvider]);
 
   const navigateToLogin = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -704,6 +736,13 @@ export default function SignupScreen() {
               </Animated.View>
             ) : null}
 
+            <SocialAuthButtons
+              disabled={isLoading}
+              isDark={isDark}
+              loadingProvider={socialLoadingProvider}
+              onPress={(provider) => void handleSocialSignup(provider)}
+            />
+
             {/* Name */}
             <View style={{ marginBottom: 14 }}>
               <View
@@ -754,7 +793,7 @@ export default function SignupScreen() {
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => emailRef.current?.focus()}
-                  editable={!isLoading}
+                  editable={!isLoading && !socialLoadingProvider}
                   maxLength={MAX_NAME_LENGTH}
                 />
               </View>
@@ -810,7 +849,7 @@ export default function SignupScreen() {
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => passwordRef.current?.focus()}
-                  editable={!isLoading}
+                  editable={!isLoading && !socialLoadingProvider}
                 />
               </View>
 
@@ -953,7 +992,7 @@ export default function SignupScreen() {
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => confirmPasswordRef.current?.focus()}
-                  editable={!isLoading}
+                  editable={!isLoading && !socialLoadingProvider}
                   maxLength={PASSWORD_MAX_LENGTH}
                 />
                 <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={10}>
@@ -1087,7 +1126,7 @@ export default function SignupScreen() {
                   textContentType="newPassword"
                   returnKeyType="done"
                   onSubmitEditing={handleSignup}
-                  editable={!isLoading}
+                  editable={!isLoading && !socialLoadingProvider}
                 />
                 {passwordsMatch ? (
                   <View
@@ -1122,7 +1161,7 @@ export default function SignupScreen() {
                 onPress={handleSignup}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
-                disabled={isLoading}
+                disabled={isLoading || Boolean(socialLoadingProvider)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -1156,7 +1195,7 @@ export default function SignupScreen() {
             {/* Secondary CTA — hair-bordered ghost pill back to sign in */}
             <Pressable
               onPress={navigateToLogin}
-              disabled={isLoading}
+              disabled={isLoading || Boolean(socialLoadingProvider)}
               style={{
                 marginTop: 10,
                 paddingVertical: 14,

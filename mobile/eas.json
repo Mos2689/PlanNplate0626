@@ -17,11 +17,10 @@
       "env": {
         "BACKEND_URL": "https://ample-pony.vibecode.run",
         "EXPO_PUBLIC_VIBECODE_REVENUECAT_APPLE_KEY": "appl_twIltSRpbHfdtREIEbywimmFvBp",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://wcjsrhdlnmfugdjtvadj.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://plannplate.supabase.co",
         "EXPO_PUBLIC_PEXELS_API_KEY": "e04AwB0tvSH3BVmyE9c7sZTNvQcbUHKKFQXX1j98dKhT0715wH785NF5",
         "EXPO_PUBLIC_VIBECODE_REVENUECAT_GOOGLE_KEY": "goog_CvNmqdxQPrauotlExRcsCACMZFm",
         "EXPO_PUBLIC_BACKEND_URL": "https://ample-pony.vibecode.run",
-        "EXPO_PUBLIC_RESEND_API_KEY": "re_UoTB48Mg_31XMgVNrXErcsYcdqETiM83v",
         "EXPO_PUBLIC_Maps_API_Key": "AIzaSyBgytbZVqyYEo1moD5lx9seo1ggoi9D7qs",
         "EXPO_PUBLIC_VIBECODE_GOOGLE_API_KEY": "AIzaSyCvUH65MwBnRmDIuh6eootfGFc9PsyNDqk",
         "EXPO_PUBLIC_VIBECODE_REVENUECAT_TEST_KEY": "test_TDYtycKpCSihFZcSXqkDGJXvecl",

@@ -16,7 +16,6 @@ import { posthog, posthogEnabled } from '@/lib/analytics';
 import { PostHogProvider } from 'posthog-react-native';
 import { useEffect } from 'react';
 import * as Linking from 'expo-linking';
-import { supabase } from '@/lib/supabase';
 import { initializeCacheTable } from '@/lib/recipe-cache';
 import { PaywallSheet } from '@/components/PaywallSheet';
 import { PostSignupWelcome } from '@/components/PostSignupWelcome';
@@ -114,6 +113,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isAnonymous = useAuthStore((s) => s.isAnonymous);
   const isSigningUp = useAuthStore((s) => s._isSigningUp);
+  const handleAuthRedirect = useAuthStore((s) => s.handleAuthRedirect);
   const needsProfileSetup = useNeedsProfileSetup();
   const subscriptionLoading = useSubscriptionLoading();
   const storeHydrated = useMealPlanStore((s) => s._hasHydrated);
@@ -250,84 +250,29 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     return () => subscription.remove();
   }, []);
 
-  // Handle deep links for password reset and email verification
+  // Handle PKCE OAuth callbacks plus legacy password-reset/email fragment links.
+  // Never log the incoming URL: it can contain a one-time code or session token.
   useEffect(() => {
     const handleDeepLink = async (event: { url: string }) => {
-      const url = event.url;
-      console.log('[DeepLink] Received URL:', url);
+      const result = await handleAuthRedirect(event.url);
+      if (!result.handled) return;
 
-      // Check if this is an auth-related link (password reset or email verification)
-      if (url.includes('access_token')) {
-        try {
-          // Extract tokens from the URL
-          const hashParams = url.split('#')[1];
-          if (hashParams) {
-            const params = new URLSearchParams(hashParams);
-            const accessToken = params.get('access_token');
-            const refreshToken = params.get('refresh_token');
-            const type = params.get('type');
-
-            console.log('[DeepLink] Auth type:', type);
-
-            if (accessToken) {
-              console.log('[DeepLink] Setting session...');
-              // Set the session with the tokens from the URL
-              const { data, error } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken || '',
-              });
-
-              if (error) {
-                console.error('[DeepLink] Error setting session:', error);
-                return;
-              }
-
-              console.log('[DeepLink] Session set successfully');
-
-              // Handle based on type
-              if (type === 'recovery') {
-                // Password reset flow
-                console.log('[DeepLink] Navigating to reset-password');
-                router.replace('/reset-password');
-              } else if (type === 'signup' || type === 'email_change' || type === 'magiclink') {
-                // Email verification - user is now logged in
-                console.log('[DeepLink] Email verified, initializing subscription for user:', data.user?.id);
-
-                // IMPORTANT: Initialize subscription for the verified user
-                // This is necessary because the auth state change listener doesn't do this
-                // (to avoid race conditions with login/signup flows)
-                if (data.user) {
-                  const user = data.user;
-                  const userName = user.user_metadata?.name || user.email?.split('@')[0] || 'User';
-
-                  // Initialize subscription - this will create/fetch user record and set isLoading to false
-                  useSubscriptionStore.getState().initializeSubscription(
-                    user.id,
-                    user.email || '',
-                    userName
-                  );
-
-                  console.log('[DeepLink] Subscription initialization started, navigating to main app');
-                }
-
-                // Navigate to tabs - onboarding logic will kick in if needed
-                // The onboarding check waits for subscriptionLoading to be false
-                router.replace('/(tabs)');
-              }
-            }
-          }
-        } catch (err) {
-          console.error('[DeepLink] Error handling deep link:', err);
-        }
+      if (!result.success) {
+        console.error('[DeepLink] Auth callback failed:', result.error);
+        return;
       }
+
+      router.replace(result.type === 'recovery' ? '/reset-password' : '/(tabs)');
     };
 
     // Handle initial URL (app opened via link)
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleDeepLink({ url });
-      }
-    });
+    Linking.getInitialURL()
+      .then((url) => {
+        if (url) void handleDeepLink({ url });
+      })
+      .catch((error) => {
+        console.error('[DeepLink] Unable to read initial URL:', error);
+      });
 
     // Listen for incoming links while app is open
     const subscription = Linking.addEventListener('url', handleDeepLink);
@@ -335,7 +280,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     return () => {
       subscription.remove();
     };
-  }, [router]);
+  }, [handleAuthRedirect, router]);
 
   // Prevent the first-launch flash of the meal tab: for an un-onboarded user
   // the tab group can render for a frame before the gate redirects to

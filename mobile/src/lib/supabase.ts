@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // — the project URL and the `sb_publishable_…` anon key are designed to ship in
 // the client (Row-Level Security protects the data), so embedding them is safe
 // and standard. Env still wins when present, so staging/other projects work too.
-const FALLBACK_SUPABASE_URL = 'https://wcjsrhdlnmfugdjtvadj.supabase.co';
+const FALLBACK_SUPABASE_URL = 'https://plannplate.supabase.co';
 const FALLBACK_SUPABASE_ANON_KEY = 'sb_publishable_NihKFWAv5fqC1iyZRlHDHA_yuvikvsI';
 
 export const SUPABASE_URL =
@@ -26,9 +26,14 @@ if (!process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_A
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: AsyncStorage,
+    // Keep the original project-ref-based key after moving to the vanity
+    // hostname. Supabase derives this key from the URL by default, which would
+    // otherwise make existing persisted sessions appear signed out.
+    storageKey: 'sb-wcjsrhdlnmfugdjtvadj-auth-token',
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    flowType: 'pkce',
   },
 });
 
