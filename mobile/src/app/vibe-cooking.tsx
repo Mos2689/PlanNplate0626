@@ -76,6 +76,7 @@ import {
   formatCountdown,
 } from '@/lib/vibe-theme';
 import { validateIngredients } from '@/lib/ingredient-validator';
+import { generateRecipeImage } from '@/lib/openai';
 import { VibeHero } from '@/components/VibeHero';
 import { IngredientCheckRow } from '@/components/IngredientCheckRow';
 import { CookStepCard } from '@/components/CookStepCard';
@@ -404,8 +405,23 @@ export default function VibeCookingScreen() {
     };
     const realRecipeId = addRecipe(recipeToSave);
     savedRecipeIdRef.current = realRecipeId;
+
+    // The imageUrl above is a generic placeholder — every vibe dish would
+    // otherwise share the same static photo. Fetch a picture that actually
+    // matches THIS dish (same Pexels-based pipeline the speak/snap recipes use)
+    // and patch it in when it resolves.
+    generateRecipeImage(
+      recipe.name,
+      recipe.description || `A delicious ${recipe.name}`,
+      validatedIngredients.map((ing) => ({ name: ing.name, category: ing.category })),
+    )
+      .then((url) => {
+        if (url) updateRecipe(realRecipeId, { imageUrl: url });
+      })
+      .catch(() => {});
+
     return realRecipeId;
-  }, [recipe, vibeId, addRecipe]);
+  }, [recipe, vibeId, addRecipe, updateRecipe]);
 
   // ── Initialize cook session on mount ─────────────────────────
   // No explicit "Start cooking" button anymore — the screen is
