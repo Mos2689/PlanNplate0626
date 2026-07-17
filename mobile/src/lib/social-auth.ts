@@ -2,9 +2,13 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import type { Session } from '@supabase/supabase-js';
 import { parseAuthCallback, type AuthCallbackType } from './auth-callback';
+import {
+  presentSocialAuthError,
+  type SocialAuthProvider,
+} from './social-auth-errors';
 import { supabase } from './supabase';
 
-export type SocialProvider = 'google' | 'facebook' | 'apple';
+export type SocialProvider = SocialAuthProvider;
 
 export interface CompletedAuthCallback {
   handled: boolean;
@@ -140,22 +144,4 @@ export const startSocialAuth = async (
 export const getSocialAuthErrorMessage = (
   provider: SocialProvider,
   error?: string,
-): string => {
-  const name = providerDisplayName(provider);
-  const message = error?.toLowerCase() || '';
-
-  if (message.includes('provider is not enabled') || message.includes('unsupported provider')) {
-    return `${name} sign in is not configured yet. Please contact support.`;
-  }
-  if (message.includes('network') || message.includes('fetch')) {
-    return `We couldn't reach ${name}. Check your connection and try again.`;
-  }
-  if (message.includes('email') && message.includes('missing')) {
-    return `${name} did not provide an email address. Allow email access and try again.`;
-  }
-  if (message.includes('access_denied')) {
-    return `${name} sign in was not authorized.`;
-  }
-  return error || `${name} sign in failed. Please try again.`;
-};
-
+): string => presentSocialAuthError(provider, error).message;

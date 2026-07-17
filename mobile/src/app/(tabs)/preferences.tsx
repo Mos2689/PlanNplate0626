@@ -46,6 +46,7 @@ import { cn } from '@/lib/cn';
 import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import { t } from '@/lib/platform-tokens';
 import { resolveMeasurementSystem } from '@/lib/unit-conversion';
+import { getAccountEmailLabel } from '@/lib/account-identity';
 import { AccountManagementModal } from '@/components/AccountManagementModal';
 import { UserAvatarDisplay } from '@/components/ProfileSetupModal';
 import { EditProfileModal } from '@/components/EditProfileModal';
@@ -1935,7 +1936,7 @@ export default function ProfileScreen() {
               </View>
               <SettingsRow
                 icon={<User size={14} color={designTokens.colors.ink2} strokeWidth={1.7} />}
-                label="Account"
+                label={getAccountEmailLabel(currentUser?.email)}
                 summary={currentUser?.email || 'Not set'}
                 onPress={openEditProfile}
                 isDark={isDark}

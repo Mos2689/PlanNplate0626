@@ -258,7 +258,9 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
       if (!result.handled) return;
 
       if (!result.success) {
-        console.error('[DeepLink] Auth callback failed:', result.error);
+        // Provider errors can contain one-time authorization codes. Keep the
+        // diagnostic useful without writing credentials into production logs.
+        console.error('[DeepLink] Auth callback failed.');
         return;
       }
 
