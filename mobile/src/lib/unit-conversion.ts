@@ -455,6 +455,22 @@ export function getBaseUnitCategory(
 }
 
 /**
+ * Whether a unit is one the converter understands (volume, weight, or a known
+ * count unit). Free-text units the user might type — "bag", "pack", "box",
+ * "loaf" — return false, so callers can choose to preserve them verbatim
+ * instead of coercing them into grams.
+ */
+export function isConvertibleUnit(unit?: string): boolean {
+  const u = (unit || '').toLowerCase().trim();
+  if (!u) return false;
+  return (
+    Object.prototype.hasOwnProperty.call(VOLUME_TO_ML, u) ||
+    Object.prototype.hasOwnProperty.call(WEIGHT_TO_G, u) ||
+    Object.prototype.hasOwnProperty.call(COUNT_UNITS, u)
+  );
+}
+
+/**
  * Get the base unit for a category
  * For volume, also considers whether it's a solid/grain (cups) or liquid (mL)
  */

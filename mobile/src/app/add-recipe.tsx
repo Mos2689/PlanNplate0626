@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Keyboard, TouchableWithoutFeedback, Image, Animated as RNAnimated, Easing as RNEasing } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Keyboard, TouchableWithoutFeedback, Image, Animated as RNAnimated, Easing as RNEasing, LayoutChangeEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -70,6 +70,26 @@ interface ParsedRecipe {
   // dish — so we can use the user's own photo as the recipe hero. False for
   // recipe cards, screenshots, handwritten notes, or any text-only image.
   isFoodPhoto?: boolean;
+}
+
+// Robustly parse the recipe JSON out of an LLM response. The model sometimes
+// prefixes prose ("Here is the recipe…", "I can see…") or wraps the JSON, which
+// makes a plain JSON.parse throw "Unexpected character". Try a direct parse,
+// then fall back to extracting the outermost { … } span.
+function parseRecipeResponseJson(cleanedText: string): any {
+  const text = cleanedText.trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first !== -1 && last > first) {
+      return JSON.parse(text.slice(first, last + 1));
+    }
+    throw new Error(
+      "Couldn't read a recipe from that — try a clearer photo or paste the text.",
+    );
+  }
 }
 
 async function parseRecipeFromImage(imageUri: string): Promise<ParsedRecipe> {
@@ -145,7 +165,7 @@ Only output valid JSON, no markdown or explanations. If information is missing, 
   }
 
   console.log('[AddRecipe] Recipe parsed from image successfully');
-  return JSON.parse(cleanedText.trim());
+  return parseRecipeResponseJson(cleanedText);
 }
 
 // Parse recipe from multiple images (up to 5)
@@ -237,7 +257,7 @@ Combine information from all images to create a complete recipe. Only output val
     cleanedText = cleanedText.slice(0, -3);
   }
 
-  const parsed = JSON.parse(cleanedText.trim());
+  const parsed = parseRecipeResponseJson(cleanedText);
 
   // Check if AI detected unrelated images
   if (parsed.error === 'unrelated_images') {
@@ -338,7 +358,7 @@ The spoken text may mix languages or use non-English words/script (e.g. code-swi
   }
 
   console.log('[AddRecipe] Recipe parsed from text successfully');
-  return JSON.parse(cleanedText.trim());
+  return parseRecipeResponseJson(cleanedText);
 }
 
 export default function AddRecipeScreen() {
@@ -709,8 +729,53 @@ export default function AddRecipeScreen() {
     setUploadedImages([]);
   }, []);
 
+  // ── Auto-scroll to a newly added ingredient/step ──────────────────────
+  // The "Add" buttons append a row at the bottom of their section, which can
+  // land below the fold. We capture each section's layout (y + height) and the
+  // viewport height, then — once the section has re-laid-out with the new row —
+  // scroll so its bottom edge is in view. onLayout fires after the row mounts,
+  // so we stash the intent in a ref and act on it there (heights aren't known
+  // until the re-render lands).
+  const formScrollRef = useRef<ScrollView>(null);
+  const formViewportH = useRef(0);
+  const ingredientsSectionLayout = useRef({ y: 0, height: 0 });
+  const instructionsSectionLayout = useRef({ y: 0, height: 0 });
+  const pendingSectionScroll = useRef<'ingredients' | 'instructions' | null>(null);
+
+  const revealSectionBottom = useCallback((layout: { y: number; height: number }) => {
+    const viewport = formViewportH.current;
+    if (viewport <= 0) return;
+    const target = Math.max(0, layout.y + layout.height - viewport + 24);
+    formScrollRef.current?.scrollTo({ y: target, animated: true });
+  }, []);
+
+  const onIngredientsLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const { y, height } = e.nativeEvent.layout;
+      ingredientsSectionLayout.current = { y, height };
+      if (pendingSectionScroll.current === 'ingredients') {
+        pendingSectionScroll.current = null;
+        revealSectionBottom({ y, height });
+      }
+    },
+    [revealSectionBottom],
+  );
+
+  const onInstructionsLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const { y, height } = e.nativeEvent.layout;
+      instructionsSectionLayout.current = { y, height };
+      if (pendingSectionScroll.current === 'instructions') {
+        pendingSectionScroll.current = null;
+        revealSectionBottom({ y, height });
+      }
+    },
+    [revealSectionBottom],
+  );
+
   const addIngredient = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    pendingSectionScroll.current = 'ingredients';
     setIngredients((prev) => [
       ...prev,
       { id: Date.now().toString(), name: '', quantity: '', unit: '', category: 'produce' },
@@ -730,6 +795,7 @@ export default function AddRecipeScreen() {
 
   const addInstruction = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    pendingSectionScroll.current = 'instructions';
     setInstructions((prev) => [...prev, '']);
   }, []);
 
@@ -1035,6 +1101,10 @@ export default function AddRecipeScreen() {
           className="flex-1"
         >
           <ScrollView
+            ref={formScrollRef}
+            onLayout={(e) => {
+              formViewportH.current = e.nativeEvent.layout.height;
+            }}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 100 }}
             keyboardShouldPersistTaps="handled"
@@ -1440,6 +1510,7 @@ export default function AddRecipeScreen() {
             {/* ── Ingredients ──────────────────────────────────── */}
             <Animated.View
               entering={FadeInDown.delay(225).springify()}
+              onLayout={onIngredientsLayout}
               style={{ paddingHorizontal: 16, paddingBottom: 18 }}
             >
               <View
@@ -1559,6 +1630,7 @@ export default function AddRecipeScreen() {
             {/* ── Instructions ─────────────────────────────────── */}
             <Animated.View
               entering={FadeInDown.delay(250).springify()}
+              onLayout={onInstructionsLayout}
               style={{ paddingHorizontal: 16, paddingBottom: 18 }}
             >
               <View

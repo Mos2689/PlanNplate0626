@@ -18,7 +18,7 @@ export const APP_STORE_ID = '6757459949'; // from eas.json ascAppId
 // package ever changes, update this string to match so the deep link resolves.
 export const ANDROID_PACKAGE = 'ycom.plannplate.app';
 // Where 1–3★ feedback is routed (kept off the public store listing).
-export const FEEDBACK_EMAIL = 'support@plannplate.app';
+export const FEEDBACK_EMAIL = 'support@heylivingclub.com';
 
 // Don't re-ask within this many days of a dismissal / "maybe later".
 const SNOOZE_DAYS = 3;

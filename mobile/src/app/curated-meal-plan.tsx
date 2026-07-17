@@ -289,8 +289,9 @@ export default function CuratedMealPlanScreen() {
   const { scrollY, scrollHandler } = useStickyHeaderScroll();
 
   const recipes = useMealPlanStore((s) => s.recipes);
+  const mealSlots = useMealPlanStore((s) => s.mealSlots);
   const addRecipe = useMealPlanStore((s) => s.addRecipe);
-  const toggleSaveRecipe = useMealPlanStore((s) => s.toggleSaveRecipe);
+  const deleteRecipe = useMealPlanStore((s) => s.deleteRecipe);
 
   const [dimension, setDimension] = useState<Dimension>('meal');
   const [subFilter, setSubFilter] = useState<string>('All');
@@ -315,19 +316,25 @@ export default function CuratedMealPlanScreen() {
   const brand = designTokens.colors.brand;
   const subCats = SUBCATS[dimension];
 
-  // curatedSourceId (`inspired::<id>`) -> stored recipe meta, for saved state.
+  // curatedSourceId (`inspired::<id>`) -> stored recipe id. Presence means the
+  // recipe is saved to the user's library; the bookmark reflects this (NOT the
+  // favourite flag).
   const inspiredSavedMap = useMemo(() => {
-    const m = new Map<string, { id: string; isSaved: boolean }>();
+    const m = new Map<string, string>();
     for (const r of recipes) {
       if (r.curatedSourceId?.startsWith('inspired::')) {
-        m.set(r.curatedSourceId, { id: r.id, isSaved: !!r.isSaved });
+        m.set(r.curatedSourceId, r.id);
       }
     }
     return m;
   }, [recipes]);
 
+  // Recipes the user has saved to their library from Get Inspired. A row exists
+  // only when the user explicitly bookmarked it or placed it in a plan — mere
+  // browsing no longer persists (see handleOpenRecipe). So library membership,
+  // not the favourite flag (isSaved), is the "saved" signal here.
   const savedInspired = useMemo(
-    () => recipes.filter((r) => r.curatedSourceId?.startsWith('inspired::') && r.isSaved),
+    () => recipes.filter((r) => r.curatedSourceId?.startsWith('inspired::')),
     [recipes],
   );
 
@@ -417,36 +424,45 @@ export default function CuratedMealPlanScreen() {
   const handleOpenRecipe = useCallback(
     (r: InspiredRecipe) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      let id = inspiredSavedMap.get(`inspired::${r.id}`)?.id;
-      if (!id) id = addRecipe(inspiredToRecipe(r, false));
-      // Pass the stable curatedSourceId too: addRecipe swaps the temp id for a
-      // real DB id async, so `id` can go stale before recipe-detail resolves it.
+      // Read-only preview — do NOT persist a row just to view. recipe-detail
+      // renders the pristine library entry from sourceId, and materializes a
+      // real recipe on demand (favourite / add-to-plan). Pass the existing id
+      // only if the user has already saved this recipe.
+      const existingId = inspiredSavedMap.get(`inspired::${r.id}`);
       router.push({
         pathname: '/recipe-detail',
-        // readOnly: this is the library preview — recipe-detail hides edit/
-        // delete and always renders the pristine library version (never a
-        // personal edited copy).
-        params: { id, sourceId: `inspired::${r.id}`, readOnly: '1' },
+        params: {
+          ...(existingId ? { id: existingId } : {}),
+          sourceId: `inspired::${r.id}`,
+          readOnly: '1',
+        },
       } as any);
     },
-    [inspiredSavedMap, addRecipe, router],
+    [inspiredSavedMap, router],
   );
 
+  // The bookmark saves a recipe to the user's library WITHOUT favouriting it.
+  // isSaved (the favourite flag) is left false; "saved" here means the recipe
+  // has a library row. Tapping again removes it — but if the recipe is used in
+  // a meal plan we keep the row so the plan keeps working (a hard delete would
+  // orphan the slot).
   const handleToggleSave = useCallback(
     (r: InspiredRecipe) => {
-      const existing = inspiredSavedMap.get(`inspired::${r.id}`);
-      if (existing) {
-        toggleSaveRecipe(existing.id);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const existingId = inspiredSavedMap.get(`inspired::${r.id}`);
+      if (existingId) {
+        const usedInPlan = mealSlots.some((s) => s.recipeId === existingId);
+        if (!usedInPlan) deleteRecipe(existingId);
       } else {
-        addRecipe(inspiredToRecipe(r, true));
+        addRecipe(inspiredToRecipe(r, false));
       }
     },
-    [inspiredSavedMap, toggleSaveRecipe, addRecipe],
+    [inspiredSavedMap, mealSlots, deleteRecipe, addRecipe],
   );
 
   const handleQuickAdd = useCallback(
     (r: InspiredRecipe) => {
-      let id = inspiredSavedMap.get(`inspired::${r.id}`)?.id;
+      let id = inspiredSavedMap.get(`inspired::${r.id}`);
       if (!id) id = addRecipe(inspiredToRecipe(r, false));
       router.push({
         pathname: '/select-recipe',
@@ -662,7 +678,7 @@ export default function CuratedMealPlanScreen() {
                     <PinCard
                       key={r.id}
                       recipe={r}
-                      saved={!!inspiredSavedMap.get(`inspired::${r.id}`)?.isSaved}
+                      saved={inspiredSavedMap.has(`inspired::${r.id}`)}
                       index={i * 2}
                       onPress={() => handleOpenRecipe(r)}
                       onToggleSave={() => handleToggleSave(r)}
@@ -676,7 +692,7 @@ export default function CuratedMealPlanScreen() {
                     <PinCard
                       key={r.id}
                       recipe={r}
-                      saved={!!inspiredSavedMap.get(`inspired::${r.id}`)?.isSaved}
+                      saved={inspiredSavedMap.has(`inspired::${r.id}`)}
                       index={i * 2 + 1}
                       onPress={() => handleOpenRecipe(r)}
                       onToggleSave={() => handleToggleSave(r)}

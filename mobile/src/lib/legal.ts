@@ -6,4 +6,4 @@ export const TERMS_OF_USE_URL =
   'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 
 // Where privacy questions / deletion requests should be sent.
-export const PRIVACY_CONTACT_EMAIL = 'privacy@plannplate.com.au';
+export const PRIVACY_CONTACT_EMAIL = 'privacy@heylivingclub.com';

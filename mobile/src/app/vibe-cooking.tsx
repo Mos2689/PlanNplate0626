@@ -40,9 +40,10 @@ import {
   Flame,
   AlertTriangle,
   Bookmark,
+  BookmarkCheck,
   Timer as TimerIcon,
   X as XIcon,
-  CirclePlus,
+  CalendarPlus,
 } from 'lucide-react-native';
 import Animated, {
   Easing,
@@ -119,6 +120,7 @@ export default function VibeCookingScreen() {
   const lastVibeCook = useMealPlanStore((s) => s.lastVibeCook);
   const clearLastVibeCook = useMealPlanStore((s) => s.clearLastVibeCook);
   const addRecipe = useMealPlanStore((s) => s.addRecipe);
+  const updateRecipe = useMealPlanStore((s) => s.updateRecipe);
   const logCooking = useMealPlanStore((s) => s.logCooking);
 
   const recipe = lastVibeCook?.recipe ?? null;
@@ -145,10 +147,18 @@ export default function VibeCookingScreen() {
   );
   const [hasStartedCooking, setHasStartedCooking] = useState(false);
   const [endStateVisible, setEndStateVisible] = useState(false);
+  // "Save to recipes" CTA — flips to a confirmed state once tapped.
+  const [savedToRecipes, setSavedToRecipes] = useState(false);
   // Tracks the cooking-log entry ID for this session so the
   // end-state rating can update the same row.
   const sessionSlotIdRef = useRef<string | null>(null);
   const savedRecipeIdRef = useRef<string | null>(null);
+  // Scroll plumbing for "Start cooking" — jump to the Steps tab. We capture the
+  // body's offset within the scroll content plus the tab strip's offset within
+  // the body, so their sum is the absolute scroll target.
+  const scrollRef = useRef<any>(null);
+  const bodyYRef = useRef(0);
+  const tabStripYRef = useRef(0);
 
   // ── Timer state (one global running timer at a time) ─────────
   // Indexed by step number; -1 = none running. Countdown ticks via
@@ -422,6 +432,22 @@ export default function VibeCookingScreen() {
     } as any);
   }, [router, ensureRecipeSaved]);
 
+  // ── Save to recipes — keep this dish (marks it saved) ────────
+  const handleSaveToRecipes = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const recipeId = ensureRecipeSaved();
+    updateRecipe(recipeId, { isSaved: true });
+    setSavedToRecipes(true);
+  }, [ensureRecipeSaved, updateRecipe]);
+
+  // ── Start cooking — jump to the Steps tab and scroll it up ───
+  const handleStartCooking = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setActiveTab('steps');
+    const y = Math.max(0, bodyYRef.current + tabStripYRef.current - 12);
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y, animated: true }));
+  }, []);
+
   // ── Mark all steps done → flip to 'cooked' + show end state ──
   useEffect(() => {
     if (!hasStartedCooking) return;
@@ -495,6 +521,13 @@ export default function VibeCookingScreen() {
       return next;
     });
   }, []);
+
+  // Explicit equal width for the three bottom action buttons. Using flex:1 in
+  // an absolutely-positioned row collapses them to icon-min-width on some
+  // layouts, so we size them off the known screen width instead.
+  const ACTION_BAR_PAD_H = 16;
+  const ACTION_BAR_GAP = 12;
+  const actionBtnW = (SCREEN_W - ACTION_BAR_PAD_H * 2 - ACTION_BAR_GAP * 2) / 3;
 
   return (
     <View style={{ flex: 1, backgroundColor: surfaceBg }}>
@@ -646,10 +679,11 @@ export default function VibeCookingScreen() {
       />
 
       <Animated.ScrollView
+        ref={scrollRef}
         onScroll={onScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 140 }}
+        contentContainerStyle={{ paddingBottom: 130 }}
       >
         {/* ── Hero ─────────────────────────────────────────── */}
         <VibeHero
@@ -664,6 +698,9 @@ export default function VibeCookingScreen() {
 
         {/* ── Body (brand-neutral, accent-tinted) ──────────── */}
         <View
+          onLayout={(e) => {
+            bodyYRef.current = e.nativeEvent.layout.y;
+          }}
           style={{
             backgroundColor: surfaceBg,
             paddingHorizontal: 18,
@@ -910,6 +947,9 @@ export default function VibeCookingScreen() {
 
           {/* ── Tab strip (Ingredients / Steps) ─────────────── */}
           <View
+            onLayout={(e) => {
+              tabStripYRef.current = e.nativeEvent.layout.y;
+            }}
             style={{
               flexDirection: 'row',
               padding: 4,
@@ -1078,14 +1118,19 @@ export default function VibeCookingScreen() {
         </View>
       </Animated.ScrollView>
 
-      {/* ── Bottom: Add to meal plan (matches recipe-detail.tsx) ── */}
+      {/* ── Bottom: three separate equal icon buttons in one row ───
+          (spanning the old "Add to meal plan" button's footprint):
+          Save recipe · Add to meal plan · Start cooking. */}
       <View
         style={{
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
-          paddingHorizontal: 20,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          gap: ACTION_BAR_GAP,
+          paddingHorizontal: ACTION_BAR_PAD_H,
           paddingTop: 14,
           paddingBottom: Math.max(insets.bottom, 16) + 8,
           backgroundColor: isDark ? '#1a1a1a' : '#FFFFFF',
@@ -1093,21 +1138,74 @@ export default function VibeCookingScreen() {
           borderTopColor: isDark ? '#2a2a2a' : designTokens.colors.hair2,
         }}
       >
+        {/* Save recipe */}
+        <Pressable
+          onPress={handleSaveToRecipes}
+          disabled={savedToRecipes}
+          accessibilityRole="button"
+          accessibilityLabel={savedToRecipes ? 'Saved to recipes' : 'Save to recipes'}
+          style={({ pressed }) => ({ width: actionBtnW, opacity: pressed ? 0.85 : 1 })}
+        >
+          <View
+            style={{
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 16,
+              borderRadius: 16,
+              borderWidth: 1.5,
+              borderColor: savedToRecipes ? '#546445' : isDark ? '#3a3a3a' : designTokens.colors.hair,
+              backgroundColor: savedToRecipes ? 'rgba(84,100,69,0.10)' : isDark ? '#1a1a1a' : '#FFFFFF',
+            }}
+          >
+            {savedToRecipes ? (
+              <BookmarkCheck size={20} color="#546445" strokeWidth={1.9} />
+            ) : (
+              <Bookmark size={20} color={theme.accent} strokeWidth={1.9} />
+            )}
+          </View>
+        </Pressable>
+
+        {/* Add to meal plan */}
         <Pressable
           onPress={handleAddToPlan}
+          accessibilityRole="button"
+          accessibilityLabel="Add to meal plan"
+          style={({ pressed }) => ({ width: actionBtnW, opacity: pressed ? 0.85 : 1 })}
+        >
+          <View
+            style={{
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 16,
+              borderRadius: 16,
+              borderWidth: 1.5,
+              borderColor: isDark ? '#3a3a3a' : designTokens.colors.hair,
+              backgroundColor: isDark ? '#1a1a1a' : '#FFFFFF',
+            }}
+          >
+            <CalendarPlus size={20} color={theme.accent} strokeWidth={1.9} />
+          </View>
+        </Pressable>
+
+        {/* Start cooking (primary) */}
+        <Pressable
+          onPress={handleStartCooking}
+          accessibilityRole="button"
+          accessibilityLabel="Start cooking"
           style={({ pressed }) => ({
+            width: actionBtnW,
             opacity: pressed ? 0.9 : 1,
             transform: [{ scale: pressed ? 0.985 : 1 }],
           })}
         >
           <View
             style={{
-              flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 8,
-              paddingVertical: 15,
-              borderRadius: 999,
+              paddingVertical: 16,
+              borderRadius: 16,
+              borderWidth: 1.5,
+              borderColor: '#546445',
               backgroundColor: '#546445',
               shadowColor: '#546445',
               shadowOpacity: 0.25,
@@ -1116,26 +1214,7 @@ export default function VibeCookingScreen() {
               elevation: 3,
             }}
           >
-            <CirclePlus size={18} color="#FAF7F0" strokeWidth={1.8} />
-            <Text
-              style={{
-                fontFamily: designTokens.font.semibold,
-                fontSize: 15,
-                color: '#FAF7F0',
-              }}
-            >
-              Add to meal{' '}
-              <Text
-                style={{
-                  fontFamily: designTokens.font.serifItalic,
-                  fontStyle: serifItalicFontStyle,
-                  fontSize: 17,
-                  color: '#FAF7F0',
-                }}
-              >
-                plan
-              </Text>
-            </Text>
+            <Flame size={20} color="#FAF7F0" strokeWidth={1.8} />
           </View>
         </Pressable>
       </View>

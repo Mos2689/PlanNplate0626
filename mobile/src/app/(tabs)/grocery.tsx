@@ -53,7 +53,7 @@ import { cn } from '@/lib/cn';
 import { designTokens, getThemeColors, getCategoryTint, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
 import { t } from '@/lib/platform-tokens';
 import { transcribeAudioToText, parseGroceryItemsFromTranscript, type ParsedGroceryItem } from '@/lib/voice-grocery';
-import { formatFromBaseUnit, resolveMeasurementSystem, type MeasurementSystem } from '@/lib/unit-conversion';
+import { formatFromBaseUnit, resolveMeasurementSystem, isConvertibleUnit, type MeasurementSystem } from '@/lib/unit-conversion';
 import { ShoppingListCompletionModal } from '@/components/ShoppingListCompletionModal';
 import { DuplicateIngredientBanner, DuplicateIngredientModal } from '@/components/DuplicateIngredientModal';
 import { findDuplicateIngredientGroups, type DuplicateIngredientGroup } from '@/lib/duplicate-ingredient-finder';
@@ -124,7 +124,14 @@ const UNIT_GROUPS: { label: string; units: { value: string; label: string }[] }[
 // metric; imperial re-formats from the base value (falls back to the stored
 // display string when there's no base value or in metric).
 function groceryQuantityLabel(item: GroceryItem, system: MeasurementSystem): string {
-  if (system === 'imperial' && item.quantity_base != null && item.base_unit) {
+  // Custom units the user typed (e.g. "bag") are stored verbatim and must never
+  // be re-formatted through the metric/imperial converter.
+  if (
+    system === 'imperial' &&
+    item.quantity_base != null &&
+    item.base_unit &&
+    isConvertibleUnit(item.base_unit)
+  ) {
     return formatFromBaseUnit(item.quantity_base, item.base_unit, item.name, 'imperial');
   }
   return `${item.quantity}${item.unit ? ` ${item.unit}` : ''}`;
@@ -1894,10 +1901,14 @@ export default function GroceryScreen() {
   const handleGenerateFromMealPlan = useCallback((startDate: string, endDate: string) => {
     // "Get Groceries" is free with no monthly restriction — no premium gate.
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // If we're viewing a saved list, leave saved-list mode first — otherwise the
+    // list keeps rendering the saved snapshot (currentSavedListItems) instead of
+    // the freshly regenerated full list for the selected period.
+    if (isSavedListMode) unloadSavedGroceryList();
     generateGroceryList(startDate, endDate);
     setGroceryDateRange(startDate, endDate);
     track('grocery_list_generated', { source: 'meal_plan', start_date: startDate, end_date: endDate });
-  }, [generateGroceryList, setGroceryDateRange]);
+  }, [generateGroceryList, setGroceryDateRange, isSavedListMode, unloadSavedGroceryList]);
 
   const handleCombineDuplicates = useCallback(
     (groupKey: string, selectedIndices: number[]) => {

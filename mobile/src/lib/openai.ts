@@ -1000,7 +1000,8 @@ Any recipe that ignores these instructions will be REJECTED.`;
       prompt += `
 ⭐ MANDATORY INGREDIENT FOR THIS RECIPE: "${assignedFridgeIngredient.toUpperCase()}"
 This recipe MUST feature "${assignedFridgeIngredient}" as a primary ingredient. Build the recipe around this ingredient.
-This is NOT optional — the user specifically wants to use up this ingredient from their fridge.`;
+This is NOT optional — the user specifically wants to use up this ingredient from their fridge.
+Prepare it in a way that is genuinely delicious: pick a dish and flavour pairing where "${assignedFridgeIngredient}" naturally shines. Do NOT force it into a clashing or unappetizing combination just to include it.`;
     }
 
     if (additionalInstructions) {
@@ -1326,6 +1327,27 @@ Pick a COMPLETELY DIFFERENT protein source for this recipe.`;
       prompt += `\n- Techniques already used: ${previousTechniques.join(', ')} — pick a DIFFERENT technique`;
     }
   }
+
+  // ── PALATABILITY (always on) ──────────────────────────────────────
+  // A hard guardrail so mood/vibe + "must-use" fridge ingredients never get
+  // shoehorned into a dish that tastes bad. Ranks below allergies/diet (never
+  // add a forbidden ingredient to make something tasty) but governs HOW every
+  // other instruction is realized.
+  prompt += `
+
+═══ PALATABILITY (ALWAYS ENFORCED) ═══
+The recipe MUST be a genuinely delicious, palatable dish that a real person would
+happily eat — a coherent meal, not a gimmick.
+- Use classic, well-established flavour pairings and a sensible cooking method.
+- Every ingredient must earn its place and work together; do NOT combine clashing
+  or incompatible ingredients just to satisfy a mood, theme, or "must-use" item.
+- If a required/available ingredient doesn't naturally fit, choose a dish style
+  or preparation where it genuinely shines (or use it in a supporting role) —
+  never force a jarring mash-up.
+- No experimental, novelty, or bizarre combinations. If you would not confidently
+  serve this dish to a guest, redesign it.
+- This never overrides the allergy or dietary rules above: if an ingredient can't
+  be used safely, leave it out rather than making the dish unpalatable.`;
 
   // ── Category guidance (prevents miscategorization) ────────────────
   prompt += `

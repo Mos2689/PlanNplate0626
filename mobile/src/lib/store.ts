@@ -6,7 +6,7 @@ import * as db from './database';
 import { useAuthStore } from './auth-store';
 import { useReviewStore } from './review-store';
 import { normalizeIngredientName, getCanonicalIngredientName, shouldCombineIngredients, normalizeUnit } from './ingredient-aliases';
-import { convertToBaseUnit, formatFromBaseUnit, canCombineIngredients, getCanonicalUnit } from './unit-conversion';
+import { convertToBaseUnit, formatFromBaseUnit, canCombineIngredients, getCanonicalUnit, isConvertibleUnit } from './unit-conversion';
 import { getAverageWeightWithConfidence, shouldConvertCountToWeight, getContainerVolumeML, getLiquidDensityGPerMl } from './average-weight-lookup-au';
 import { validateIngredient, validateIngredients, splitCompoundIngredient } from './ingredient-validator';
 import { generateRecipesOptimized } from './optimized-recipe-generation';
@@ -3388,15 +3388,31 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
       addCustomGroceryItem: (item) => {
         try {
-          // Convert new item to base unit
-          const baseConversion = convertToBaseUnit(item.quantity, item.unit, item.name);
-          const displayQuantity = formatFromBaseUnit(baseConversion.quantity, baseConversion.unit, item.name);
+          // If the user typed a unit the converter doesn't understand
+          // ("bag", "pack", "box", ...), preserve their exact quantity + unit
+          // for display instead of coercing it into grams. Recognised units
+          // (g, ml, cup, piece, ...) keep the metric conversion + aggregation.
+          const rawUnit = (item.unit || '').trim();
+          const rawQty = parseFloat(item.quantity);
+          const preserveRaw =
+            rawUnit.length > 0 && !isConvertibleUnit(rawUnit) && !isNaN(rawQty) && rawQty > 0;
+          const fmtQty = (n: number) =>
+            Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+
+          const baseConversion = preserveRaw
+            ? { quantity: rawQty, unit: rawUnit.toLowerCase() }
+            : convertToBaseUnit(item.quantity, item.unit, item.name);
+          const displayQuantity = preserveRaw
+            ? fmtQty(rawQty)
+            : formatFromBaseUnit(baseConversion.quantity, baseConversion.unit, item.name);
 
           const newItem = {
             ...item,
             id: generateGroceryItemId(),
             quantity: displayQuantity,
-            unit: '', // Leave unit empty since displayQuantity includes everything
+            // Keep the typed unit for custom units so it renders "1 bag"; for
+            // converted units the display string already includes the unit.
+            unit: preserveRaw ? rawUnit : '',
             quantity_base: baseConversion.quantity,
             base_unit: baseConversion.unit,
           };
@@ -3422,8 +3438,10 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 ...existing,
                 quantity_base: newBaseQty,
                 base_unit: baseUnit,
-                quantity: formatFromBaseUnit(newBaseQty, baseUnit, existing.name),
-                unit: '', // Leave empty since formatFromBaseUnit includes everything
+                quantity: preserveRaw
+                  ? fmtQty(newBaseQty)
+                  : formatFromBaseUnit(newBaseQty, baseUnit, existing.name),
+                unit: preserveRaw ? rawUnit : '',
               };
 
               return {

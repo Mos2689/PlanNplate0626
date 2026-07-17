@@ -74,6 +74,104 @@ function extractOgImage(html: string): string | undefined {
   return undefined;
 }
 
+// Fetch an arbitrary page and pull its og:image (used for embed pages that
+// aren't login-walled). Best-effort; returns undefined on any failure.
+async function fetchOgImageFrom(pageUrl: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(pageUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+    if (!res.ok) return undefined;
+    const html = await res.text();
+    return extractOgImage(html) ?? extractInstagramDisplayUrl(html);
+  } catch {
+    return undefined;
+  }
+}
+
+// Instagram embed HTML sometimes carries the image in a JSON "display_url"
+// field rather than an og:image meta tag.
+function extractInstagramDisplayUrl(html: string): string | undefined {
+  const m = html.match(/"display_url":"([^"]+)"/);
+  if (m?.[1]) {
+    const decoded = m[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+    if (/^https?:\/\//i.test(decoded)) return decoded;
+  }
+  return undefined;
+}
+
+// instagram.com/(p|reel|tv)/{shortcode}/… → the PUBLIC embed page, which (unlike
+// the main post URL) isn't login-walled and exposes the image.
+function toInstagramEmbedUrl(url: string): string | undefined {
+  const m = url.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+  return m ? `https://www.instagram.com/p/${m[1]}/embed/captioned/` : undefined;
+}
+
+// Ask the `meta-oembed` edge function for a post's thumbnail. The Meta app
+// token lives ONLY on the server (Supabase function secret META_OEMBED_TOKEN),
+// so it's never bundled into the client. Returns undefined on any failure.
+// Uses an authenticated call (default) — recipe import only ever runs for a
+// signed-in user, and apiCall's requireAuth:false path is a no-op that returns
+// an error without ever hitting the network.
+async function metaOembedThumbnail(url: string): Promise<string | undefined> {
+  try {
+    const res = await apiCall<{ thumbnailUrl?: string | null }>(
+      'meta-oembed',
+      { url },
+    );
+    const t = res.data?.thumbnailUrl;
+    return t && /^https?:\/\//i.test(t) ? t : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Resolve a source image for social URLs whose main page doesn't hand an
+// og:image to a plain client fetch. Returns undefined → caller falls back to
+// the page's own og:image, then to Pexels.
+export async function resolveSourceImageUrl(url: string): Promise<string | undefined> {
+  const u = url.toLowerCase();
+
+  // YouTube — public oEmbed, no auth. Returns the video thumbnail.
+  if (u.includes('youtube.com') || u.includes('youtu.be')) {
+    try {
+      const r = await fetch(
+        `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
+      );
+      if (r.ok) {
+        const j = await r.json();
+        if (j?.thumbnail_url && /^https?:\/\//i.test(j.thumbnail_url)) return j.thumbnail_url;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  // Instagram — try the public embed page first (no token needed), then the
+  // server-side Meta oEmbed proxy.
+  if (u.includes('instagram.com')) {
+    const embed = toInstagramEmbedUrl(url);
+    if (embed) {
+      const img = await fetchOgImageFrom(embed);
+      if (img) return img;
+    }
+    const viaProxy = await metaOembedThumbnail(url);
+    if (viaProxy) return viaProxy;
+  }
+
+  // Facebook — server-side Meta oEmbed proxy (needs the app token).
+  if (u.includes('facebook.com') || u.includes('fb.watch')) {
+    const viaProxy = await metaOembedThumbnail(url);
+    if (viaProxy) return viaProxy;
+  }
+
+  return undefined;
+}
+
 async function fetchWebpageContent(
   url: string,
 ): Promise<{ content: string; ogImage?: string }> {
@@ -335,9 +433,16 @@ Only return valid JSON, no markdown or explanation.`;
   // Normalize and validate the URL
   const normalizedUrl = normalizeAndValidateUrl(url);
   recipe.sourceUrl = normalizedUrl;
-  // Attach the source post's own photo (og:image) so import-review uses it as
-  // the hero instead of a Pexels search. Undefined → Pexels fallback.
-  if (ogImage) recipe.imageUrl = ogImage;
+  // Attach the source post's own photo so import-review uses it as the hero
+  // instead of a Pexels search. Try the page's og:image first; if the platform
+  // login-walls the direct fetch (Instagram/Facebook) or hides it (YouTube),
+  // fall back to oEmbed / the public embed page. Undefined → Pexels fallback.
+  if (ogImage) {
+    recipe.imageUrl = ogImage;
+  } else {
+    const resolved = await resolveSourceImageUrl(url);
+    if (resolved) recipe.imageUrl = resolved;
+  }
 
   console.log('[RecipeImport] Extracted recipe with sourceUrl:', {
     recipeName: recipe.name,

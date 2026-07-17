@@ -1569,7 +1569,9 @@ export default function ProfileScreen() {
                   <Pressable
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      router.push(`/(tabs)/grocery?showSavedLists=${Date.now()}`);
+                      // Current list → open the grocery tab's live list (NOT the
+                      // saved-lists modal). No showSavedLists param.
+                      router.push('/(tabs)/grocery');
                     }}
                     style={{
                       flexDirection: 'row',
@@ -1601,7 +1603,7 @@ export default function ProfileScreen() {
                           letterSpacing: -0.145,
                         }}
                       >
-                        {groceryItems.length} item{groceryItems.length === 1 ? '' : 's'} in current list
+                        Current list
                       </Text>
                       <Text
                         style={{
@@ -1616,25 +1618,7 @@ export default function ProfileScreen() {
                         {groceryItems.filter((g) => g.isChecked).length} in basket
                       </Text>
                     </View>
-                    <View
-                      style={{
-                        paddingHorizontal: 11,
-                        paddingVertical: 6,
-                        borderRadius: 999,
-                        backgroundColor: colors.pill,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontFamily: designTokens.font.medium,
-                          fontSize: 12,
-                          color: colors.ink,
-                          letterSpacing: -0.06,
-                        }}
-                      >
-                        Continue
-                      </Text>
-                    </View>
+                    <ChevronRight size={16} color={designTokens.colors.ink3} strokeWidth={1.7} />
                   </Pressable>
                   <View style={{ height: 1, backgroundColor: colors.hair2 }} />
                   <Pressable

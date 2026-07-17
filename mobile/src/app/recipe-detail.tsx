@@ -98,6 +98,7 @@ export default function RecipeDetailScreen() {
   const mealSlots = useMealPlanStore((s) => s.mealSlots);
   const measurementSystem = useMealPlanStore((s) => resolveMeasurementSystem(s.preferences.measurementSystem));
   const toggleSaveRecipe = useMealPlanStore((s) => s.toggleSaveRecipe);
+  const addRecipe = useMealPlanStore((s) => s.addRecipe);
   const deleteRecipe = useMealPlanStore((s) => s.deleteRecipe);
   const updateRecipe = useMealPlanStore((s) => s.updateRecipe);
   const updateMealSlot = useMealPlanStore((s) => s.updateMealSlot);
@@ -160,6 +161,31 @@ export default function RecipeDetailScreen() {
     }
     return found;
   }, [recipes, id, sourceId, isLibraryView]);
+
+  // The id of a REAL store row for this recipe, if one exists. Opening a Get
+  // Inspired recipe no longer persists a row just to preview it, so a library
+  // recipe may not be in the store yet — `recipe.id` can be empty.
+  const persistedId = useMemo(() => {
+    if (recipe?.id && recipes.some((r) => r.id === recipe.id)) return recipe.id;
+    if (sourceId) return recipes.find((r) => r.curatedSourceId === sourceId)?.id;
+    return undefined;
+  }, [recipes, recipe?.id, sourceId]);
+
+  // Ensure this recipe has a real library row and return its id. For a
+  // not-yet-saved Get Inspired preview we materialize it on demand (the moment
+  // the user favourites it or adds it to a plan) rather than on mere viewing.
+  // `favourite` controls the isSaved flag for a freshly created row.
+  const ensurePersistedRecipeId = useCallback(
+    (favourite: boolean): string | undefined => {
+      if (persistedId) return persistedId;
+      if (isLibraryView && sourceId) {
+        const lib = findInspiredById(sourceId);
+        if (lib) return addRecipe(inspiredToRecipe(lib, favourite));
+      }
+      return recipe?.id || undefined;
+    },
+    [persistedId, isLibraryView, sourceId, addRecipe, recipe?.id],
+  );
 
   const mealSlot = useMemo(() => {
     if (!slotId) return null;
@@ -245,8 +271,15 @@ export default function RecipeDetailScreen() {
   const handleToggleSave = useCallback(() => {
     if (!recipe) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    toggleSaveRecipe(recipe.id);
-  }, [recipe, toggleSaveRecipe]);
+    // The heart is the explicit "favourite" control. If this is an unsaved Get
+    // Inspired preview, materialize the row already favourited; otherwise flip
+    // the existing row's isSaved.
+    if (persistedId) {
+      toggleSaveRecipe(persistedId);
+    } else {
+      ensurePersistedRecipeId(true);
+    }
+  }, [recipe, persistedId, toggleSaveRecipe, ensurePersistedRecipeId]);
 
   // ── Additive callbacks ────────────────────────────────────────────────
   const handleStepServings = useCallback(
@@ -373,18 +406,20 @@ export default function RecipeDetailScreen() {
 
   const handleAddToMealPlan = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // select-recipe's add-to-plan mode needs a real recipeId, so materialize an
+    // unsaved Get Inspired preview here (added to the library, not favourited).
+    const recipeId = ensurePersistedRecipeId(false) ?? recipe?.id ?? id;
     router.push({
       pathname: '/select-recipe',
       params: {
-        // Prefer the resolved recipe's current id (survives the temp→DB id
-        // swap); fall back to the raw param. Forward sourceId so select-recipe
-        // can resolve it too if the id is mid-swap.
-        recipeId: recipe?.id ?? id,
+        // Forward sourceId too so select-recipe can re-resolve if the id is
+        // mid-swap (addRecipe swaps a temp id for the DB id asynchronously).
+        recipeId,
         mode: 'add-to-plan',
         ...(sourceId ? { sourceId } : {}),
       }
     });
-  }, [router, id, recipe?.id, sourceId]);
+  }, [router, id, recipe?.id, sourceId, ensurePersistedRecipeId]);
 
   const handleOpenSourceUrl = useCallback(async () => {
     if (!recipe?.sourceUrl) {

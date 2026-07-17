@@ -289,6 +289,13 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
   }, [visible, userName, currentUser?.name]);
 
   const toggleDietaryRestriction = useCallback((restriction: string) => {
+    // "None" mirrors onboarding: it means no dietary restriction, stored as an
+    // empty array. Picking any real diet clears "None" automatically since the
+    // None chip is derived from `length === 0`.
+    if (restriction === 'None') {
+      setPreferences({ dietaryRestrictions: [] });
+      return;
+    }
     const current = preferences.dietaryRestrictions;
     const updated = current.includes(restriction)
       ? current.filter((r) => r !== restriction)
@@ -297,7 +304,15 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
   }, [preferences.dietaryRestrictions, setPreferences]);
 
   const toggleCuisinePreference = useCallback((cuisine: string) => {
-    const current = preferences.cuisinePreferences;
+    // "Any" mirrors onboarding: it's exclusive and stored as the literal
+    // value ['Any']. Selecting a specific cuisine drops "Any".
+    if (cuisine === 'Any') {
+      setPreferences({
+        cuisinePreferences: preferences.cuisinePreferences.includes('Any') ? [] : ['Any'],
+      });
+      return;
+    }
+    const current = preferences.cuisinePreferences.filter((c) => c !== 'Any');
     const updated = current.includes(cuisine)
       ? current.filter((c) => c !== cuisine)
       : [...current, cuisine];
@@ -810,8 +825,12 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
                 <MultiSelectSection
                   title="Dietary restrictions"
                   subtitle="Select any dietary preferences"
-                  options={DIETARY_OPTIONS}
-                  selected={preferences.dietaryRestrictions}
+                  options={['None', ...DIETARY_OPTIONS]}
+                  selected={
+                    preferences.dietaryRestrictions.length === 0
+                      ? ['None']
+                      : preferences.dietaryRestrictions
+                  }
                   onToggle={toggleDietaryRestriction}
                   isDark={isDark}
                   icon={<UtensilsCrossed size={16} color={designTokens.colors.brand} strokeWidth={1.8} />}
@@ -823,7 +842,7 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
                 <MultiSelectSection
                   title="Cuisine preferences"
                   subtitle="What cuisines do you enjoy?"
-                  options={CUISINE_OPTIONS}
+                  options={['Any', ...CUISINE_OPTIONS]}
                   selected={preferences.cuisinePreferences}
                   onToggle={toggleCuisinePreference}
                   isDark={isDark}
