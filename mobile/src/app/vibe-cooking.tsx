@@ -28,10 +28,9 @@ import {
   View,
   Text,
   Pressable,
-  ScrollView,
   StatusBar,
   Dimensions,
-  StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -56,7 +55,6 @@ import Animated, {
   interpolate,
   Extrapolation,
   FadeIn,
-  FadeInDown,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -68,11 +66,10 @@ import {
   useMealPlanStore,
   type Recipe,
 } from '@/lib/store';
-import { VIBE_BY_ID, type VibeId } from '@/lib/vibe-inference';
+import { type VibeId } from '@/lib/vibe-inference';
 import {
   getVibeTheme,
   detectTimerMinutes,
-  formatTimerLabel,
   formatCountdown,
 } from '@/lib/vibe-theme';
 import { validateIngredients } from '@/lib/ingredient-validator';
@@ -112,6 +109,7 @@ export default function VibeCookingScreen() {
   const isDark = colorScheme === 'dark';
   const colors = getThemeColors(isDark);
   const insets = useSafeAreaInsets();
+  const { width: viewportWidth } = useWindowDimensions();
 
   // Keep the screen awake while the user is cooking — this is THE
   // moment they don't want to fiddle with their phone.
@@ -126,7 +124,6 @@ export default function VibeCookingScreen() {
 
   const recipe = lastVibeCook?.recipe ?? null;
   const vibeId = (lastVibeCook?.vibeId ?? null) as VibeId | null;
-  const vibe = vibeId ? VIBE_BY_ID[vibeId] : null;
   const theme = getVibeTheme(vibeId);
   const surfaceBg = isDark ? '#0F0E0B' : '#FFFFFF';
   const cardBorder = isDark ? '#2a2a2a' : designTokens.colors.hair;
@@ -301,70 +298,34 @@ export default function VibeCookingScreen() {
   const stepCount = recipe?.instructions.length ?? 0;
   const completedSteps = stepDone.filter(Boolean).length;
   const violations = recipe?.violations ?? [];
+  const dockGap = 10;
+  const dockHorizontalPadding = 16;
+  const dockContentWidth = Math.max(
+    0,
+    viewportWidth - dockHorizontalPadding * 2 - dockGap * 2,
+  );
+  const secondaryActionWidth = Math.max(
+    64,
+    Math.min(82, Math.floor(dockContentWidth * 0.25)),
+  );
+  const primaryActionWidth = Math.max(
+    0,
+    dockContentWidth - secondaryActionWidth * 2,
+  );
 
   // Italic-word selection for the hero title.
   const italicWord = useMemo(
     () => (recipe ? pickItalicWord(recipe.name) : ''),
-    [recipe?.name],
+    [recipe],
   );
-
-  // ── Empty state (no payload — user deep-linked or hot-reloaded) ──
-  if (!recipe || !vibeId) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: surfaceBg }}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
-          <Text
-            style={{
-              fontFamily: designTokens.font.semibold,
-              fontSize: 10.5,
-              letterSpacing: 1.3,
-              textTransform: 'uppercase',
-              color: designTokens.colors.olive,
-              marginBottom: 10,
-            }}
-          >
-            VIBE COOKING
-          </Text>
-          <Text
-            style={{
-              fontFamily: designTokens.font.medium,
-              fontSize: 22,
-              letterSpacing: -0.4,
-              color: colors.ink,
-              textAlign: 'center',
-              marginBottom: 18,
-            }}
-          >
-            Pick a {''}
-            <Text style={{ fontFamily: designTokens.font.serifItalic, fontStyle: serifItalicFontStyle, fontSize: 26 }}>
-              vibe
-            </Text>{' '}
-            to cook.
-          </Text>
-          <Pressable
-            onPress={() => router.replace('/generate-recipe')}
-            style={({ pressed }) => ({
-              paddingVertical: 12,
-              paddingHorizontal: 22,
-              borderRadius: 999,
-              backgroundColor: designTokens.colors.brand,
-              transform: [{ scale: pressed ? 0.985 : 1 }],
-            })}
-          >
-            <Text style={{ fontFamily: designTokens.font.semibold, fontSize: 14, color: designTokens.colors.cream }}>
-              Pick a vibe
-            </Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   // ── Lazy-save the recipe to the library on first save action ──
   // Shared by both "Start cooking" and "Add to plan" — whichever
   // fires first persists; subsequent calls return the same id.
   const ensureRecipeSaved = useCallback((): string => {
+    if (!recipe || !vibeId) {
+      throw new Error('A generated recipe is required before it can be saved.');
+    }
     if (savedRecipeIdRef.current) return savedRecipeIdRef.current;
     const validatedIngredients = validateIngredients(
       recipe.ingredients.map((ing) => ({
@@ -424,10 +385,9 @@ export default function VibeCookingScreen() {
   }, [recipe, vibeId, addRecipe, updateRecipe]);
 
   // ── Initialize cook session on mount ─────────────────────────
-  // No explicit "Start cooking" button anymore — the screen is
-  // browse-first. We save the recipe to the library + open a cook
-  // slot id as soon as the user lands so the end-state flow and
-  // cooking log still fire when all steps get checked off.
+  // Persist the recipe and open a cook slot as soon as the user lands.
+  // The "Start cooking" action remains a presentation control that focuses
+  // the guided steps; session and end-state behavior stay unchanged.
   useEffect(() => {
     if (!recipe || !vibeId) return;
     ensureRecipeSaved();
@@ -538,12 +498,60 @@ export default function VibeCookingScreen() {
     });
   }, []);
 
-  // Explicit equal width for the three bottom action buttons. Using flex:1 in
-  // an absolutely-positioned row collapses them to icon-min-width on some
-  // layouts, so we size them off the known screen width instead.
-  const ACTION_BAR_PAD_H = 16;
-  const ACTION_BAR_GAP = 12;
-  const actionBtnW = (SCREEN_W - ACTION_BAR_PAD_H * 2 - ACTION_BAR_GAP * 2) / 3;
+  // Keep the fallback return below every Hook. The recipe payload can be
+  // populated asynchronously after the screen mounts, so returning earlier
+  // would change the number of Hooks between renders and crash React.
+  if (!recipe || !vibeId) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: surfaceBg }}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
+          <Text
+            style={{
+              fontFamily: designTokens.font.semibold,
+              fontSize: 10.5,
+              letterSpacing: 1.3,
+              textTransform: 'uppercase',
+              color: designTokens.colors.olive,
+              marginBottom: 10,
+            }}
+          >
+            VIBE COOKING
+          </Text>
+          <Text
+            style={{
+              fontFamily: designTokens.font.medium,
+              fontSize: 22,
+              letterSpacing: -0.4,
+              color: colors.ink,
+              textAlign: 'center',
+              marginBottom: 18,
+            }}
+          >
+            Pick a {''}
+            <Text style={{ fontFamily: designTokens.font.serifItalic, fontStyle: serifItalicFontStyle, fontSize: 26 }}>
+              vibe
+            </Text>{' '}
+            to cook.
+          </Text>
+          <Pressable
+            onPress={() => router.replace('/generate-recipe')}
+            style={({ pressed }) => ({
+              paddingVertical: 12,
+              paddingHorizontal: 22,
+              borderRadius: 999,
+              backgroundColor: designTokens.colors.brand,
+              transform: [{ scale: pressed ? 0.985 : 1 }],
+            })}
+          >
+            <Text style={{ fontFamily: designTokens.font.semibold, fontSize: 14, color: designTokens.colors.cream }}>
+              Pick a vibe
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: surfaceBg }}>
@@ -699,7 +707,7 @@ export default function VibeCookingScreen() {
         onScroll={onScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 130 }}
+        contentContainerStyle={{ paddingBottom: 112 + Math.max(insets.bottom, 12) }}
       >
         {/* ── Hero ─────────────────────────────────────────── */}
         <VibeHero
@@ -1134,24 +1142,30 @@ export default function VibeCookingScreen() {
         </View>
       </Animated.ScrollView>
 
-      {/* ── Bottom: three separate equal icon buttons in one row ───
-          (spanning the old "Add to meal plan" button's footprint):
-          Save recipe · Add to meal plan · Start cooking. */}
+      {/* ── Bottom recipe actions ───────────────────────────────────────
+          All three actions share one row. Widths are calculated from the live
+          viewport instead of relying on flex sizing, and every visual surface
+          explicitly fills its Pressable so controls cannot collapse to icons. */}
       <View
         style={{
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: Math.max(insets.bottom, 12) + 10,
+          backgroundColor: isDark ? '#191815' : '#FDFCF8',
           flexDirection: 'row',
-          justifyContent: 'space-between',
-          gap: ACTION_BAR_GAP,
-          paddingHorizontal: ACTION_BAR_PAD_H,
-          paddingTop: 14,
-          paddingBottom: Math.max(insets.bottom, 16) + 8,
-          backgroundColor: isDark ? '#1a1a1a' : '#FFFFFF',
+          alignItems: 'center',
+          gap: dockGap,
           borderTopWidth: 1,
           borderTopColor: isDark ? '#2a2a2a' : designTokens.colors.hair2,
+          shadowColor: designTokens.colors.ink,
+          shadowOffset: { width: 0, height: -6 },
+          shadowOpacity: isDark ? 0.22 : 0.06,
+          shadowRadius: 18,
+          elevation: 10,
         }}
       >
         {/* Save recipe */}
@@ -1160,24 +1174,48 @@ export default function VibeCookingScreen() {
           disabled={savedToRecipes}
           accessibilityRole="button"
           accessibilityLabel={savedToRecipes ? 'Saved to recipes' : 'Save to recipes'}
-          style={({ pressed }) => ({ width: actionBtnW, opacity: pressed ? 0.85 : 1 })}
+          accessibilityHint="Keeps this dish in your recipe collection"
+          accessibilityState={{ disabled: savedToRecipes, selected: savedToRecipes }}
+          style={{ width: secondaryActionWidth, height: 58 }}
         >
           <View
+            pointerEvents="none"
             style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: savedToRecipes
+                ? isDark ? '#59684A' : '#C7CFBD'
+                : isDark ? '#34332F' : designTokens.colors.hair,
+              backgroundColor: savedToRecipes
+                ? isDark ? '#252A20' : '#EEF1E9'
+                : isDark ? '#22211E' : '#FFFFFF',
               alignItems: 'center',
               justifyContent: 'center',
-              paddingVertical: 16,
-              borderRadius: 16,
-              borderWidth: 1.5,
-              borderColor: savedToRecipes ? '#546445' : isDark ? '#3a3a3a' : designTokens.colors.hair,
-              backgroundColor: savedToRecipes ? 'rgba(84,100,69,0.10)' : isDark ? '#1a1a1a' : '#FFFFFF',
+              gap: 3,
             }}
           >
             {savedToRecipes ? (
-              <BookmarkCheck size={20} color="#546445" strokeWidth={1.9} />
+              <BookmarkCheck
+                size={18}
+                color={isDark ? '#A7B895' : designTokens.colors.brand}
+                strokeWidth={2}
+              />
             ) : (
-              <Bookmark size={20} color={theme.accent} strokeWidth={1.9} />
+              <Bookmark size={18} color={theme.accent} strokeWidth={1.9} />
             )}
+            <Text
+              style={{
+                fontFamily: designTokens.font.semibold,
+                fontSize: 10.5,
+                color: savedToRecipes
+                  ? isDark ? '#A7B895' : designTokens.colors.brandDeep
+                  : isDark ? '#E4E0D7' : designTokens.colors.ink2,
+              }}
+            >
+              {savedToRecipes ? 'Saved' : 'Save'}
+            </Text>
           </View>
         </Pressable>
 
@@ -1186,51 +1224,74 @@ export default function VibeCookingScreen() {
           onPress={handleAddToPlan}
           accessibilityRole="button"
           accessibilityLabel="Add to meal plan"
-          style={({ pressed }) => ({ width: actionBtnW, opacity: pressed ? 0.85 : 1 })}
+          accessibilityHint="Choose a day and meal for this dish"
+          style={{ width: secondaryActionWidth, height: 58 }}
         >
           <View
+            pointerEvents="none"
             style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: isDark ? '#34332F' : designTokens.colors.hair,
+              backgroundColor: isDark ? '#22211E' : '#FFFFFF',
               alignItems: 'center',
               justifyContent: 'center',
-              paddingVertical: 16,
-              borderRadius: 16,
-              borderWidth: 1.5,
-              borderColor: isDark ? '#3a3a3a' : designTokens.colors.hair,
-              backgroundColor: isDark ? '#1a1a1a' : '#FFFFFF',
+              gap: 3,
             }}
           >
-            <CalendarPlus size={20} color={theme.accent} strokeWidth={1.9} />
+            <CalendarPlus size={18} color={theme.accent} strokeWidth={1.9} />
+            <Text
+              style={{
+                fontFamily: designTokens.font.semibold,
+                fontSize: 10.5,
+                color: isDark ? '#E4E0D7' : designTokens.colors.ink2,
+              }}
+            >
+              Plan
+            </Text>
           </View>
         </Pressable>
 
-        {/* Start cooking (primary) */}
+        {/* Start cooking, wider than the supporting actions. */}
         <Pressable
           onPress={handleStartCooking}
           accessibilityRole="button"
           accessibilityLabel="Start cooking"
-          style={({ pressed }) => ({
-            width: actionBtnW,
-            opacity: pressed ? 0.9 : 1,
-            transform: [{ scale: pressed ? 0.985 : 1 }],
-          })}
+          accessibilityHint={`Opens the ${stepCount} guided cooking steps`}
+          style={{ width: primaryActionWidth, height: 58 }}
         >
           <View
+            pointerEvents="none"
             style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 18,
+              backgroundColor: designTokens.colors.brand,
+              flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
-              paddingVertical: 16,
-              borderRadius: 16,
-              borderWidth: 1.5,
-              borderColor: '#546445',
-              backgroundColor: '#546445',
-              shadowColor: '#546445',
-              shadowOpacity: 0.25,
+              gap: 8,
+              paddingHorizontal: 12,
+              shadowColor: designTokens.colors.brandDeep,
+              shadowOpacity: 0.22,
               shadowRadius: 12,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 3,
+              shadowOffset: { width: 0, height: 5 },
+              elevation: 5,
             }}
           >
-            <Flame size={20} color="#FAF7F0" strokeWidth={1.8} />
+            <Flame size={19} color={designTokens.colors.cream} strokeWidth={2} />
+            <Text
+              style={{
+                fontFamily: designTokens.font.semibold,
+                fontSize: 14.5,
+                letterSpacing: -0.15,
+                color: designTokens.colors.cream,
+              }}
+            >
+              Cook now
+            </Text>
           </View>
         </Pressable>
       </View>
