@@ -1,9 +1,16 @@
 // NudgeCard Component - PlannPlate Home design
-// Smart suggestion card that prompts user to simplify meals
+// Smart suggestion card that prompts user to simplify meals.
+// Themed to sit alongside the green "cooking today" hero: a light cream card
+// (dark surface in dark mode), olive-green primary button, terracotta accent
+// on the active step.
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Sparkles, X, Check } from 'lucide-react-native';
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, getThemeColors } from '@/lib/design-tokens';
+
+const OLIVE = designTokens.colors.brand;      // #546445 — olive-green (button, done step)
+const TERRACOTTA = designTokens.colors.olive;  // #E46D46 — warm accent (active step)
+const CREAM = designTokens.colors.cream;       // #F6F2E9
 
 export interface NudgeStep {
   label: string;
@@ -17,7 +24,7 @@ interface NudgeCardProps {
   primaryAction?: string;
   secondaryAction?: string;
   /** When provided, renders a compact Plan → Grocery → Cook progress stepper
-   *  (charcoal, no eyebrow/title) instead of the standard eyebrow+title card. */
+   *  (no eyebrow/title) instead of the standard eyebrow+title card. */
   steps?: NudgeStep[];
   onPrimaryAction?: () => void;
   onSecondaryAction?: () => void;
@@ -25,7 +32,7 @@ interface NudgeCardProps {
   isDark?: boolean;
 }
 
-function StepDot({ state }: { state: NudgeStep['state'] }) {
+function StepDot({ state, isDark }: { state: NudgeStep['state']; isDark: boolean }) {
   if (state === 'done') {
     return (
       <View
@@ -33,12 +40,12 @@ function StepDot({ state }: { state: NudgeStep['state'] }) {
           width: 19,
           height: 19,
           borderRadius: 999,
-          backgroundColor: designTokens.colors.brand,
+          backgroundColor: OLIVE,
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Check size={12} color="#fff" strokeWidth={2.6} />
+        <Check size={12} color={CREAM} strokeWidth={2.6} />
       </View>
     );
   }
@@ -49,17 +56,18 @@ function StepDot({ state }: { state: NudgeStep['state'] }) {
         height: 19,
         borderRadius: 999,
         borderWidth: 2,
-        borderColor: state === 'active' ? designTokens.colors.olive : 'rgba(255,255,255,0.22)',
+        borderColor:
+          state === 'active'
+            ? TERRACOTTA
+            : isDark
+              ? 'rgba(255,255,255,0.22)'
+              : '#CAC4B4',
       }}
     />
   );
 }
 
 export function NudgeCard({
-  // Default copy intentionally empty — every real call site (home tab)
-  // passes explicit props from the nudge engine. Removing the old
-  // "A small idea" defaults so a regression can't silently re-introduce
-  // the deleted fallback variant.
   eyebrow = '',
   title = '',
   message = '',
@@ -69,12 +77,14 @@ export function NudgeCard({
   onPrimaryAction,
   onSecondaryAction,
   onDismiss,
+  isDark = false,
 }: NudgeCardProps) {
-  const cardBg = designTokens.colors.charcoal;
-  const textColor = '#F6F2E9';
+  const colors = getThemeColors(isDark);
+  const cardBg = isDark ? '#1F1F1C' : CREAM;
+  const cardBorder = isDark ? '#2A2A2A' : '#E4DFD2';
+  const connColor = isDark ? 'rgba(255,255,255,0.12)' : '#E0DBCC';
 
-  // Compact progress-stepper variant (Plan → Grocery → Cook). No eyebrow or
-  // title, so the card is noticeably shorter than the standard nudge.
+  // Compact progress-stepper variant (Plan → Grocery → Cook).
   if (steps && steps.length > 0) {
     return (
       <View style={{ marginHorizontal: 16, marginBottom: 22 }}>
@@ -82,6 +92,8 @@ export function NudgeCard({
           style={{
             backgroundColor: cardBg,
             borderRadius: 20,
+            borderWidth: 1,
+            borderColor: cardBorder,
             paddingTop: 14,
             paddingHorizontal: 16,
             paddingBottom: 14,
@@ -97,14 +109,14 @@ export function NudgeCard({
                     <View
                       style={{
                         flex: 1,
-                        height: 1,
-                        backgroundColor: 'rgba(255,255,255,0.14)',
+                        height: 1.5,
+                        backgroundColor: connColor,
                         marginHorizontal: 6,
                       }}
                     />
                   )}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <StepDot state={step.state} />
+                    <StepDot state={step.state} isDark={isDark} />
                     <Text
                       style={{
                         fontFamily: designTokens.font.medium,
@@ -112,10 +124,10 @@ export function NudgeCard({
                         letterSpacing: -0.12,
                         color:
                           step.state === 'active'
-                            ? textColor
+                            ? colors.ink
                             : step.state === 'done'
-                            ? 'rgba(246,242,233,0.75)'
-                            : 'rgba(246,242,233,0.45)',
+                              ? colors.ink2
+                              : colors.ink3,
                       }}
                     >
                       {step.label}
@@ -130,7 +142,7 @@ export function NudgeCard({
                 hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
                 style={{ marginLeft: 12 }}
               >
-                <X size={16} color={'rgba(246,242,233,0.5)'} />
+                <X size={16} color={colors.ink3} />
               </Pressable>
             )}
           </View>
@@ -140,7 +152,7 @@ export function NudgeCard({
             <Pressable
               onPress={onPrimaryAction}
               style={{
-                backgroundColor: designTokens.colors.olive,
+                backgroundColor: OLIVE,
                 borderRadius: 999,
                 paddingVertical: 11,
                 alignItems: 'center',
@@ -151,7 +163,7 @@ export function NudgeCard({
               <Text
                 style={{
                   fontFamily: designTokens.font.medium,
-                  color: '#fff',
+                  color: CREAM,
                   fontSize: 13.5,
                   letterSpacing: -0.135,
                 }}
@@ -171,6 +183,8 @@ export function NudgeCard({
         style={{
           backgroundColor: cardBg,
           borderRadius: 20,
+          borderWidth: 1,
+          borderColor: cardBorder,
           paddingTop: 16,
           paddingHorizontal: 16,
           paddingBottom: 14,
@@ -184,15 +198,15 @@ export function NudgeCard({
               width: 32,
               height: 32,
               borderRadius: 10,
-              backgroundColor: 'rgba(255,255,255,0.08)',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(84,100,69,0.08)',
               borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.06)',
+              borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(84,100,69,0.12)',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
             }}
           >
-            <Sparkles size={16} color={designTokens.colors.olive} strokeWidth={1.8} />
+            <Sparkles size={16} color={TERRACOTTA} strokeWidth={1.8} />
           </View>
 
           {/* Content */}
@@ -212,7 +226,7 @@ export function NudgeCard({
                   fontSize: 11,
                   letterSpacing: 1.1,
                   textTransform: 'uppercase',
-                  color: designTokens.colors.olive,
+                  color: TERRACOTTA,
                 }}
               >
                 {eyebrow}
@@ -223,13 +237,12 @@ export function NudgeCard({
                   hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
                   style={{ marginTop: -2 }}
                 >
-                  <X size={16} color={'rgba(246,242,233,0.5)'} />
+                  <X size={16} color={colors.ink3} />
                 </Pressable>
               )}
             </View>
 
-            {/* Bold title — description intentionally omitted to keep the
-                card compact (title + actions only). */}
+            {/* Bold title */}
             <Text
               style={{
                 fontFamily: designTokens.font.medium,
@@ -237,7 +250,7 @@ export function NudgeCard({
                 letterSpacing: -0.165,
                 marginTop: 4,
                 lineHeight: 22,
-                color: textColor,
+                color: colors.ink,
               }}
             >
               {title}
@@ -249,7 +262,7 @@ export function NudgeCard({
                 <Pressable
                   onPress={onPrimaryAction}
                   style={{
-                    backgroundColor: designTokens.colors.olive,
+                    backgroundColor: OLIVE,
                     borderRadius: 999,
                     paddingHorizontal: 14,
                     paddingVertical: 9,
@@ -258,7 +271,7 @@ export function NudgeCard({
                   <Text
                     style={{
                       fontFamily: designTokens.font.medium,
-                      color: '#fff',
+                      color: CREAM,
                       fontSize: 13.5,
                       letterSpacing: -0.135,
                     }}
@@ -275,13 +288,13 @@ export function NudgeCard({
                     paddingHorizontal: 14,
                     paddingVertical: 9,
                     borderWidth: 1,
-                    borderColor: 'rgba(246,242,233,0.2)',
+                    borderColor: colors.hair,
                   }}
                 >
                   <Text
                     style={{
                       fontFamily: designTokens.font.medium,
-                      color: textColor,
+                      color: colors.ink2,
                       fontSize: 13.5,
                       letterSpacing: -0.135,
                     }}

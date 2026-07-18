@@ -17,6 +17,8 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { HERO_GRADIENT, HERO_LOCATIONS } from '@/components/TodayCookHero';
 import {
   ShoppingCart,
   UtensilsCrossed,
@@ -210,7 +212,11 @@ export function QuickActions({
   const primaryNode = primary ? (
     <Pressable onPress={() => handlePress(primary, 0)} style={{ width: '100%' }}>
       {({ pressed }) => (
-        <View
+        <LinearGradient
+          colors={HERO_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          locations={HERO_LOCATIONS}
           style={[
             {
               flexDirection: 'row',
@@ -219,7 +225,6 @@ export function QuickActions({
               paddingHorizontal: t(20, 16),
               paddingVertical: 14,
               borderRadius: 24,
-              backgroundColor: designTokens.colors.brand,
               opacity: isRestricted ? 0.55 : 1,
               shadowColor: designTokens.colors.brandDeep,
               shadowOpacity: 0.22,
@@ -288,7 +293,7 @@ export function QuickActions({
             <ThumbnailStack thumbnails={primary.thumbnails} />
           ) : null}
           <ChevronRight size={20} color="rgba(246,242,233,0.78)" strokeWidth={1.9} />
-        </View>
+        </LinearGradient>
       )}
     </Pressable>
   ) : null;

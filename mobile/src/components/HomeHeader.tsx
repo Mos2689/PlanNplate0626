@@ -41,12 +41,11 @@ export function HomeHeader({
   const colors = getThemeColors(isDark);
   const word = greetingWord || getTimeGreetingWord();
   const firstName = userName?.split(' ')[0] || 'there';
-  const subtitle =
-    subtitleMessage ||
-    `${new Date().toLocaleDateString('en-US', { weekday: 'long' })} is planned. Dinner looks easy tonight.`;
+  // Only shown when a caller passes one — no default subline.
+  const subtitle = subtitleMessage?.trim();
 
   return (
-    <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 }}>
+    <View style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 10 }}>
       {/* Greeting row — salutation + subtitle on the left, optional
           trailingSlot (e.g. compact MonthYearPicker) top-aligned on the
           right. */}
@@ -71,7 +70,6 @@ export function HomeHeader({
             adjustsFontSizeToFit={Platform.OS === 'android'}
             minimumFontScale={0.85}
           >
-            Good{' '}
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
@@ -79,26 +77,29 @@ export function HomeHeader({
                 fontStyle: serifItalicFontStyle,
               }}
             >
-              {word}
+              Good {word}
             </Text>
             {', '}
             {firstName}
           </Text>
-          {/* Message of the day — light subline beneath the salutation. */}
-          <Text
-            style={{
-              marginTop: t(6, 4),
-              color: colors.ink2,
-              fontFamily: designTokens.font.regular,
-              fontSize: t(14.5, 13.5),
-              lineHeight: t(20, 18),
-            }}
-            numberOfLines={2}
-            adjustsFontSizeToFit={Platform.OS === 'android'}
-            minimumFontScale={0.85}
-          >
-            {subtitle}
-          </Text>
+          {/* Optional subline beneath the salutation — omitted when no
+              subtitleMessage is provided. */}
+          {subtitle ? (
+            <Text
+              style={{
+                marginTop: t(6, 4),
+                color: colors.ink2,
+                fontFamily: designTokens.font.regular,
+                fontSize: t(14.5, 13.5),
+                lineHeight: t(20, 18),
+              }}
+              numberOfLines={2}
+              adjustsFontSizeToFit={Platform.OS === 'android'}
+              minimumFontScale={0.85}
+            >
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
         {trailingSlot ? (
           // Nudge the slot down a touch so the chip's vertical center

@@ -558,26 +558,31 @@ export default function RecipesScreen() {
               {/* ── Header ─────────────────────────────────────── */}
               <Animated.View
                 entering={FadeInDown.delay(50).springify()}
-                style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14 }}
+                style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 14 }}
               >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <View style={{ flex: 1, paddingRight: 12, minWidth: 0 }}>
+                <View>
+                  {/* Title + action icons share one centered row. */}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
                     <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
                       style={{
+                        flex: 1,
+                        paddingRight: 12,
                         fontFamily: designTokens.font.medium,
                         fontSize: t(28, 24),
                         color: colors.ink,
                         letterSpacing: t(-0.56, -0.4),
-                        lineHeight: t(31, 28),
+                        lineHeight: t(40, 34),
                       }}
                     >
-                      Your{' '}
                       <Text
                         style={{
                           fontFamily: designTokens.font.serifItalic,
@@ -585,24 +590,12 @@ export default function RecipesScreen() {
                           fontStyle: serifItalicFontStyle,
                         }}
                       >
-                        recipes
+                        Your Recipes
                       </Text>
                     </Text>
-                    <Text
-                      style={{
-                        marginTop: t(6, 4),
-                        fontFamily: designTokens.font.regular,
-                        fontSize: t(14.5, 13.5),
-                        color: colors.ink2,
-                        lineHeight: t(20, 18),
-                      }}
-                    >
-                      Saved ideas, weeknight wins, and meals worth repeating.
-                    </Text>
-                  </View>
 
                   {/* Header buttons */}
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
                     <Pressable
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -661,6 +654,18 @@ export default function RecipesScreen() {
                       </Pressable>
                     </View>
                   </View>
+                  </View>
+                  <Text
+                    style={{
+                      marginTop: t(6, 4),
+                      fontFamily: designTokens.font.regular,
+                      fontSize: t(14.5, 13.5),
+                      color: colors.ink2,
+                      lineHeight: t(20, 18),
+                    }}
+                  >
+                    Saved ideas, weeknight wins, and meals worth repeating.
+                  </Text>
                 </View>
               </Animated.View>
 

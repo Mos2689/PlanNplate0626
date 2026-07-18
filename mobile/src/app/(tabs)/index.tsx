@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronRight, ChevronLeft, AlertTriangle, Trash2 } from 'lucide-react-native';
+import { ChevronRight, ChevronLeft, ChevronDown, AlertTriangle, Trash2 } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
   FadeInRight,
@@ -39,7 +39,8 @@ import {
   getMinimumAllowedDate,
 } from '@/lib/date-restrictions';
 import { HomeHeader } from '@/components/HomeHeader';
-import { WeekStrip } from '@/components/WeekStrip';
+import { TodayCookHero } from '@/components/TodayCookHero';
+import { DateCalendarSheet } from '@/components/DateCalendarSheet';
 import { MealCard, type MealCardState } from '@/components/MealCard';
 import { NudgeCard } from '@/components/NudgeCard';
 import { QuickActions } from '@/components/QuickActions';
@@ -904,6 +905,55 @@ export default function HomeScreen() {
   };
 
   const isTodaySelected = sameDay(selectedDate, new Date());
+
+  // Data for the green "cooking today" hero — the selected day's planned meals,
+  // how many are cooked, and the dish names (breakfast → lunch → dinner order).
+  const heroData = useMemo(() => {
+    const dayKey = formatLocalDateKey(selectedDate);
+    const slots = mealSlots.filter(
+      (s) => s.date === dayKey && (s.recipeId || s.customMealName),
+    );
+    const order: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
+    const nameOf = (s: (typeof slots)[number]) =>
+      (s.recipeId ? recipes.find((r) => r.id === s.recipeId)?.name : undefined) ||
+      s.customMealName ||
+      '';
+    const cookedCount = slots.filter((s) =>
+      cookingLogs.some((l) => l.slotId === s.id && l.status === 'cooked'),
+    ).length;
+    const dishes = [...slots]
+      .sort((a, b) => (order[a.mealType] ?? 9) - (order[b.mealType] ?? 9))
+      .map(nameOf)
+      .filter(Boolean);
+    return { plannedCount: slots.length, cookedCount, dishes };
+  }, [selectedDate, mealSlots, recipes, cookingLogs]);
+
+  const heroWeekday = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+  const heroDateLabel = `${selectedDate.toLocaleDateString('en-US', { weekday: 'short' })} ${selectedDate.getDate()}`;
+
+  // ── Date pill + calendar dropdown (under the "Today" heading) ──────────
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  // Pill label matches the mockup: "Tue, 18 June".
+  const datePillLabel = `${selectedDate.toLocaleDateString('en-US', { weekday: 'short' })}, ${selectedDate.getDate()} ${selectedDate.toLocaleDateString('en-US', { month: 'long' })}`;
+  const todayKey = formatLocalDateKey(new Date());
+  const minKey = minAllowedDate ? formatLocalDateKey(minAllowedDate) : undefined;
+  // Status dots for the calendar: green = planned, terracotta = cooked.
+  const calendarMarked = useMemo(() => {
+    const m: Record<string, { marked?: boolean; dotColor?: string }> = {};
+    for (const s of mealSlots) {
+      if (!s.recipeId && !s.customMealName) continue;
+      const key = s.date;
+      const cooked = cookingLogs.some((l) => l.slotId === s.id && l.status === 'cooked');
+      const existing = m[key];
+      if (!existing) {
+        m[key] = { marked: true, dotColor: cooked ? designTokens.colors.olive : designTokens.colors.brand };
+      } else if (cooked) {
+        existing.dotColor = designTokens.colors.olive;
+      }
+    }
+    return m;
+  }, [mealSlots, cookingLogs]);
+
   const headingLabel = isTodaySelected
     ? 'Today'
     : selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
@@ -943,7 +993,6 @@ export default function HomeScreen() {
               isPremium={hasPremiumAccess}
               isDark={isDark}
               greetingWord={greetingWord}
-              subtitleMessage={getGreetingSubtitle()}
               onAvatarPress={() => {
                 Haptics.selectionAsync();
                 router.push('/(tabs)/preferences' as any);
@@ -956,54 +1005,18 @@ export default function HomeScreen() {
               when complete or on failure tap-to-retry. */}
           <PendingGenerationBanner isDark={isDark} />
 
-          {/* Week strip + weekly stats. Month/year picker is hidden for now —
-              restore the block below to bring it back above the date strip. */}
-          <Animated.View entering={FadeInDown.delay(180).springify()}>
-            {false && (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 20,
-                  marginBottom: 10,
-                }}
-              >
-                <MonthYearPicker
-                  selectedDate={selectedDate}
-                  onDateChange={handleMonthYearChange}
-                  minDate={minAllowedDate}
-                  isDark={isDark}
-                  compact
-                />
-              </View>
-            )}
-            <WeekStrip
-              days={weekDays}
-              onDayPress={handleDayPress}
-              isDark={isDark}
-              scrollToIndex={selectedIndex}
+          {/* Green "cooking today" hero — warm nudge about the selected day's
+              plan. Sits above the (now slimmer) date strip. */}
+          <Animated.View entering={FadeInDown.delay(120).springify()}>
+            <TodayCookHero
+              isToday={isTodaySelected}
+              weekdayLabel={heroWeekday}
+              dateLabel={heroDateLabel}
+              plannedCount={heroData.plannedCount}
+              cookedCount={heroData.cookedCount}
+              dishes={heroData.dishes}
+              userName={displayName ?? undefined}
             />
-            <View
-              style={{
-                alignItems: 'center',
-                marginTop: -6,
-                paddingBottom: 20,
-              }}
-            >
-              <Text
-                style={{
-                  fontFamily: designTokens.font.medium,
-                  fontSize: 12,
-                  color: colors.ink2,
-                }}
-              >
-                {weeklyStats === 0
-                  ? 'No meals planned this week'
-                  : weeklyStats === 1
-                  ? '1 meal planned this week'
-                  : `${weeklyStats} meals planned this week`}
-              </Text>
-            </View>
           </Animated.View>
 
           {/* Paused banner */}
@@ -1034,6 +1047,7 @@ export default function HomeScreen() {
                 onPrimaryAction={handleNudgePrimary}
                 onSecondaryAction={handleNudgeSecondary}
                 onDismiss={handleNudgeDismiss}
+                isDark={isDark}
               />
             </Animated.View>
           )}
@@ -1062,16 +1076,40 @@ export default function HomeScreen() {
                 >
                   {headingLabel}
                 </Text>
-                <Text
+                <Pressable
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setDatePickerOpen(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change date, currently ${datePillLabel}`}
                   style={{
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 12.5,
-                    color: colors.ink3,
-                    marginTop: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    marginTop: 6,
+                    alignSelf: 'flex-start',
+                    paddingLeft: 12,
+                    paddingRight: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: isDark ? '#1f1f1c' : designTokens.colors.cream,
+                    borderWidth: 1,
+                    borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
                   }}
                 >
-                  {headingSubLabel}
-                </Text>
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.medium,
+                      fontSize: 13,
+                      color: colors.ink2,
+                      letterSpacing: -0.1,
+                    }}
+                  >
+                    {datePillLabel}
+                  </Text>
+                  <ChevronDown size={15} color={colors.ink3} strokeWidth={2} />
+                </Pressable>
               </View>
 
               {/* Day navigation chevrons */}
@@ -1206,6 +1244,18 @@ export default function HomeScreen() {
           </Animated.View>
         </Animated.ScrollView>
       </SafeAreaView>
+
+      {/* Calendar dropdown opened by the date pill under the "Today" heading. */}
+      <DateCalendarSheet
+        visible={datePickerOpen}
+        onClose={() => setDatePickerOpen(false)}
+        selectedKey={formatLocalDateKey(selectedDate)}
+        todayKey={todayKey}
+        minKey={minKey}
+        markedDates={calendarMarked}
+        onSelect={(key) => setSelectedDateInStore(key)}
+        isDark={isDark}
+      />
 
       {/* PaywallSheet is mounted globally in src/app/_layout.tsx so it
           works from any tab/screen — no duplicate mount needed here. */}

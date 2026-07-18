@@ -2289,7 +2289,7 @@ export default function GroceryScreen() {
           {/* ── Header ───────────────────────────────────────── */}
           <Animated.View
             entering={FadeInDown.delay(50).springify()}
-            style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14 }}
+            style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 14 }}
           >
             <View
               style={{
@@ -2310,7 +2310,7 @@ export default function GroceryScreen() {
                   }}
                   numberOfLines={1}
                 >
-                  {isSavedListMode ? currentSavedListName || 'Saved list' : 'Grocery'}
+                  {isSavedListMode ? currentSavedListName || 'Saved list' : 'Your Groceries'}
                 </Text>
                 {subtitleText ? (
                   <Text

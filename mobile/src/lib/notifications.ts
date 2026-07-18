@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { useMealPlanStore } from './store';
 
 // CRITICAL (production launch safety): expo-notifications is a NATIVE module.
 // If the running binary doesn't include it — e.g. an expo-updates OTA pushed
@@ -60,6 +61,114 @@ export async function cancelAllNotifications() {
     await Notifications.cancelAllScheduledNotificationsAsync();
   } catch (e) {
     console.warn('[notifications] cancelAllNotifications failed:', e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Meal-plan reminders (for ACTIVE users with a plan)
+//
+// Scheduled alongside the inactivity notifications when the app backgrounds:
+//   • 8am  — morning heads-up of the day's plan (if anything is planned)
+//   • 11am — lunch reminder (only if a lunch is planned + not yet cooked)
+//   • 5pm  — dinner reminder (only if a dinner is planned + not yet cooked)
+// All times are LOCAL: we build each Date from local Y/M/D + hour, so the OS
+// fires it at that wall-clock time in the user's timezone. Any slot the user has
+// already logged (cooked/skipped/swapped) is skipped.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const localDateKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+async function scheduleMealNotificationAt(
+  day: Date,
+  hour: number,
+  title: string,
+  body: string,
+) {
+  const when = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0, 0);
+  // Skip anything in the past (or within the next minute) — can't fire it.
+  if (when.getTime() <= Date.now() + 60_000) return;
+  await Notifications.scheduleNotificationAsync({
+    content: { title, body, data: { kind: 'meal-plan' } },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
+  });
+}
+
+export async function scheduleMealPlanNotifications() {
+  if (!isNativeNotificationsAvailable) return;
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') return;
+
+    // Remove any meal-plan reminders we scheduled earlier so repeated calls don't
+    // stack duplicates (identified by content.data.kind).
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    for (const n of scheduled) {
+      if ((n.content?.data as { kind?: string } | undefined)?.kind === 'meal-plan') {
+        await Notifications.cancelScheduledNotificationAsync(n.identifier);
+      }
+    }
+
+    const { mealSlots, recipes, cookingLogs } = useMealPlanStore.getState();
+
+    const nameFor = (recipeId: string | null, custom?: string): string | null => {
+      if (recipeId) {
+        const r = recipes.find((x) => x.id === recipeId);
+        if (r?.name) return r.name;
+      }
+      return custom?.trim() || null;
+    };
+    // Any log for a slot means the user has acted on it (cooked/skipped/swapped) —
+    // don't remind them to cook it.
+    const isResolved = (slotId: string) => cookingLogs.some((l) => l.slotId === slotId);
+    const isPlanned = (s: { recipeId: string | null; customMealName?: string; id: string }) =>
+      !!(s.recipeId || s.customMealName) && !isResolved(s.id);
+
+    const now = new Date();
+    const HORIZON_DAYS = 7;
+    for (let i = 0; i < HORIZON_DAYS; i++) {
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      const key = localDateKey(day);
+      const slots = mealSlots.filter((s) => (s.date || '').slice(0, 10) === key);
+      if (slots.length === 0) continue;
+
+      const lunch = slots.find((s) => s.mealType === 'lunch' && isPlanned(s));
+      const dinner = slots.find((s) => s.mealType === 'dinner' && isPlanned(s));
+      const anyPlanned = slots.some((s) => isPlanned(s));
+
+      // Morning heads-up @ 8am
+      if (anyPlanned) {
+        const l = lunch ? nameFor(lunch.recipeId, lunch.customMealName) : null;
+        const d = dinner ? nameFor(dinner.recipeId, dinner.customMealName) : null;
+        const body =
+          l && d
+            ? `Lunch: ${l} · Dinner: ${d}. Here's your plan for today.`
+            : l || d
+              ? `${l ?? d} is on today's plan. Tap to see the details.`
+              : `Your meals are planned for today — tap to take a look.`;
+        await scheduleMealNotificationAt(day, 8, `Today's menu 🍳`, body);
+      }
+
+      // Lunch reminder @ 11am
+      if (lunch) {
+        const n = nameFor(lunch.recipeId, lunch.customMealName);
+        const body = n
+          ? `Today's lunch is ${n}. A little prep now and you're set.`
+          : `You've got lunch planned today — time to start cooking.`;
+        await scheduleMealNotificationAt(day, 11, `Lunch coming up 🥗`, body);
+      }
+
+      // Dinner reminder @ 5pm
+      if (dinner) {
+        const n = nameFor(dinner.recipeId, dinner.customMealName);
+        const body = n
+          ? `Tonight it's ${n}. Start whenever you're ready.`
+          : `Dinner's on tonight's plan — time to start cooking.`;
+        await scheduleMealNotificationAt(day, 17, `Dinner's on the horizon 🍲`, body);
+      }
+    }
+  } catch (e) {
+    console.warn('[notifications] scheduleMealPlanNotifications failed:', e);
   }
 }
 

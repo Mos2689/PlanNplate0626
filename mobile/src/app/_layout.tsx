@@ -29,7 +29,7 @@ import {
 import { InstrumentSerif_400Regular_Italic } from '@expo-google-fonts/instrument-serif';
 import { initializeMetaSDK } from '@/lib/meta-sdk';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { scheduleInactivityNotifications, cancelAllNotifications, requestNotificationPermissions } from '@/lib/notifications';
+import { scheduleInactivityNotifications, scheduleMealPlanNotifications, cancelAllNotifications, requestNotificationPermissions } from '@/lib/notifications';
 
 
 
@@ -228,7 +228,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
 
   // Handle inactivity notifications scheduling based on AppState
   useEffect(() => {
-    // We optionally request permissions on first mount in this component 
+    // We optionally request permissions on first mount in this component
     // so we can schedule them when they leave.
     requestNotificationPermissions().catch(() => {});
 
@@ -241,8 +241,12 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         const profileName = useSubscriptionStore.getState().userSubscription?.name;
         const emailName = useAuthStore.getState().currentUser?.email?.split('@')[0];
         const userName = profileName || emailName || '';
-        
-        void scheduleInactivityNotifications(userName);
+
+        // Order matters: scheduleInactivityNotifications cancels ALL scheduled
+        // notifications first, so schedule the meal-plan reminders AFTER it.
+        void scheduleInactivityNotifications(userName).then(() =>
+          scheduleMealPlanNotifications(),
+        );
       }
     };
 

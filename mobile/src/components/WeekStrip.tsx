@@ -27,6 +27,9 @@ interface WeekStripProps {
   isDark?: boolean;
   /** Index to auto-scroll into view on mount / when it changes */
   scrollToIndex?: number;
+  /** Slim variant — flatter card, tighter pills, no legend. Used on the Meal
+   *  Plan screen where the green hero above already conveys the day's status. */
+  compact?: boolean;
 }
 
 const DAY_WIDTH = 48;
@@ -103,7 +106,7 @@ function LegendDot({ color, label, isEmpty }: { color: string; label: string; is
   );
 }
 
-export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: WeekStripProps) {
+export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex, compact = false }: WeekStripProps) {
   const colors = getThemeColors(isDark);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -135,24 +138,28 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
   const cardBorder = isDark ? '#2a2a2a' : designTokens.colors.hair;
 
   return (
-    <View style={{ paddingTop: 4, paddingBottom: 16, paddingHorizontal: 16 }}>
+    <View style={{ paddingTop: compact ? 0 : 4, paddingBottom: compact ? 6 : 16, paddingHorizontal: 16 }}>
       {/* Elevated cream card wrapping the scrollable days. Outer layer carries
           the shadow + border; inner layer clips the horizontal scroll to the
-          rounded corners. */}
+          rounded corners. Compact drops the shadow for a flatter, slimmer strip. */}
       <View
         style={{
           borderRadius: 16,
           backgroundColor: cardBg,
           borderWidth: 1,
           borderColor: cardBorder,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: isDark ? 0.28 : 0.06,
-          shadowRadius: 8,
-          elevation: 2,
+          ...(compact
+            ? {}
+            : {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: isDark ? 0.28 : 0.06,
+                shadowRadius: 8,
+                elevation: 2,
+              }),
         }}
       >
-      <View style={{ borderRadius: 15, overflow: 'hidden', paddingVertical: 6 }}>
+      <View style={{ borderRadius: 15, overflow: 'hidden', paddingVertical: compact ? 2 : 6 }}>
       {/* Scrollable days */}
       <ScrollView
         ref={scrollRef}
@@ -189,28 +196,31 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
               style={{
                 width: DAY_WIDTH,
                 alignItems: 'center',
-                gap: t(6, 5),
-                paddingTop: t(8, androidTokens.weekStrip.dayPaddingTop),
-                paddingBottom: t(10, androidTokens.weekStrip.dayPaddingBottom),
-                borderRadius: 14,
+                gap: compact ? 2 : t(6, 5),
+                paddingTop: compact ? 4 : t(8, androidTokens.weekStrip.dayPaddingTop),
+                paddingBottom: compact ? 4 : t(10, androidTokens.weekStrip.dayPaddingBottom),
+                borderRadius: 12,
                 backgroundColor: isActive ? designTokens.colors.brand : 'transparent',
               }}
             >
               {/* Month label (above the day letter for the first day of each month).
-                  Reserved a slot for all days so vertical alignment stays consistent. */}
-              <Text
-                style={{
-                  fontFamily: designTokens.font.semibold,
-                  fontSize: t(9.5, androidTokens.weekStrip.monthFontSize),
-                  letterSpacing: 0.4,
-                  textTransform: 'uppercase',
-                  color: isActive ? 'rgba(255,255,255,0.85)' : designTokens.colors.ink2,
-                  height: 11,
-                  lineHeight: 11,
-                }}
-              >
-                {day.monthLabel ?? ''}
-              </Text>
+                  Reserved a slot for all days so vertical alignment stays consistent.
+                  Hidden in compact mode to shave height. */}
+              {!compact && (
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.semibold,
+                    fontSize: t(9.5, androidTokens.weekStrip.monthFontSize),
+                    letterSpacing: 0.4,
+                    textTransform: 'uppercase',
+                    color: isActive ? 'rgba(255,255,255,0.85)' : designTokens.colors.ink2,
+                    height: 11,
+                    lineHeight: 11,
+                  }}
+                >
+                  {day.monthLabel ?? ''}
+                </Text>
+              )}
 
               {/* Day letter */}
               <Text
@@ -229,7 +239,7 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
               <Text
                 style={{
                   fontFamily: designTokens.font.semibold,
-                  fontSize: t(17, androidTokens.weekStrip.dateFontSize),
+                  fontSize: compact ? 15 : t(17, androidTokens.weekStrip.dateFontSize),
                   letterSpacing: -0.34,
                   color: isActive ? '#fff' : colors.ink,
                 }}
@@ -246,13 +256,15 @@ export function WeekStrip({ days, onDayPress, isDark = false, scrollToIndex }: W
       </View>
       </View>
 
-      {/* Legend */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 14, marginTop: 12 }}>
-        <LegendDot color={STATUS_COLORS.cooked} label="Cooked" />
-        <LegendDot color={STATUS_COLORS.planned} label="Planned" />
-        <LegendDot color={STATUS_COLORS.skipped} label="Skipped" />
-        <LegendDot color="transparent" label="Empty" isEmpty />
-      </View>
+      {/* Legend — hidden in compact mode (the hero above conveys today's status). */}
+      {!compact && (
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 14, marginTop: 12 }}>
+          <LegendDot color={STATUS_COLORS.cooked} label="Cooked" />
+          <LegendDot color={STATUS_COLORS.planned} label="Planned" />
+          <LegendDot color={STATUS_COLORS.skipped} label="Skipped" />
+          <LegendDot color="transparent" label="Empty" isEmpty />
+        </View>
+      )}
     </View>
   );
 }

@@ -60,6 +60,22 @@ export interface ImportJob {
 // Pull the source post's hero image from its Open Graph / Twitter meta tags —
 // this is the real dish photo (Instagram, blogs, etc.), preferred over a Pexels
 // search. Returns an absolute http(s) URL or undefined.
+// Decode the HTML entities that appear inside meta-tag attribute values. This
+// matters most for signed CDN image URLs (Facebook/Instagram): their query
+// strings are written with `&amp;`, and leaving those encoded produces params
+// like `amp;_nc_map=…` that break the signature so the CDN returns an error.
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/gi, '&')
+    .replace(/&#0*38;/g, '&')
+    .replace(/&#x0*26;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
 function extractOgImage(html: string): string | undefined {
   const patterns = [
     /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
@@ -68,7 +84,8 @@ function extractOgImage(html: string): string | undefined {
   ];
   for (const re of patterns) {
     const m = html.match(re);
-    const src = m?.[1]?.trim();
+    const raw = m?.[1]?.trim();
+    const src = raw ? decodeHtmlEntities(raw) : undefined;
     if (src && /^https?:\/\//i.test(src)) return src;
   }
   return undefined;
@@ -155,10 +172,8 @@ export async function resolveSourceImageUrl(url: string): Promise<string | undef
   // server-side Meta oEmbed proxy.
   if (u.includes('instagram.com')) {
     const embed = toInstagramEmbedUrl(url);
-    if (embed) {
-      const img = await fetchOgImageFrom(embed);
-      if (img) return img;
-    }
+    const img = embed ? await fetchOgImageFrom(embed) : undefined;
+    if (img) return img;
     const viaProxy = await metaOembedThumbnail(url);
     if (viaProxy) return viaProxy;
   }
@@ -438,6 +453,8 @@ Only return valid JSON, no markdown or explanation.`;
   // login-walls the direct fetch (Instagram/Facebook) or hides it (YouTube),
   // fall back to oEmbed / the public embed page. Undefined → Pexels fallback.
   if (ogImage) {
+    // If the page handed back an og:image, use it and skip the embed-page /
+    // Meta-oembed proxy. (Its HTML entities are already decoded in extractOgImage.)
     recipe.imageUrl = ogImage;
   } else {
     const resolved = await resolveSourceImageUrl(url);

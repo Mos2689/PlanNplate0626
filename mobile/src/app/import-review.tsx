@@ -37,6 +37,15 @@ import { cn } from '@/lib/cn';
 import { classifyRecipeByContent } from '@/lib/meal-type-validator';
 import { validateIngredients } from '@/lib/ingredient-validator';
 import { generateRecipeImage } from '@/lib/openai';
+import { uploadRecipeImage } from '@/lib/uploadRecipeImage';
+
+// Meta (Facebook/Instagram) serve recipe photos from signed CDN hosts whose
+// URLs EXPIRE after a few days (note the `oe=` param). We persist those to our
+// own storage so a saved recipe keeps its photo. Stable hosts (blogs, YouTube
+// thumbnails) are left as-is.
+function isEphemeralImageUrl(url: string): boolean {
+  return /(?:fbcdn\.net|cdninstagram\.com|scontent)/i.test(url);
+}
 
 const CATEGORY_OPTIONS: Ingredient['category'][] = [
   'produce',
@@ -214,7 +223,13 @@ export default function ImportReviewScreen() {
     let imageUrl = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
     const sourceImage = initialRecipe?.imageUrl;
     if (sourceImage && /^https?:\/\//i.test(sourceImage)) {
-      imageUrl = sourceImage;
+      if (isEphemeralImageUrl(sourceImage)) {
+        // Download the expiring Meta CDN image and re-host it permanently.
+        const persisted = await uploadRecipeImage(sourceImage);
+        imageUrl = persisted ?? sourceImage;
+      } else {
+        imageUrl = sourceImage;
+      }
     } else {
       try {
         const ingredientsForImage = validatedIngredients.map(ing => ({ name: ing.name, category: ing.category }));
