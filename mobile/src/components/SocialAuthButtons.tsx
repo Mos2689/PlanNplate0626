@@ -1,6 +1,7 @@
 import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { designTokens } from '@/lib/design-tokens';
+import { FEATURE_FLAGS } from '@/lib/feature-flags';
 import {
   providerDisplayName,
   type SocialProvider,
@@ -49,6 +50,8 @@ export function SocialAuthButtons({
   loadingProvider,
   onPress,
 }: SocialAuthButtonsProps) {
+  if (!FEATURE_FLAGS.socialAuth) return null;
+
   const visibleProviders = providers.filter(
     ({ provider }) => provider !== 'apple' || Platform.OS === 'ios',
   );
