@@ -79,6 +79,7 @@ import {
   servingSizeFromHousehold,
 } from '@/lib/store';
 import { pickImage, takePhoto, uploadFile } from '@/lib/upload';
+import { getTasteSampleRecipes } from '@/lib/inspired-plan-source';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -227,7 +228,7 @@ function buildSmartPantryList(cuisines: string[]): string[] {
 }
 
 const TOTAL_STEPS = 5;
-const STEP_NAMES = ['About you', 'Diet', 'Cuisine', 'Time', 'Priorities'];
+const STEP_NAMES = ['About you', 'Diet', 'Cuisine', 'Time', 'Taste'];
 
 // Bundled local require() (not a remote URL) so the welcome hero plays
 // instantly from disk with no network fetch.
@@ -665,6 +666,28 @@ export default function OnboardingScreen() {
     preferences.monthlyBudget != null ? String(preferences.monthlyBudget) : ''
   );
   const [goals, setGoals] = useState<string[]>(preferences.goals ?? []);
+
+  // Step 5 — Taste: tappable Inspired recipes matching diet + cuisine + allergens.
+  const [tasteRecipeIds, setTasteRecipeIds] = useState<string[]>(
+    preferences.tasteRecipeIds ?? []
+  );
+  const tasteRecipes = useMemo(
+    () =>
+      getTasteSampleRecipes({
+        dietaryRestrictions,
+        allergies,
+        cuisinePreferences,
+        limit: 12,
+      }),
+    [dietaryRestrictions, allergies, cuisinePreferences]
+  );
+  const toggleTaste = useCallback((id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setTasteRecipeIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }, []);
+
   const smartPantry = useMemo(
     () => buildSmartPantryList(cuisinePreferences),
     [cuisinePreferences]
@@ -773,7 +796,7 @@ export default function OnboardingScreen() {
       case 3:
         return !!weeknightMinutes;
       case 4:
-        return priorities.length >= 1;
+        return true; // taste picks are optional — never block completion
       default:
         return false;
     }
@@ -886,6 +909,7 @@ export default function OnboardingScreen() {
         monthlyBudget: Number.isFinite(monthlyBudgetNum) ? monthlyBudgetNum : null,
         pantryStaples,
         goals,
+        tasteRecipeIds,
         // Record consent only when sensitive data is actually being saved.
         dietaryDataConsentAt: sensitiveDataSelected ? (dietaryConsentAt ?? undefined) : undefined,
         hasCompletedOnboarding: true,
@@ -941,6 +965,7 @@ export default function OnboardingScreen() {
     monthlyBudget,
     pantryStaples,
     goals,
+    tasteRecipeIds,
     updateProfile,
     setPreferences,
     router,
@@ -1841,39 +1866,106 @@ export default function OnboardingScreen() {
   );
 
   // ── STEP 3: Time ──────────────────────────────────────────────────────────
-  const renderTimeStep = () => (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 4, paddingBottom: 32 }}
-      showsVerticalScrollIndicator={false}
-    >
-      <IdentityRibbon firstName={firstName} avatarUrl={avatarUrl} isDark={isDark} />
-      <StepHeader
-        prefix="How much "
-        italic="time"
-        suffix="?"
-        subtitle="We'll plan around your schedule."
-        isDark={isDark}
-      />
+  const renderTimeStep = () => {
+    const budgetPlaceholder = household === 'family_kids' ? '200' : '100';
+    const monthlyPlaceholder = household === 'family_kids' ? '800' : '400';
+    const currencySymbol = deviceCurrencySymbol();
+    return (
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 4, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bottomOffset={24}
+      >
+        <IdentityRibbon firstName={firstName} avatarUrl={avatarUrl} isDark={isDark} />
+        <StepHeader
+          prefix="How much "
+          italic="time"
+          suffix="?"
+          subtitle="We'll plan around your schedule."
+          isDark={isDark}
+        />
 
-      <SectionEyebrow label="Weeknight time window" isDark={isDark} />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {WEEKNIGHT_OPTIONS.map((opt, idx) => (
-          <OptionTile
-            key={opt.id}
-            emoji={opt.icon}
-            label={opt.label}
-            selected={weeknightMinutes === opt.id}
-            tone="tan"            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setWeeknightMinutes(opt.id);
-            }}
-            isDark={isDark}
-          />
-        ))}
-      </View>
-    </ScrollView>
-  );
+        <SectionEyebrow label="Weeknight time window" isDark={isDark} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 26 }}>
+          {WEEKNIGHT_OPTIONS.map((opt, idx) => (
+            <OptionTile
+              key={opt.id}
+              emoji={opt.icon}
+              label={opt.label}
+              selected={weeknightMinutes === opt.id}
+              tone="tan"
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setWeeknightMinutes(opt.id);
+              }}
+              isDark={isDark}
+            />
+          ))}
+        </View>
+
+        <SectionEyebrow label="Budget (optional)" isDark={isDark} />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {[
+            { label: 'Weekly', value: weeklyBudget, setter: setWeeklyBudget, placeholder: budgetPlaceholder },
+            { label: 'Monthly', value: monthlyBudget, setter: setMonthlyBudget, placeholder: monthlyPlaceholder },
+          ].map((field) => (
+            <View
+              key={field.label}
+              style={{
+                flex: 1,
+                padding: 12,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
+                backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF',
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: designTokens.font.medium,
+                  fontSize: 10.5,
+                  letterSpacing: 0.55,
+                  textTransform: 'uppercase',
+                  color: isDark ? '#888' : designTokens.colors.ink3,
+                  marginBottom: 6,
+                }}
+              >
+                {field.label}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Wallet size={14} color={isDark ? '#666' : designTokens.colors.ink3} strokeWidth={1.8} />
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 15,
+                    color: isDark ? '#fff' : designTokens.colors.ink,
+                  }}
+                >
+                  {currencySymbol}
+                </Text>
+                <TextInput
+                  value={field.value}
+                  onChangeText={(t) => field.setter(t.replace(/[^0-9]/g, ''))}
+                  placeholder={field.placeholder}
+                  placeholderTextColor={isDark ? '#666' : designTokens.colors.ink3}
+                  keyboardType="numeric"
+                  style={{
+                    flex: 1,
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 15,
+                    color: isDark ? '#fff' : designTokens.colors.ink,
+                    padding: 0,
+                  }}
+                />
+              </View>
+            </View>
+          ))}
+        </View>
+      </KeyboardAwareScrollView>
+    );
+  };
 
   // ── STEP 4: Kitchen & habits ──────────────────────────────────────────────
   const renderKitchenStep = () => {
@@ -1982,177 +2074,131 @@ export default function OnboardingScreen() {
 
   // ── STEP 5: Priorities, budget, pantry, goals ─────────────────────────────
   const renderPrioritiesStep = () => {
-    const budgetPlaceholder = household === 'family_kids' ? '200' : '100';
-    const monthlyPlaceholder = household === 'family_kids' ? '800' : '400';
-    const currencySymbol = deviceCurrencySymbol();
+    const cardW = (SCREEN_WIDTH - 48 - 10) / 2;
     return (
-      <KeyboardAwareScrollView
+      <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 4, paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bottomOffset={24}
       >
         <IdentityRibbon firstName={firstName} avatarUrl={avatarUrl} isDark={isDark} />
         <StepHeader
-          prefix="What matters "
-          italic="most"
-          suffix="?"
-          subtitle="Pick up to 2. We'll optimise for these."
+          prefix="Select your "
+          italic="taste"
+          subtitle="Tap the recipes you feel like eating."
           isDark={isDark}
         />
 
-        <SectionEyebrow label={`Top priorities (${priorities.length}/2)`} isDark={isDark} />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 26 }}>
-          {PRIORITY_OPTIONS.map((opt) => {
-            const Icon = opt.icon;
-            const idx = priorities.indexOf(opt.id);
-            const selected = idx >= 0;
-            return (
-              <Pressable
-                key={opt.id}
-                onPress={() => togglePriority(opt.id)}
-                style={{
-                  width: (SCREEN_WIDTH - 48 - 10) / 2,
-                  padding: 14,
-                  borderRadius: 16,
-                  borderWidth: selected ? 1.5 : 1,
-                  borderColor: selected
-                    ? designTokens.colors.brand
-                    : isDark
-                      ? '#2a2a2a'
-                      : designTokens.colors.hair,
-                  backgroundColor: selected
-                    ? isDark
-                      ? 'rgba(84,100,69,0.18)'
-                      : TONE_TINTS.sage.bg
-                    : isDark
-                      ? '#1f1f1f'
-                      : '#FFFFFF',
-                }}
-              >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <View
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
-                      backgroundColor: isDark ? '#1a1a1a' : '#FFFFFF',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Icon size={18} color={designTokens.colors.brand} strokeWidth={1.8} />
-                  </View>
-                  {selected && (
+        <SectionEyebrow
+          label={`Recipes for you${tasteRecipeIds.length ? ` · ${tasteRecipeIds.length} tapped` : ''}`}
+          isDark={isDark}
+        />
+
+        {tasteRecipes.length === 0 ? (
+          <Text
+            style={{
+              fontFamily: designTokens.font.regular,
+              fontSize: 14,
+              color: isDark ? '#888' : designTokens.colors.ink2,
+              marginTop: 4,
+            }}
+          >
+            We'll craft your plan from your diet and cuisine picks.
+          </Text>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            {tasteRecipes.map((r) => {
+              const selected = tasteRecipeIds.includes(r.id);
+              return (
+                <Pressable
+                  key={r.id}
+                  onPress={() => toggleTaste(r.id)}
+                  style={{
+                    width: cardW,
+                    borderRadius: 16,
+                    overflow: 'hidden',
+                    borderWidth: selected ? 2 : 1,
+                    borderColor: selected
+                      ? designTokens.colors.brand
+                      : isDark
+                        ? '#2a2a2a'
+                        : designTokens.colors.hair,
+                    backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF',
+                  }}
+                >
+                  <View>
+                    <ExpoImage
+                      source={{ uri: r.imageUrl }}
+                      style={{ width: '100%', height: cardW * 0.72 }}
+                      contentFit="cover"
+                      transition={150}
+                    />
                     <View
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 12,
-                        backgroundColor: designTokens.colors.brand,
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        position: 'absolute',
+                        top: 6,
+                        left: 6,
+                        backgroundColor: 'rgba(0,0,0,0.55)',
+                        borderRadius: 8,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
                       }}
                     >
                       <Text
                         style={{
-                          fontFamily: designTokens.font.semibold,
-                          fontSize: 11,
-                          color: designTokens.colors.cream,
+                          fontFamily: designTokens.font.medium,
+                          fontSize: 9.5,
+                          color: '#fff',
+                          letterSpacing: 0.3,
                         }}
                       >
-                        #{idx + 1}
+                        {r.mealType === 'Lunch/Dinner' ? 'Lunch / Dinner' : r.mealType}
                       </Text>
                     </View>
-                  )}
-                </View>
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.medium,
-                    fontSize: 15,
-                    color: isDark ? '#fff' : designTokens.colors.ink,
-                  }}
-                >
-                  {opt.label}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 12,
-                    color: isDark ? '#888' : designTokens.colors.ink2,
-                    marginTop: 2,
-                  }}
-                >
-                  {opt.description}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <SectionEyebrow label="Budget (optional)" isDark={isDark} />
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 26 }}>
-          {[
-            { label: 'Weekly', value: weeklyBudget, setter: setWeeklyBudget, placeholder: budgetPlaceholder },
-            { label: 'Monthly', value: monthlyBudget, setter: setMonthlyBudget, placeholder: monthlyPlaceholder },
-          ].map((field) => (
-            <View
-              key={field.label}
-              style={{
-                flex: 1,
-                padding: 12,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
-                backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF',
-              }}
-            >
-              <Text
-                style={{
-                  fontFamily: designTokens.font.medium,
-                  fontSize: 10.5,
-                  letterSpacing: 0.55,
-                  textTransform: 'uppercase',
-                  color: isDark ? '#888' : designTokens.colors.ink3,
-                  marginBottom: 6,
-                }}
-              >
-                {field.label}
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Wallet size={14} color={isDark ? '#666' : designTokens.colors.ink3} strokeWidth={1.8} />
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.medium,
-                    fontSize: 15,
-                    color: isDark ? '#fff' : designTokens.colors.ink,
-                  }}
-                >
-                  {currencySymbol}
-                </Text>
-                <TextInput
-                  value={field.value}
-                  onChangeText={(t) => field.setter(t.replace(/[^0-9]/g, ''))}
-                  placeholder={field.placeholder}
-                  placeholderTextColor={isDark ? '#666' : designTokens.colors.ink3}
-                  keyboardType="numeric"
-                  style={{
-                    flex: 1,
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 15,
-                    color: isDark ? '#fff' : designTokens.colors.ink,
-                    padding: 0,
-                  }}
-                />
-              </View>
-            </View>
-          ))}
-        </View>
-
-      </KeyboardAwareScrollView>
+                    {selected && (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          top: 6,
+                          right: 6,
+                          width: 24,
+                          height: 24,
+                          borderRadius: 12,
+                          backgroundColor: designTokens.colors.brand,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: designTokens.font.semibold,
+                            fontSize: 13,
+                            color: designTokens.colors.cream,
+                          }}
+                        >
+                          ✓
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text
+                    numberOfLines={2}
+                    style={{
+                      fontFamily: designTokens.font.medium,
+                      fontSize: 12.5,
+                      color: isDark ? '#fff' : designTokens.colors.ink,
+                      padding: 8,
+                      minHeight: 44,
+                    }}
+                  >
+                    {r.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
     );
   };
 

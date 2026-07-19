@@ -28,7 +28,10 @@ import sys
 import pathlib
 
 LIB = pathlib.Path(__file__).resolve().parent.parent / "src" / "lib" / "inspired-recipe-library.ts"
-BUCKET = "https://wcjsrhdlnmfugdjtvadj.supabase.co/storage/v1/object/public/NewRecipeImages/"
+# Images live in one of these public Supabase buckets. Whichever bucket a recipe
+# uses, its FILENAME must still be <slug(name)>.png (that's what the guard pins).
+_ROOT = "https://wcjsrhdlnmfugdjtvadj.supabase.co/storage/v1/object/public/"
+BUCKETS = {_ROOT + "NewRecipeImages/", _ROOT + "New69/"}
 
 
 def slug(name: str) -> str:
@@ -46,14 +49,17 @@ def main() -> None:
             obj = json.loads(stripped.rstrip(","))
             name = obj["name"]
             s = slug(name)
-            want_url = f"{BUCKET}{s}.png"
+            img = obj["imageUrl"]
+            cur_bucket = img.rsplit("/", 1)[0] + "/"       # keep the recipe's own bucket
+            bucket_ok = cur_bucket in BUCKETS
+            want_url = f"{cur_bucket}{s}.png" if bucket_ok else img
             by_slug.setdefault(s, []).append(name)
-            if obj["id"] != s or obj["imageUrl"] != want_url:
-                mismatches.append((name, obj["id"], obj["imageUrl"], s))
-                if fix:
+            if obj["id"] != s or img != want_url or not bucket_ok:
+                mismatches.append((name, obj["id"], img, s))
+                if fix and bucket_ok:
                     line = (
                         line.replace(f'"id":"{obj["id"]}"', f'"id":"{s}"', 1)
-                        .replace(f'"imageUrl":"{obj["imageUrl"]}"', f'"imageUrl":"{want_url}"', 1)
+                        .replace(f'"imageUrl":"{img}"', f'"imageUrl":"{want_url}"', 1)
                     )
         out.append(line)
 

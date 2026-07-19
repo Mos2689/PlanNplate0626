@@ -608,6 +608,7 @@ export interface UserPreferences {
   priorities?: Priority[]; // ordered, length 2 (top-2)
   adventureLevel?: number; // 1–5
   goals?: string[];
+  tasteRecipeIds?: string[]; // Inspired recipe ids the user tapped in onboarding ("what I feel like eating")
   exploreCuisines?: string[];
   mealHabits?: MealHabits;
 
@@ -4082,6 +4083,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   data.preferences.plansCompletedCount ?? 0,
                   localPrefs.plansCompletedCount ?? 0,
                 ),
+                // Onboarding taste picks are local-only (no DB column and
+                // `mapDbPreferences` doesn't read them). Fold the rehydrated
+                // value back or a sync would drop the plan seed.
+                tasteRecipeIds:
+                  data.preferences.tasteRecipeIds ?? localPrefs.tasteRecipeIds,
               }
             : defaultPreferences;
 

@@ -309,7 +309,22 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     !hasCompletedOnboarding &&
     !isSigningUp &&
     (!isAuthenticated || isAnonymous || needsProfileSetup);
-  const holdForRedirect = storeHydrated && willRedirectAway && !onAuthOrOnboarding;
+  // ALSO hold while a freshly-signed-in (non-anonymous) account is still
+  // resolving its subscription/profile state. During that window
+  // useNeedsProfileSetup() returns false ("can't tell yet, still loading"), so
+  // willRedirectAway is briefly false AND the redirect effect early-returns on
+  // `subscriptionLoading` — leaving the tabs (meal plan) visible for a frame
+  // before the onboarding redirect fires. This closes that gap. It's
+  // time-bounded (clears when loading completes), so a returning user that
+  // resolves to needsProfileSetup=false just sees a brief spinner, not a hang.
+  const resolvingFreshAccount =
+    isAuthenticated &&
+    !isAnonymous &&
+    !isSigningUp &&
+    !hasCompletedOnboarding &&
+    subscriptionLoading;
+  const holdForRedirect =
+    storeHydrated && (willRedirectAway || resolvingFreshAccount) && !onAuthOrOnboarding;
 
   return (
     <View style={{ flex: 1 }}>

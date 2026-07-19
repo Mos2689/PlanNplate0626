@@ -559,22 +559,34 @@ function bucketForMinutes(m: number): 'quick' | 'moderate' | 'elaborate' {
   return 'elaborate';
 }
 
-// Effective max TOTAL (prep + cook) minutes for a plan. Uses the PRECISE
-// weeknight-minutes value — so "15 min" really means ≤15, not the coarse
-// "quick ≤30" bucket — but only when it's consistent with the (possibly
-// per-plan-overridden) prep-time bucket. If a plan override changed the bucket,
-// the override wins. Returns null for "no limit" (elaborate).
-export function maxPrepMinutes(preferences: UserPreferences): number | null {
+// The prep-time BAND for a plan, in TOTAL (prep + cook) minutes:
+//   quick     → 15–30 min
+//   moderate  → 30–60 min  ("up to an hour")
+//   elaborate → over 60 min (no upper limit)
+// The precise weeknight-minutes value refines the MAX for quick/moderate when
+// it's consistent with the chosen bucket (so "20 min" really means ≤20), and a
+// per-plan "Tune" override of the bucket wins over the saved minutes.
+export function prepTimeBand(
+  preferences: UserPreferences,
+): { min: number; max: number | null } {
   const wm = preferences.weeknightMinutes;
   const bucket = preferences.mealPrepTime;
-  if (typeof wm === 'number' && wm > 0 && bucketForMinutes(wm) === bucket) {
-    return wm;
-  }
+  const preciseMax =
+    typeof wm === 'number' && wm > 0 && bucketForMinutes(wm) === bucket ? wm : null;
   switch (bucket) {
-    case 'quick': return 30;
-    case 'moderate': return 60;
-    default: return null;
+    case 'quick':
+      return { min: 15, max: preciseMax ?? 30 };
+    case 'moderate':
+      return { min: 30, max: preciseMax ?? 60 };
+    default: // elaborate — an involved dish, over an hour
+      return { min: 60, max: null };
   }
+}
+
+// Effective max TOTAL (prep + cook) minutes for a plan; null = no upper limit
+// (elaborate). Thin wrapper over prepTimeBand for existing callers.
+export function maxPrepMinutes(preferences: UserPreferences): number | null {
+  return prepTimeBand(preferences).max;
 }
 
 // Small grace window over the target (e.g. 15 min → aim ≤20).
@@ -835,18 +847,23 @@ export function validateRecipeAgainstPreferences(
       }
     }
 
-    // ── #3c  PREP TIME ───────────────────────────────────────────
-    // Enforce the user's actual cooking window. A 15-min pick means recipes
-    // must be ≤15 (grace up to 20); 30 → ≤35; 60 → ≤65; elaborate → no limit.
-    const maxMin = maxPrepMinutes(preferences);
-    if (maxMin !== null) {
+    // ── #3c  PREP TIME (band) ────────────────────────────────────
+    // Quick 15–30, Moderate 30–60, Elaborate over 60. The UPPER bound is a hard
+    // limit (with grace + a fallback ceiling so a tight window never empties a
+    // slot). The LOWER bound is only hard-enforced for "elaborate" — it must be
+    // a genuinely involved, over-an-hour dish; quick/moderate happily accept a
+    // faster recipe (the prompt still targets the band).
+    {
+      const band = prepTimeBand(preferences);
       const totalTime = recipe.prepTime + recipe.cookTime;
-      // Aim for the user's window (the prompt asks for it), but only HARD-reject
-      // above a fallback ceiling so a too-tight window never leaves a slot
-      // empty — e.g. a 15-min pick still accepts up to 30 min rather than fail.
-      const hardCeiling = Math.max(maxMin + PREP_TIME_TOLERANCE_MIN, TIME_FALLBACK_CEILING_MIN);
-      if (totalTime > hardCeiling) {
-        violations.push(`TIME VIOLATION: Total time ${totalTime}min exceeds the ${hardCeiling}min limit`);
+      if (band.max !== null) {
+        const hardCeiling = Math.max(band.max + PREP_TIME_TOLERANCE_MIN, TIME_FALLBACK_CEILING_MIN);
+        if (totalTime > hardCeiling) {
+          violations.push(`TIME VIOLATION: Total time ${totalTime}min exceeds the ${hardCeiling}min limit`);
+        }
+      } else if (totalTime < band.min - PREP_TIME_TOLERANCE_MIN) {
+        // Elaborate must be over an hour.
+        violations.push(`TIME VIOLATION: Total time ${totalTime}min is under the ${band.min}min minimum for an elaborate recipe`);
       }
     }
   }
@@ -1090,15 +1107,15 @@ CUISINE PREFERENCE: Prefer these cuisines where it fits: ${cuisineList}.`;
     }
   }
 
-  // 3e. Prep time — enforce the user's ACTUAL cooking window (precise minutes),
-  // not just the coarse quick/moderate/elaborate bucket.
+  // 3e. Prep time — enforce the chosen band (quick 15–30, moderate 30–60,
+  // elaborate over 60), refined by the user's precise weeknight minutes.
   prompt += `
 PREP TIME: ${preferences.mealPrepTime}.`;
-  const promptMaxMin = maxPrepMinutes(preferences);
-  if (promptMaxMin !== null) {
-    prompt += ` The TOTAL prep + cook time MUST be ≤ ${promptMaxMin} minutes — this is a HARD limit (never exceed ${promptMaxMin + PREP_TIME_TOLERANCE_MIN} minutes). Choose quick-cooking cuts, minimal steps, and fast techniques so it genuinely fits within ${promptMaxMin} minutes.`;
+  const prepBand = prepTimeBand(preferences);
+  if (prepBand.max !== null) {
+    prompt += ` The TOTAL prep + cook time should be roughly ${prepBand.min}–${prepBand.max} minutes, and MUST NOT exceed ${prepBand.max} minutes — this is a HARD limit (never over ${prepBand.max + PREP_TIME_TOLERANCE_MIN} minutes). Choose techniques that genuinely fit within ${prepBand.max} minutes.`;
   } else {
-    prompt += ` No time limit.`;
+    prompt += ` This is an ELABORATE plan: the TOTAL prep + cook time MUST be OVER 60 minutes — a properly involved dish using slower techniques (braising, slow-roasting, layering, from-scratch components). Never under 60 minutes.`;
   }
 
   // 3f. Breakfast style (weekday = no-cook, weekend = cooked).

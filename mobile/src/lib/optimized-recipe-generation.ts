@@ -405,27 +405,53 @@ export async function generateRecipesOptimized(
     for (let p = 0; p < poolStyles.length; p++) {
       if (options.shouldCancel?.()) { console.log('[OptimizedGeneration] Cancelled — stopping breakfast pass.'); break; }
       const style = poolStyles[p];
-      const excludeNames = [...usedRecipeNames];
       const threshold = optimizeGrocery ? 0.8 : 0.6;
       let made: GeneratedRecipeResponse | null = null;
 
-      // Curated-first: a breakfast from the Get Inspired bank matching the
-      // required style (no-cook = no applied heat → cookTime 0; cooked → > 0).
-      const curated = curatedMatcher.take('breakfast', usedRecipeNames, {
-        predicate: (r) => (style === 'no-cook' ? r.cookTime === 0 : r.cookTime > 0),
-        similarityThreshold: threshold,
-      });
-      let madeFromCurated = false;
-      if (curated && curatedFailsAllergyOrDiet(curated, preferences)) {
-        console.warn(`[OptimizedGeneration] Curated breakfast "${curated.name}" failed allergy/diet re-check — skipping to OpenAI`);
-      } else if (curated) {
+      // Curated-first for breakfast: pull the next Get Inspired breakfast of the
+      // required style (no-cook = cookTime 0; cooked = > 0), skipping any that
+      // fail the STRICT ingredient-level allergy/diet re-check — a recipe's
+      // declared `allergens` can under-report vs its ingredients (e.g. "almond
+      // milk" with no Tree Nuts tag), so we keep asking for the next candidate.
+      for (let tries = 0; tries < 12 && !made; tries++) {
+        const curated = curatedMatcher.take('breakfast', usedRecipeNames, {
+          predicate: (r) => (style === 'no-cook' ? r.cookTime === 0 : r.cookTime > 0),
+          similarityThreshold: threshold,
+        });
+        if (!curated) break; // curated bank has no more unique safe-by-style breakfasts
+        if (curatedFailsAllergyOrDiet(curated, preferences)) {
+          usedRecipeNames.push(curated.name); // exclude it, try the next candidate
+          console.warn(`[OptimizedGeneration] Curated breakfast "${curated.name}" failed allergy/diet re-check — trying next curated`);
+          continue;
+        }
         made = curated;
-        madeFromCurated = true;
-        curatedCount++;
-        console.log(`[OptimizedGeneration] Breakfast from Get Inspired bank (${style}): "${curated.name}"`);
       }
 
-      // Fall back to OpenAI only when nothing in the bank qualified.
+      if (made) {
+        made.mealType = 'breakfast';
+        usedRecipeNames.push(made.name);
+        curatedCount++;
+        pool.push({ recipe: made, style });
+        console.log(`[OptimizedGeneration] Breakfast from Get Inspired bank (${style}): "${made.name}"`);
+        continue;
+      }
+
+      // BREAKFAST-ONLY RULE: the curated bank ran out of unique safe breakfasts
+      // of this style (usually the user's diet/allergies filtered it down below
+      // the variation cap). Rather than invent new ones with OpenAI, ALLOW
+      // REPEATS — leave the unique pool smaller and let the day-assignment below
+      // rotate/repeat the safe curated picks across the remaining days. Only
+      // when we have NOTHING of this style yet do we fall through to a
+      // last-resort generate, so a day is never left empty.
+      if (pool.some((p) => p.style === style)) {
+        console.log(`[OptimizedGeneration] Breakfast (${style}) uniques limited by diet/allergy — repeating existing curated picks across days`);
+        continue;
+      }
+
+      // Last resort (zero safe curated breakfasts of this style): OpenAI —
+      // still honouring the no-cook (weekday) / cooked (weekend) style — then a
+      // relaxed library pick, so the slot isn't empty.
+      const excludeNames = [...usedRecipeNames];
       for (let attempt = 0; !made && attempt < 5; attempt++) {
         try {
           const recipe = await withTimeout(regenerateSingleRecipe(
@@ -462,13 +488,9 @@ export async function generateRecipesOptimized(
         made.mealType = 'breakfast';
         usedRecipeNames.push(made.name);
         pool.push({ recipe: made, style });
-        // Don't pollute the AI recipe cache with curated picks.
-        if (useCache && !madeFromCurated) await cacheRecipe(preferencesHash, 'breakfast', made);
-        console.log(`[OptimizedGeneration] Breakfast pool +1 (${style}): "${made.name}"`);
+        if (useCache) await cacheRecipe(preferencesHash, 'breakfast', made);
+        console.log(`[OptimizedGeneration] Breakfast pool +1 from OpenAI (${style}): "${made.name}"`);
       } else {
-        // Guaranteed fill: OpenAI couldn't produce this breakfast — take an
-        // instant diet/allergen-safe library breakfast of the right style so
-        // the slot isn't left empty.
         const relaxed = curatedMatcher.takeRelaxed?.('breakfast', usedRecipeNames, {
           predicate: (r) => (style === 'no-cook' ? r.cookTime === 0 : r.cookTime > 0),
           similarityThreshold: threshold,
@@ -481,7 +503,7 @@ export async function generateRecipesOptimized(
           console.log(`[OptimizedGeneration] Breakfast pool +1 from library fallback (${style}): "${relaxed.name}"`);
         } else {
           failedCount++;
-          console.error(`[OptimizedGeneration] Failed to generate a ${style} breakfast after 5 attempts (no library fallback available)`);
+          console.error(`[OptimizedGeneration] No ${style} breakfast available (no curated, OpenAI failed).`);
         }
       }
     }

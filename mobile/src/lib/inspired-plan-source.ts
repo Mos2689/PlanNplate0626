@@ -225,6 +225,62 @@ function isAllergenSafe(recipe: InspiredRecipe, allergies: string[]): boolean {
   return true;
 }
 
+// ── Taste sampler (onboarding "what I feel like eating") ─────────────────────
+// A light, order-agnostic pick of Inspired recipes matching the user's diet +
+// allergens + cuisines, mixing Breakfast and Lunch/Dinner only. Cuisine is a
+// soft filter: if it leaves too few, we relax it (keeping diet + allergens hard)
+// so the onboarding grid is never sparse.
+function shuffle<T>(arr: T[]): T[] {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+export function getTasteSampleRecipes(opts: {
+  dietaryRestrictions?: string[] | null;
+  allergies?: string[] | null;
+  cuisinePreferences?: string[] | null;
+  limit?: number;
+}): InspiredRecipe[] {
+  const diets = normList(opts.dietaryRestrictions);
+  const allergies = normList(opts.allergies);
+  const cuisines = normList(opts.cuisinePreferences).map((c) => c.toLowerCase());
+  const limit = opts.limit ?? 12;
+
+  const dietAllergenOk = (r: InspiredRecipe) =>
+    satisfiesDietary(r, diets) && isAllergenSafe(r, allergies);
+
+  const pools = (withCuisine: boolean) => {
+    const ok = (r: InspiredRecipe, meal: string) =>
+      r.mealType === meal &&
+      dietAllergenOk(r) &&
+      (!withCuisine || cuisines.length === 0 || cuisines.includes(r.cuisine.toLowerCase()));
+    return {
+      breakfast: shuffle(INSPIRED_RECIPES.filter((r) => ok(r, 'Breakfast'))),
+      mains: shuffle(INSPIRED_RECIPES.filter((r) => ok(r, 'Lunch/Dinner'))),
+    };
+  };
+
+  let { breakfast, mains } = pools(true);
+  if (breakfast.length + mains.length < limit) {
+    ({ breakfast, mains } = pools(false)); // relax cuisine to fill the grid
+  }
+
+  // Interleave breakfast / mains for a visible mix, backfilling from whichever
+  // pool still has recipes when the other runs out.
+  const out: InspiredRecipe[] = [];
+  let bi = 0;
+  let mi = 0;
+  while (out.length < limit && (bi < breakfast.length || mi < mains.length)) {
+    if (bi < breakfast.length) out.push(breakfast[bi++]);
+    if (out.length < limit && mi < mains.length) out.push(mains[mi++]);
+  }
+  return out.slice(0, limit);
+}
+
 // ── Name-similarity (mirrors the engine's intent) ────────────────────────────
 
 function norm(s: string): string {
@@ -331,8 +387,18 @@ export function createInspiredMatcher(
   const skill = preferences.cookingSkillLevel ?? 'intermediate';
   const timeBase = Number(preferences.weeknightMinutes) || 45;
   const timeCap = timeBase + 15;
+  // Prep-time BAND for mains (total minutes): quick ≤30, moderate ≤60,
+  // elaborate over 60. bandMax=null for elaborate (no upper limit); bandMin>0
+  // only for elaborate (a genuinely over-an-hour dish).
+  const bandMax = preferences.mealPrepTime === 'quick' ? 30
+    : preferences.mealPrepTime === 'moderate' ? 60 : null;
+  const bandMin = preferences.mealPrepTime === 'elaborate' ? 60 : 0;
   const priorities: Priority[] = preferences.priorities ?? [];
   const targetServings = preferences.servingSize || 0;
+  // Recipes the user tapped in onboarding ("what I feel like eating"). These are
+  // seeded first: when a tapped recipe still passes the hard gates (diet, allergen,
+  // skill, time band) for a slot, it outranks everything else in that category.
+  const tasteIds = new Set(preferences.tasteRecipeIds ?? []);
 
   const recentCooked = new Set(
     (context.recentCookedNames ?? []).map((n) => norm(n)),
@@ -395,6 +461,12 @@ export function createInspiredMatcher(
   function score(rec: EnrichedRecord, isMain: boolean): number {
     const r = rec.recipe;
     let s = 0;
+
+    // Seed: a recipe the user tapped in onboarding leads its category. The boost
+    // dominates every other term (cuisine tops out at 200k) so tapped dishes are
+    // placed first; hard eligibility (diet/allergen/skill/time) is already
+    // enforced in take() before scoring, so this never breaks a constraint.
+    if (tasteIds.has(r.id)) s += 1_000_000;
 
     if (isMain) {
       // 2. Cuisine
@@ -488,9 +560,19 @@ export function createInspiredMatcher(
       // null so the engine falls back to OpenAI rather than break the rule.
       else return null;
 
-      // Time cap: prefer within +15 of the bucket; only relax if nothing fits.
-      const timed = pool.filter((r) => r.recipe.totalMinutes <= timeCap);
-      if (timed.length > 0) pool = timed;
+      // Prep-time band (mains):
+      //  • elaborate → keep ONLY over-an-hour recipes; do NOT relax — if the
+      //    library has none, return null so the engine generates a proper
+      //    elaborate dish instead of mislabelling a quick one.
+      //  • quick/moderate → prefer within the bucket max (+15 grace); relax only
+      //    if nothing fits, so a slot is never left empty.
+      if (bandMin > 0) {
+        pool = pool.filter((r) => r.recipe.totalMinutes >= bandMin);
+        if (pool.length === 0) return null;
+      } else if (bandMax !== null) {
+        const timed = pool.filter((r) => r.recipe.totalMinutes <= bandMax + 15);
+        if (timed.length > 0) pool = timed;
+      }
     }
 
     // Pick the highest-scoring candidate.
@@ -505,6 +587,9 @@ export function createInspiredMatcher(
     }
     if (!best) return null;
 
+    if (tasteIds.has(best.recipe.id)) {
+      console.log(`[BG-GEN] taste seed → placed "${best.recipe.name}" in ${mealType}`);
+    }
     usedNames.add(best.recipe.name);
     return toGenerated(best.recipe, best.isNoCook, targetServings, mealType);
   }
@@ -554,9 +639,14 @@ export function createInspiredMatcher(
       .slice()
       .sort(
         (a, b) =>
+          // Tapped ("taste") recipes lead the fallback too, then quicker/cheaper.
+          (tasteIds.has(b.recipe.id) ? 1 : 0) - (tasteIds.has(a.recipe.id) ? 1 : 0) ||
           a.recipe.totalMinutes - b.recipe.totalMinutes ||
           a.recipe.costPerServe - b.recipe.costPerServe,
       )[0];
+    if (tasteIds.has(best.recipe.id)) {
+      console.log(`[BG-GEN] taste seed (fallback) → placed "${best.recipe.name}" in ${mealType}`);
+    }
     usedNames.add(best.recipe.name);
     return toGenerated(best.recipe, best.isNoCook, targetServings, mealType);
   }

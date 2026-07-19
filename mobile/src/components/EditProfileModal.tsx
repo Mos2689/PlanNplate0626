@@ -29,7 +29,6 @@ import {
   User,
   Home,
   Wallet,
-  Target,
   // Premium icon swaps — no Sparkles, no generic Plus/Minus.
   Wand2,
   CirclePlus,
@@ -37,7 +36,7 @@ import {
 } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { useMealPlanStore, mealPrepTimeFromMinutes, type Priority } from '@/lib/store';
+import { useMealPlanStore, mealPrepTimeFromMinutes } from '@/lib/store';
 import { useSubscriptionStore, useUserAvatar, useUserName } from '@/lib/subscription-store';
 import { useAuthStore } from '@/lib/auth-store';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -52,7 +51,6 @@ import {
   ALLERGY_OPTIONS,
   SKILL_LEVELS,
   WEEKNIGHT_TIME_OPTIONS,
-  PRIORITY_OPTIONS,
   HOUSEHOLD_OPTIONS,
   ADVENTURE_LEVELS,
 } from '@/lib/preference-options';
@@ -1065,101 +1063,6 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
                 </View>
               </Animated.View>
 
-              {/* What matters most — top priorities (up to 2, ordered).
-                  Mirrors onboarding's PRIORITY_OPTIONS. Placed below Budget. */}
-              <Animated.View entering={FadeInDown.delay(360).springify()} style={styles.card}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                  <View style={styles.iconTile}>
-                    <Target size={16} color={designTokens.colors.brand} strokeWidth={1.8} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.title}>What matters most</Text>
-                    <Text style={styles.subtitle}>Pick up to 2. We'll prioritise these</Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {PRIORITY_OPTIONS.map((option) => {
-                    const current = (preferences.priorities ?? []) as Priority[];
-                    const order = current.indexOf(option.id);
-                    const isSelected = order !== -1;
-                    return (
-                      <Pressable
-                        key={option.id}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          let next: Priority[];
-                          if (isSelected) {
-                            next = current.filter((p) => p !== option.id);
-                          } else if (current.length < 2) {
-                            next = [...current, option.id];
-                          } else {
-                            // Already have 2 — drop the oldest, keep the newest + this.
-                            next = [current[1], option.id];
-                          }
-                          setPreferences({ priorities: next });
-                        }}
-                        style={{
-                          flexGrow: 1,
-                          flexBasis: '46%',
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 8,
-                          paddingVertical: 12,
-                          paddingHorizontal: 12,
-                          borderRadius: 14,
-                          borderWidth: isSelected ? 0 : 1,
-                          borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
-                          backgroundColor: isSelected ? designTokens.colors.brand : (isDark ? '#1a1a1a' : '#FFFFFF'),
-                        }}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{
-                              fontFamily: designTokens.font.medium,
-                              fontSize: 13.5,
-                              color: isSelected ? designTokens.colors.cream : (isDark ? '#fff' : designTokens.colors.ink),
-                            }}
-                          >
-                            {option.label}
-                          </Text>
-                          <Text
-                            style={{
-                              fontFamily: designTokens.font.regular,
-                              fontSize: 11.5,
-                              color: isSelected ? 'rgba(246,242,233,0.85)' : (isDark ? '#888' : designTokens.colors.ink2),
-                              marginTop: 2,
-                            }}
-                          >
-                            {option.description}
-                          </Text>
-                        </View>
-                        {isSelected && (
-                          <View
-                            style={{
-                              width: 20,
-                              height: 20,
-                              borderRadius: 10,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              backgroundColor: 'rgba(246,242,233,0.25)',
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontFamily: designTokens.font.medium,
-                                fontSize: 11,
-                                color: designTokens.colors.cream,
-                              }}
-                            >
-                              {order + 1}
-                            </Text>
-                          </View>
-                        )}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </Animated.View>
             </View>
           </ScrollView>
         </SafeAreaView>
