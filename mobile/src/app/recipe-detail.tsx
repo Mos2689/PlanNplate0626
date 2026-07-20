@@ -66,7 +66,7 @@ import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import * as Clipboard from 'expo-clipboard';
 import { useKeepAwake } from 'expo-keep-awake';
-import { useMealPlanStore, type Recipe, type Ingredient } from '@/lib/store';
+import { useMealPlanStore, resolveRecipeId, type Recipe, type Ingredient } from '@/lib/store';
 import { inspiredToRecipe, findInspiredById } from '@/lib/inspired-adapters';
 import { formatIngredientDisplay, resolveMeasurementSystem } from '@/lib/unit-conversion';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -135,8 +135,12 @@ export default function RecipeDetailScreen() {
     // from Get Inspired), addRecipe swaps its temp id for a real DB id
     // asynchronously — so the `id` param can go stale. Fall back to the stable
     // curatedSourceId (`inspired::<id>`) passed alongside it.
+    const resolvedId = id ? resolveRecipeId(id) : undefined;
     const storeCopy =
       recipes.find((r) => r.id === id) ??
+      (resolvedId && resolvedId !== id
+        ? recipes.find((r) => r.id === resolvedId)
+        : undefined) ??
       (sourceId ? recipes.find((r) => r.curatedSourceId === sourceId) : undefined);
 
     // Read-only library preview: always render the PRISTINE library entry, so a

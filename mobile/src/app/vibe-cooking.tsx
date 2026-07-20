@@ -414,7 +414,10 @@ export default function VibeCookingScreen() {
     const recipeId = ensureRecipeSaved();
     updateRecipe(recipeId, { isSaved: true });
     setSavedToRecipes(true);
-  }, [ensureRecipeSaved, updateRecipe]);
+    // Open the saved recipe so the tap clearly lands on its page — otherwise the
+    // action just flips a label in place and feels unfinished.
+    router.push(`/recipe-detail?id=${recipeId}` as any);
+  }, [ensureRecipeSaved, updateRecipe, router]);
 
   // ── Start cooking — jump to the Steps tab and scroll it up ───
   const handleStartCooking = useCallback(() => {

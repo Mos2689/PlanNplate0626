@@ -46,6 +46,15 @@ export function isStockPlaceholderImage(url: string | undefined | null): boolean
 // can resolve a temp ID to the real one.
 const tempIdToRealId = new Map<string, string>();
 
+// Resolve a possibly-stale temp recipe id to its real (DB) id. `addRecipe`
+// returns a temp id synchronously and swaps it for the DB id once the insert
+// resolves, so any caller that cached the temp id (or navigates/deep-links with
+// it) can end up looking up a recipe that no longer carries that id. Screens
+// resolve through this before a lookup. Returns the input unchanged if unmapped.
+export function resolveRecipeId(id: string): string {
+  return tempIdToRealId.get(id) ?? id;
+}
+
 // Cooperative cancel flag for in-flight plan generation. Set true by
 // cancelGeneration(), reset false at the start of each startBackgroundGeneration
 // run. The engine (via shouldCancel) and the recipe-placement handler both check
@@ -2069,43 +2078,74 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 const windowEndKey = formatDateKey(windowEnd);
                 const usedSlotIds = new Set<string>();
                 const placedFav = new Set<string>();
+                // Cooked MAIN meal types. Lunch and dinner are interchangeable for
+                // a favourite (a loved lunch dish is just as valid at dinner), so a
+                // favourite is placed even when its exact meal type isn't cooked —
+                // it just needs SOME cooked main slot. Breakfast stays its own slot.
+                const cookedMains = selectedMealTypes.filter(
+                  (m) => m === 'lunch' || m === 'dinner',
+                ) as Array<'lunch' | 'dinner'>;
+                let placedFavCount = 0;
                 for (const favId of presetFavoriteIds) {
                   if (placedFav.has(favId)) continue; // one placement per favourite
                   const fav = get().recipes.find((r) => r.id === favId);
-                  if (!fav) continue;
-                  const recipeMt = mealTypeOf(fav);
-                  // Route to the recipe's own meal type when that meal is cooked
-                  // in this plan; a tagless recipe falls back to the first cooked
-                  // meal type; a recipe whose meal type isn't cooked is skipped
-                  // (e.g. a breakfast favourite when breakfast is set to Skip).
-                  let mt: 'breakfast' | 'lunch' | 'dinner' | undefined;
-                  if (recipeMt && recipeMt !== 'snack' && selectedMealTypes.includes(recipeMt)) {
-                    mt = recipeMt;
-                  } else if (!recipeMt) {
-                    mt = selectedMealTypes.find((m) => m !== 'snack') as
-                      | 'breakfast'
-                      | 'lunch'
-                      | 'dinner'
-                      | undefined;
-                  } else {
+                  if (!fav) {
+                    console.log(`[BG-GEN] favourite ${favId} not in library — skipped`);
                     continue;
                   }
-                  if (!mt) continue;
-                  const slot = get()
-                    .mealSlots.filter(
-                      (s) =>
-                        s.mealType === mt &&
-                        !!s.recipeId &&
-                        !usedSlotIds.has(s.id) &&
-                        s.date >= windowStartKey &&
-                        s.date < windowEndKey,
-                    )
-                    .sort((a, b) => a.date.localeCompare(b.date))[0];
-                  if (!slot) continue; // no free slot of this meal type left
-                  usedSlotIds.add(slot.id);
+                  const recipeMt = mealTypeOf(fav);
+                  // Candidate slot types (in preference order): a breakfast
+                  // favourite only fits a breakfast slot; everything else (lunch /
+                  // dinner / untagged) fits any cooked main, preferring its own.
+                  let candidates: Array<'breakfast' | 'lunch' | 'dinner'>;
+                  if (recipeMt === 'breakfast') {
+                    candidates = selectedMealTypes.includes('breakfast') ? ['breakfast'] : [];
+                  } else if (recipeMt === 'snack') {
+                    candidates = [];
+                  } else {
+                    candidates =
+                      recipeMt && cookedMains.includes(recipeMt)
+                        ? [recipeMt, ...cookedMains.filter((m) => m !== recipeMt)]
+                        : [...cookedMains];
+                  }
+                  if (candidates.length === 0) {
+                    console.log(
+                      `[BG-GEN] favourite "${fav.name}" (${recipeMt ?? 'untagged'}) — no matching cooked meal type — skipped`,
+                    );
+                    continue;
+                  }
+                  let placedSlotId: string | null = null;
+                  let placedMt: string | null = null;
+                  for (const mt of candidates) {
+                    const slot = get()
+                      .mealSlots.filter(
+                        (s) =>
+                          s.mealType === mt &&
+                          !!s.recipeId &&
+                          !usedSlotIds.has(s.id) &&
+                          s.date >= windowStartKey &&
+                          s.date < windowEndKey,
+                      )
+                      .sort((a, b) => a.date.localeCompare(b.date))[0];
+                    if (slot) {
+                      placedSlotId = slot.id;
+                      placedMt = mt;
+                      break;
+                    }
+                  }
+                  if (!placedSlotId) {
+                    console.log(`[BG-GEN] favourite "${fav.name}" — no free slot left — skipped`);
+                    continue;
+                  }
+                  usedSlotIds.add(placedSlotId);
                   placedFav.add(favId);
-                  get().updateMealSlot(slot.id, { recipeId: favId });
+                  get().updateMealSlot(placedSlotId, { recipeId: favId });
+                  placedFavCount++;
+                  console.log(`[BG-GEN] favourite placed → "${fav.name}" in ${placedMt}`);
                 }
+                console.log(
+                  `[BG-GEN] favourites: ${placedFavCount}/${presetFavoriteIds.length} placed into the plan`,
+                );
               }
             } catch (e) {
               console.warn('[BG-GEN] favourite placement failed', e);

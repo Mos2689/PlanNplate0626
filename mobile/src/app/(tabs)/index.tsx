@@ -910,14 +910,22 @@ export default function HomeScreen() {
   // how many are cooked, and the dish names (breakfast → lunch → dinner order).
   const heroData = useMemo(() => {
     const dayKey = formatLocalDateKey(selectedDate);
-    const slots = mealSlots.filter(
-      (s) => s.date === dayKey && (s.recipeId || s.customMealName),
-    );
     const order: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
-    const nameOf = (s: (typeof slots)[number]) =>
+    const nameOf = (s: (typeof mealSlots)[number]) =>
       (s.recipeId ? recipes.find((r) => r.id === s.recipeId)?.name : undefined) ||
       s.customMealName ||
       '';
+    // Leftover/repeat placeholders ("Leftovers · <dish>" AI slots and the
+    // curated flow's "Leftover <dish>" variants) are reheated, not cooked — so
+    // they don't count toward the day's "dishes to cook".
+    const isLeftoverSlot = (s: (typeof mealSlots)[number]) =>
+      /^leftovers?\b/i.test(nameOf(s));
+    const slots = mealSlots.filter(
+      (s) =>
+        s.date === dayKey &&
+        (s.recipeId || s.customMealName) &&
+        !isLeftoverSlot(s),
+    );
     const cookedCount = slots.filter((s) =>
       cookingLogs.some((l) => l.slotId === s.id && l.status === 'cooked'),
     ).length;

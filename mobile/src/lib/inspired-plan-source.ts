@@ -444,6 +444,16 @@ export function createInspiredMatcher(
     ),
   };
 
+  // Diagnostic: how many onboarding taste picks reached this matcher and survived
+  // the diet/allergen filter (i.e. are eligible to be seeded into the plan).
+  if (tasteIds.size > 0) {
+    const inPool = (cat: PlanCategory) =>
+      eligible[cat].filter((r) => tasteIds.has(r.recipe.id)).length;
+    console.log(
+      `[BG-GEN] taste seed: ${tasteIds.size} tapped | eligible after diet/allergen — breakfast=${inPool('breakfast')} lunch/dinner=${inPool('lunchdinner')} snack=${inPool('snack')}`,
+    );
+  }
+
   function cuisineTier(recipe: InspiredRecipe): number {
     if (anyCuisine) return 0;
     if (cuisines.some((c) => c.toLowerCase() === recipe.cuisine.toLowerCase()))
