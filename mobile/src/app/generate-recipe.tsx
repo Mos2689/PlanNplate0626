@@ -830,12 +830,6 @@ export default function GenerateRecipeScreen() {
         mode: 'meal_plan',
         count: Array.isArray(data) ? data.length : recipesToGenerate,
       });
-      track('meal_plan_created', {
-        source: 'ai_generated',
-        count: Array.isArray(data) ? data.length : recipesToGenerate,
-        optimize_grocery: optimizeGrocery,
-        allow_repeats: allowRepeats,
-      });
       recipeGate.markUsed(); // successful generation — spend the free vibe use
       setGeneratedMealPlan(data);
       setGeneratedRecipe(null);
@@ -1105,13 +1099,22 @@ export default function GenerateRecipeScreen() {
       totalRecipeIndex++;
     });
 
+    // Count a plan only after it has been placed in the local store and queued
+    // for database sync; a generated preview is not yet a created meal plan.
+    track('meal_plan_created', {
+      source: 'ai_generated',
+      count: generatedMealPlan.length || recipesToGenerate,
+      optimize_grocery: optimizeGrocery,
+      allow_repeats: allowRepeats,
+    });
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setIsSavingMealPlan(false);
     router.replace({
       pathname: '/(tabs)',
       params: { mealPlanDate: formatDateKey(startDate) }
     });
-  }, [generatedMealPlan, selectedExistingRecipes, addRecipe, addMealToSlot, router, startDate, selectedMealTypes]);
+  }, [generatedMealPlan, selectedExistingRecipes, addRecipe, addMealToSlot, router, startDate, selectedMealTypes, recipesToGenerate, optimizeGrocery, allowRepeats]);
 
   const handleRegenerate = useCallback(() => {
     setGeneratedRecipe(null);

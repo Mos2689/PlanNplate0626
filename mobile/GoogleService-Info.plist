@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyD1ZmgBc9A0GrQDt3CDCb8m5Pc4946QzNI</string>
+	<key>GCM_SENDER_ID</key>
+	<string>400780815323</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.vibecode.planplate.8ctfq2</string>
+	<key>PROJECT_ID</key>
+	<string>plannplate-production</string>
+	<key>STORAGE_BUCKET</key>
+	<string>plannplate-production.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:400780815323:ios:8764c6e20377cf65f315fe</string>
+</dict>
+</plist>

@@ -16,6 +16,76 @@ module.exports = function ({ config }) {
     });
   };
 
+  const upsertBuildProperties = () => {
+    const pluginName = "expo-build-properties";
+    const pluginIndex = config.plugins.findIndex((plugin) =>
+      Array.isArray(plugin) ? plugin[0] === pluginName : plugin === pluginName,
+    );
+    const existingPlugin = pluginIndex >= 0 ? config.plugins[pluginIndex] : null;
+    const existingOptions =
+      Array.isArray(existingPlugin) && existingPlugin[1] ? existingPlugin[1] : {};
+    const existingIos = existingOptions.ios || {};
+    const forceStaticLinking = Array.from(
+      new Set([
+        ...(existingIos.forceStaticLinking || []),
+        "RNFBApp",
+        "RNFBAnalytics",
+      ]),
+    );
+    const nextPlugin = [
+      pluginName,
+      {
+        ...existingOptions,
+        ios: {
+          ...existingIos,
+          useFrameworks: "static",
+          forceStaticLinking,
+        },
+      },
+    ];
+
+    if (pluginIndex >= 0) {
+      config.plugins[pluginIndex] = nextPlugin;
+    } else {
+      config.plugins.push(nextPlugin);
+    }
+  };
+
+  config.ios = {
+    ...config.ios,
+    googleServicesFile: "./GoogleService-Info.plist",
+  };
+
+  config.android = {
+    ...config.android,
+    googleServicesFile: "./google-services.json",
+  };
+
+  // Firebase is a deliberately narrow Google Ads measurement bridge. The
+  // Analytics plugin excludes IDFA support while retaining Apple's on-device
+  // conversion measurement capability. Android disables Firebase advertising-
+  // ID collection and default ad-personalisation signals in its generated
+  // manifest without changing other pre-existing SDKs. Event allowlisting
+  // lives in src/lib/firebase-analytics-policy.ts.
+  if (!hasPlugin("@react-native-firebase/app")) {
+    config.plugins.push("@react-native-firebase/app");
+  }
+  if (!hasPlugin("@react-native-firebase/analytics")) {
+    config.plugins.push([
+      "@react-native-firebase/analytics",
+      {
+        ios: {
+          withoutAdIdSupport: true,
+          googleAppMeasurementOnDeviceConversion: true,
+        },
+      },
+    ]);
+  }
+  if (!hasPlugin("./plugins/with-firebase-analytics-privacy")) {
+    config.plugins.push("./plugins/with-firebase-analytics-privacy");
+  }
+  upsertBuildProperties();
+
   // 1. App Tracking Transparency plugin
   if (!hasPlugin("expo-tracking-transparency")) {
     config.plugins.push([

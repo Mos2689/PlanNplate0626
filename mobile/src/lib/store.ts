@@ -20,6 +20,7 @@ import { computeBehaviorInsights } from './behavior-insights';
 import { getSkipReasonEffect } from './skip-reason-handler';
 import { findExistingRecipe, normalizeRecipeSourceUrl } from './recipe-identity';
 import { CURATED_GROCERY_CACHE } from './curated-grocery-cache';
+import { track } from './analytics';
 
 // Debounce map to prevent cascading syncs
 const mealSlotSyncQueue = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1636,6 +1637,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
           const uid = getCurrentUserId();
           if (uid) {
             db.upsertUserPreferences(uid, get().preferences).catch(() => {});
+          }
+          if (completedCount > 0) {
+            track('meal_plan_created', {
+              source: 'background_generation',
+              count: completedCount,
+            });
           }
           // Ask for a review only once the user has felt real value: at least
           // THREE completed plans AND they've used the grocery feature at least

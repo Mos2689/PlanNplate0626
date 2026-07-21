@@ -24,6 +24,7 @@ import { Platform } from "react-native";
 import Purchases, {
   type PurchasesOfferings,
   type CustomerInfo,
+  type MakePurchaseResult,
   type PurchasesPackage,
 } from "react-native-purchases";
 
@@ -154,7 +155,7 @@ export const getOfferings = (): Promise<
  * Purchase a package
  *
  * @param packageToPurchase - The package to purchase
- * @returns RevenueCatResult containing CustomerInfo data or a failure reason
+ * @returns RevenueCatResult containing the verified purchase result or a failure reason
  *
  * @example
  * const purchaseResult = await purchasePackage(selectedPackage);
@@ -164,11 +165,10 @@ export const getOfferings = (): Promise<
  */
 export const purchasePackage = (
   packageToPurchase: PurchasesPackage,
-): Promise<RevenueCatResult<CustomerInfo>> => {
-  return guardRevenueCatUsage("purchasePackage", async () => {
-    const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
-    return customerInfo;
-  });
+): Promise<RevenueCatResult<MakePurchaseResult>> => {
+  return guardRevenueCatUsage("purchasePackage", () =>
+    Purchases.purchasePackage(packageToPurchase),
+  );
 };
 
 /**

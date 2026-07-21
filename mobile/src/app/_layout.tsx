@@ -12,7 +12,7 @@ import { StoreHydration } from '@/components/StoreHydration';
 import { useAuthStore } from '@/lib/auth-store';
 import { useNeedsProfileSetup, useSubscriptionLoading, useSubscriptionStore } from '@/lib/subscription-store';
 import { useMealPlanStore } from '@/lib/store';
-import { posthog, posthogEnabled } from '@/lib/analytics';
+import { posthog, posthogEnabled, setFirebaseUserId } from '@/lib/analytics';
 import { PostHogProvider } from 'posthog-react-native';
 import { useEffect } from 'react';
 import * as Linking from 'expo-linking';
@@ -141,6 +141,14 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
       posthog.reset();
     }
   }, [isAuthenticated, isAnonymous, currentUser]);
+
+  // Firebase receives only the internal UUID. PostHog identification above is
+  // intentionally unchanged and remains the primary analytics identity flow.
+  useEffect(() => {
+    void setFirebaseUserId(
+      isAuthenticated && currentUser?.id && !isAnonymous ? currentUser.id : null,
+    );
+  }, [isAuthenticated, isAnonymous, currentUser?.id]);
 
   // AUTH-LAST: onboarding comes FIRST, before the meal-planning screen, for
   // every fresh user. We gate on the locally-persisted `hasCompletedOnboarding`

@@ -174,12 +174,25 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
     setIsPurchasing(false);
     if (result.ok) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const activeEntitlement = result.data.customerInfo.entitlements.active?.premium;
+      const isVerifiedSubscription = Boolean(
+        activeEntitlement?.isActive && activeEntitlement.verification !== 'FAILED',
+      );
       track('purchase_completed', {
         trigger: trigger ?? 'unknown',
         package: monthly.product.identifier,
         price: (monthly.product as any).price ?? 0,
         currency: (monthly.product as any).currencyCode ?? 'AUD',
-      });
+      }, isVerifiedSubscription ? {
+        verifiedSubscription: {
+          transactionId: result.data.transaction.transactionIdentifier,
+          value: (monthly.product as any).price ?? 0,
+          currency: (monthly.product as any).currencyCode ?? 'AUD',
+          productId: result.data.productIdentifier,
+          planId: monthly.identifier,
+          isTrial: activeEntitlement?.periodType === 'TRIAL',
+        },
+      } : undefined);
 
       const price = (monthly.product as any).price || 0;
       const currency = (monthly.product as any).currencyCode || 'AUD';

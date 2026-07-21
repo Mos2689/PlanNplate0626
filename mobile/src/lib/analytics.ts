@@ -1,4 +1,11 @@
 import PostHog from 'posthog-react-native';
+import {
+  setFirebaseUserId,
+  trackFirebaseConversion,
+  type FirebaseTrackContext,
+} from './firebase-analytics';
+
+export { setFirebaseUserId };
 
 // Known events are documented here to prevent typos and give autocomplete,
 // but `track()` accepts ANY string so new critical-path events can be added
@@ -33,7 +40,11 @@ export type KnownAnalyticsEvent =
 // still permitting arbitrary event names.
 export type AnalyticsEvent = KnownAnalyticsEvent | (string & {});
 
-type Sink = (event: AnalyticsEvent, props?: Record<string, any>) => void;
+type Sink = (
+  event: AnalyticsEvent,
+  props?: Record<string, any>,
+  firebaseContext?: FirebaseTrackContext,
+) => void;
 
 // Strip undefined values because PostHog rejects them
 const cleanProps = (props?: Record<string, any>) => {
@@ -101,12 +112,20 @@ const devSink: Sink = (event, props) => {
   }
 };
 
-const sinks: Sink[] = [postHogSink, devSink];
+const firebaseSink: Sink = (event, props, firebaseContext) => {
+  trackFirebaseConversion(event, props, firebaseContext);
+};
 
-export const track = (event: AnalyticsEvent, props?: Record<string, any>) => {
+const sinks: Sink[] = [postHogSink, firebaseSink, devSink];
+
+export const track = (
+  event: AnalyticsEvent,
+  props?: Record<string, any>,
+  firebaseContext?: FirebaseTrackContext,
+) => {
   sinks.forEach((sink) => {
     try {
-      sink(event, props);
+      sink(event, props, firebaseContext);
     } catch (e) {
       console.error(`[Analytics Error] Sink failed for event: ${event}`, e);
     }
