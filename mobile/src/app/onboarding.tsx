@@ -47,6 +47,8 @@ import {
   X,
   Pencil,
   Plus,
+  ChevronRight,
+  CookingPot,
 } from 'lucide-react-native';
 import Animated, {
   useSharedValue,
@@ -530,12 +532,16 @@ function StepHeader({
   suffix,
   subtitle,
   isDark,
+  italicColor,
 }: {
   prefix: string;
   italic: string;
   suffix?: string;
   subtitle: string;
   isDark: boolean;
+  // Optional accent color for the italic phrase; defaults to inheriting the
+  // heading's ink color when omitted.
+  italicColor?: string;
 }) {
   return (
     <View style={{ marginBottom: 22 }}>
@@ -555,6 +561,7 @@ function StepHeader({
             fontStyle: serifItalicFontStyle,
             fontSize: 30,
             letterSpacing: -0.3,
+            ...(italicColor ? { color: italicColor } : {}),
           }}
         >
           {italic}
@@ -2333,114 +2340,197 @@ export default function OnboardingScreen() {
       >
         <IdentityRibbon firstName={firstName} avatarUrl={avatarUrl} isDark={isDark} />
         <StepHeader
-          prefix="What do you "
-          italic="cook often?"
-          subtitle="Just tell us the name and we'll build the full recipe for you. You can edit it later."
+          prefix="Tell us what you feel like "
+          italic="eating or usually cook."
+          subtitle="We will create the perfect recipe for you."
           isDark={isDark}
+          italicColor={designTokens.colors.brand}
         />
 
-        {/* Centred entry cards */}
-        <View style={{ flex: 1, justifyContent: 'center' }}>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            {/* Speak it — terracotta */}
+        {/* Centred entry: big mic (Speak it) → OR → full-width Type it card */}
+        <View style={{ flex: 1, justifyContent: 'center', paddingVertical: 8 }}>
+          {/* ── Speak it — large central mic with concentric rings ── */}
+          <View style={{ alignItems: 'center' }}>
             <Pressable
               onPress={isRecording ? stopVoice : startVoice}
               disabled={atMax || isTranscribing}
-              style={{ flex: 1, opacity: atMax || isTranscribing ? 0.55 : 1 }}
+              style={{
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: atMax || isTranscribing ? 0.55 : 1,
+              }}
             >
+              {/* Outer ring */}
               <View
                 style={{
-                  flexDirection: 'row',
+                  width: 236,
+                  height: 236,
+                  borderRadius: 118,
                   alignItems: 'center',
-                  gap: 11,
-                  padding: 12,
-                  borderRadius: 18,
-                  borderWidth: isRecording ? 1.5 : 1,
-                  borderColor: isRecording ? designTokens.colors.olive : cardHair,
-                  backgroundColor: cardBg,
-                  ...elevation.card,
+                  justifyContent: 'center',
+                  backgroundColor: isDark ? 'rgba(228,109,70,0.10)' : 'rgba(228,109,70,0.06)',
                 }}
               >
+                {/* Inner ring */}
                 <View
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 13,
-                    backgroundColor: designTokens.colors.olive,
+                    width: 186,
+                    height: 186,
+                    borderRadius: 93,
                     alignItems: 'center',
                     justifyContent: 'center',
+                    backgroundColor: isDark ? 'rgba(228,109,70,0.16)' : 'rgba(228,109,70,0.10)',
                   }}
                 >
-                  <Mic size={19} color="#F6F2E9" strokeWidth={1.9} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text
-                    style={{ fontFamily: designTokens.font.semibold, fontSize: 14.5, color: inkC, letterSpacing: -0.18 }}
-                    numberOfLines={1}
+                  {/* White collar + mic disc */}
+                  <View
+                    style={{
+                      width: 150,
+                      height: 150,
+                      borderRadius: 75,
+                      backgroundColor: '#FFFFFF',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      ...elevation.card,
+                    }}
                   >
-                    Speak it
-                  </Text>
-                  <Text
-                    style={{ marginTop: 2, fontFamily: designTokens.font.regular, fontSize: 11.5, lineHeight: 14, color: ink2C }}
-                    numberOfLines={2}
-                  >
-                    {speakSubtitle}
-                  </Text>
+                    <View
+                      style={{
+                        width: 126,
+                        height: 126,
+                        borderRadius: 63,
+                        backgroundColor: isRecording
+                          ? designTokens.colors.olive
+                          : designTokens.colors.brand,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Mic size={46} color="#F6F2E9" strokeWidth={1.6} />
+                    </View>
+                  </View>
                 </View>
               </View>
             </Pressable>
 
-            {/* Type it — olive green */}
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setTyping((t) => !t);
+            {/* SPEAK IT pill — floats over the top of the rings */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 20,
+                alignSelf: 'center',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                paddingHorizontal: 13,
+                paddingVertical: 6,
+                borderRadius: 999,
+                backgroundColor: designTokens.colors.olive,
+                ...elevation.card,
               }}
-              disabled={atMax}
-              style={{ flex: 1, opacity: atMax ? 0.55 : 1 }}
+            >
+              <Mic size={12} color="#FFFFFF" strokeWidth={2.2} />
+              <Text
+                style={{
+                  fontFamily: designTokens.font.semibold,
+                  fontSize: 12,
+                  letterSpacing: 1,
+                  textTransform: 'uppercase',
+                  color: '#FFFFFF',
+                }}
+              >
+                Speak it
+              </Text>
+            </View>
+          </View>
+
+          {/* Recording / transcription status */}
+          <Text
+            style={{
+              marginTop: 12,
+              textAlign: 'center',
+              fontFamily: designTokens.font.regular,
+              fontSize: 12.5,
+              color: voiceError ? designTokens.colors.olive : ink3C,
+            }}
+          >
+            {voiceError ?? speakSubtitle}
+          </Text>
+
+          {/* OR divider */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 18 }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: cardHair }} />
+            <Text
+              style={{
+                fontFamily: designTokens.font.medium,
+                fontSize: 12,
+                letterSpacing: 1.2,
+                color: ink3C,
+              }}
+            >
+              OR
+            </Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: cardHair }} />
+          </View>
+
+          {/* ── Type it — full-width card ── */}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setTyping((t) => !t);
+            }}
+            disabled={atMax}
+            style={{ opacity: atMax ? 0.55 : 1 }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 14,
+                padding: 16,
+                borderRadius: 18,
+                borderWidth: typing ? 1.5 : 1,
+                borderColor: typing ? designTokens.colors.brand : cardHair,
+                backgroundColor: cardBg,
+                ...elevation.card,
+              }}
             >
               <View
                 style={{
-                  flexDirection: 'row',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 13,
+                  backgroundColor: designTokens.colors.brand,
                   alignItems: 'center',
-                  gap: 11,
-                  padding: 12,
-                  borderRadius: 18,
-                  borderWidth: typing ? 1.5 : 1,
-                  borderColor: typing ? designTokens.colors.brand : cardHair,
-                  backgroundColor: cardBg,
-                  ...elevation.card,
+                  justifyContent: 'center',
                 }}
               >
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 13,
-                    backgroundColor: designTokens.colors.brand,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <KeyboardIcon size={19} color="#F6F2E9" strokeWidth={1.9} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text
-                    style={{ fontFamily: designTokens.font.semibold, fontSize: 14.5, color: inkC, letterSpacing: -0.18 }}
-                    numberOfLines={1}
-                  >
-                    Type it
-                  </Text>
-                  <Text
-                    style={{ marginTop: 2, fontFamily: designTokens.font.regular, fontSize: 11.5, lineHeight: 14, color: ink2C }}
-                    numberOfLines={2}
-                  >
-                    Enter the name
-                  </Text>
-                </View>
+                <KeyboardIcon size={20} color="#F6F2E9" strokeWidth={1.9} />
               </View>
-            </Pressable>
-          </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.semibold,
+                    fontSize: 15,
+                    letterSpacing: 0.8,
+                    textTransform: 'uppercase',
+                    color: designTokens.colors.brand,
+                  }}
+                  numberOfLines={1}
+                >
+                  Type it
+                </Text>
+                <Text
+                  style={{ marginTop: 3, fontFamily: designTokens.font.regular, fontSize: 12.5, lineHeight: 16, color: ink2C }}
+                  numberOfLines={2}
+                >
+                  Enter the name of what you want to cook
+                </Text>
+              </View>
+              <ChevronRight size={20} color={ink3C} strokeWidth={2} />
+            </View>
+          </Pressable>
 
           {/* Type input — revealed when "Type it" is tapped */}
           {typing && !atMax && (
@@ -2493,19 +2583,33 @@ export default function OnboardingScreen() {
             </View>
           )}
 
-          {/* Helper / status line, centred under the cards */}
-          <Text
+          {/* Dishes-count pill */}
+          <View
             style={{
-              marginTop: 14,
-              textAlign: 'center',
-              fontFamily: designTokens.font.regular,
-              fontSize: 12.5,
-              color: voiceError ? designTokens.colors.olive : ink3C,
+              alignSelf: 'center',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 18,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: isDark ? '#20201c' : 'rgba(84,100,69,0.06)',
             }}
           >
-            {voiceError ??
-              (atMax ? "That's 5, plenty to go on!" : `Add up to ${MAX_FREQUENT_COOKS} dishes you cook often.`)}
-          </Text>
+            <CookingPot size={15} color={ink3C} strokeWidth={1.9} />
+            <Text
+              style={{
+                fontFamily: designTokens.font.regular,
+                fontSize: 12.5,
+                color: ink3C,
+              }}
+            >
+              {atMax
+                ? "That's 5, plenty to go on!"
+                : `Add up to ${MAX_FREQUENT_COOKS} dishes you cook often.`}
+            </Text>
+          </View>
         </View>
 
         {/* Captured dishes — vertical list at the bottom */}
