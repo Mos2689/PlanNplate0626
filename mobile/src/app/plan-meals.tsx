@@ -13,8 +13,8 @@
 // the store's `startBackgroundGeneration` action so this screen can
 // fire-and-forget on tap and route the user to the Meal Planning tab
 // instantly — recipes stream in behind the PendingGenerationBanner there.
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { View, Text, Pressable, ScrollView, Modal, TextInput, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -40,12 +40,15 @@ import {
   UtensilsCrossed,
   Minus,
   Plus,
-  SlidersHorizontal,
   Heart,
   Star,
   X,
+  CircleMinus,
+  CirclePlus,
+  Users as UsersIcon,
   type LucideIcon,
 } from 'lucide-react-native';
+import Slider from '@react-native-community/slider';
 import { Image } from 'expo-image';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -53,11 +56,13 @@ import { useColorScheme } from '@/lib/useColorScheme';
 import {
   useMealPlanStore,
   mergePersonaWithUserInstructions,
+  mealPrepTimeFromMinutes,
   type UserPreferences,
   type MealHabits,
   type BreakfastHabit,
   type LunchHabit,
   type DinnerHabit,
+  type WeeknightMinutes,
 } from '@/lib/store';
 import { MONTHLY_FEATURE_LIMITS } from '@/lib/store';
 import { type MealType } from '@/lib/openai';
@@ -79,7 +84,15 @@ import {
   type CookStyle,
   type BatchConfig,
 } from '@/lib/high-protein-plan';
-import { PlanTuneSheet } from '@/components/PlanTuneSheet';
+import {
+  parseInstructions,
+  parseInstructionsKeyword,
+  describeInstructions,
+  EMPTY_INSTRUCTIONS,
+  type ParsedInstructions,
+} from '@/lib/special-instructions';
+import { Sparkles as SparklesIcon } from 'lucide-react-native';
+import { buildSeedAnchors } from '@/lib/grocery-optimization';
 
 // ───────────────────────────────────────────────────────────────────────────────
 // HELPERS & CONSTANTS
@@ -131,6 +144,12 @@ const WEEKDAYS: { idx: number; short: string }[] = [
 ];
 const MAX_COOK_DAYS = 3;
 const MAX_PLAN_DAYS = 14;
+
+// Cook-time slider stops. Mirrors the `WeeknightMinutes` union so the slider
+// snaps to values the preference model already understands — 15 min is the
+// floor. The slider drives an index into this list rather than raw minutes,
+// which keeps the (uneven) 60→90 gap evenly spaced on screen.
+const COOK_MINUTE_STEPS: WeeknightMinutes[] = [15, 30, 45, 60, 90];
 
 // Daypart palette — the selected colour traces the arc of the day
 // (sunrise → midday → dusk). Mirrors curated-plan-setup.tsx.
@@ -507,19 +526,95 @@ export default function PlanMealsScreen() {
     );
   }, []);
 
-  // ── Per-plan overrides (ephemeral) — Tune sheet ──
+  // ── Per-plan overrides (ephemeral) — now only servings + cook-time write here
+  // (the Tune sheet has been removed). ──
   const [overrides, setOverrides] = useState<Partial<UserPreferences>>({});
   const [oneTimeNote, setOneTimeNote] = useState<string>('');
-  const [showTuneSheet, setShowTuneSheet] = useState(false);
+
+  // ── Optimise groceries + Special Instructions ──
+  const [optimizeGrocery, setOptimizeGrocery] = useState(false);
+  const [specialText, setSpecialText] = useState('');
+  // Parsed rules — refreshed live (debounced LLM) so the confirmation chip
+  // reflects what will actually be applied. Keyword parse is the instant seed
+  // shown until the LLM settles / when offline.
+  const [parsed, setParsed] = useState<ParsedInstructions>(EMPTY_INSTRUCTIONS);
+  const parseSeq = useRef(0);
+
+  // Seed recipes for the overlap basket = the selected favourites (Recipe rows
+  // carry {name, category} ingredients, so they satisfy IngredientBearer).
+  const seedRecipes = useMemo(
+    () => allRecipes.filter((r) => selectedFavoriteIds.includes(r.id)),
+    [allRecipes, selectedFavoriteIds],
+  );
+  // Live payoff preview — the fresh ingredients the plan will be built around,
+  // ranked by how many favourites share them. Honest (it's literally the seed),
+  // computed instantly, no fabricated "saved $X".
+  const seedAnchorChips = useMemo(() => {
+    if (seedRecipes.length === 0) return [];
+    return [...buildSeedAnchors(seedRecipes).entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name]) => name);
+  }, [seedRecipes]);
+
+  // Live parse: instant keyword chip on each keystroke, authoritative LLM parse
+  // ~700ms after typing stops. Guarded by a sequence number so a slow response
+  // can't overwrite a newer one.
+  useEffect(() => {
+    const text = specialText.trim();
+    if (!text) {
+      setParsed(EMPTY_INSTRUCTIONS);
+      return;
+    }
+    setParsed(parseInstructionsKeyword(text)); // instant preview
+    const seq = ++parseSeq.current;
+    const timer = setTimeout(async () => {
+      const result = await parseInstructions(text);
+      if (seq === parseSeq.current) setParsed(result);
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [specialText]);
 
   const effectivePreferences = useMemo<UserPreferences>(
     () => ({ ...preferences, ...overrides }),
     [preferences, overrides],
   );
-  const hasOverrides = useMemo(
-    () => Object.keys(overrides).length > 0 || oneTimeNote.trim().length > 0,
-    [overrides, oneTimeNote],
+
+  // ── Servings + cook time (per-plan) ──
+  // Both write into `overrides`, so they ride the existing plumbing: merged
+  // into `effectivePreferences` for the prompt and passed to
+  // `startBackgroundGeneration` as overrides. They also stay in sync with the
+  // Tune sheet, which edits the same two fields.
+  const servingSize = effectivePreferences.servingSize ?? 2;
+  const setServingSize = useCallback(
+    (next: number) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setOverrides((o) => ({ ...o, servingSize: Math.min(12, Math.max(1, next)) }));
+    },
+    [],
   );
+
+  // Cook time snaps to the WeeknightMinutes ladder (15 is the floor).
+  const cookMinutes: WeeknightMinutes =
+    effectivePreferences.weeknightMinutes ??
+    (effectivePreferences.mealPrepTime === 'quick'
+      ? 30
+      : effectivePreferences.mealPrepTime === 'elaborate'
+        ? 90
+        : 60);
+  const cookMinutesIndex = Math.max(
+    0,
+    COOK_MINUTE_STEPS.indexOf(cookMinutes as WeeknightMinutes),
+  );
+  const setCookMinutes = useCallback((next: WeeknightMinutes) => {
+    // Keep the band in lockstep — `mealPrepTime` is what gates recipe
+    // selection, while `weeknightMinutes` is what reaches the AI prompt.
+    setOverrides((o) => ({
+      ...o,
+      weeknightMinutes: next,
+      mealPrepTime: mealPrepTimeFromMinutes(next),
+    }));
+  }, []);
 
   // ── Derived ──
   const days = Math.max(1, lengthDays);
@@ -638,7 +733,7 @@ export default function PlanMealsScreen() {
   }, [tempStart, tempEnd]);
 
   // ── Generate (fire-and-forget) ──
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = useCallback(async () => {
     if (!canGenerate) return;
 
     // Monthly paywall limit — registered non-premium users get a fixed number
@@ -661,6 +756,14 @@ export default function PlanMealsScreen() {
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    // Authoritative parse of the special-instructions box: re-run the LLM parse
+    // so a plan started before the debounce settled still uses the real result
+    // (falls back internally to the keyword parser). Exclusions here become HARD
+    // filters downstream — the guardrail that replaced the diet preference.
+    const instructions = specialText.trim()
+      ? await parseInstructions(specialText.trim())
+      : EMPTY_INSTRUCTIONS;
 
     const personaInstructions = mergePersonaWithUserInstructions(
       effectivePreferences,
@@ -689,9 +792,17 @@ export default function PlanMealsScreen() {
       // gaps with leftovers (mirrors the curated batch scheduler).
       cookStyle,
       batch: cookStyle === 'batch' ? batch : undefined,
-      // "Tune for this plan" overrides — applied on top of the saved profile so
-      // the tuned diet / cuisine / time / budget actually govern selection.
+      // Per-plan overrides (servings + cook time).
       overrides,
+      // Optimise groceries — select for shared fresh produce/dairy, seeded from
+      // the chosen favourites. Special instructions apply regardless.
+      optimizeGrocery,
+      optimizeSeedRecipes: optimizeGrocery ? seedRecipes : undefined,
+      specialInstructions: {
+        exclude: instructions.exclude,
+        include: instructions.include,
+        diets: instructions.diets,
+      },
     });
 
     // Count this build toward the monthly limit (non-premium only).
@@ -724,6 +835,10 @@ export default function PlanMealsScreen() {
     openPaywallSheet,
     recordMonthlyFeatureUse,
     selectedFavoriteIds,
+    overrides,
+    optimizeGrocery,
+    seedRecipes,
+    specialText,
   ]);
 
   // ── Token-driven style helpers ──
@@ -818,56 +933,17 @@ export default function PlanMealsScreen() {
               </Text>
             </Text>
           </View>
-
-          {/* Tune trigger — per-plan preference overrides (budget, time, etc.) */}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setShowTuneSheet(true);
-            }}
-            hitSlop={10}
-            accessibilityLabel={
-              hasOverrides
-                ? 'Tune preferences for this plan (overrides active)'
-                : 'Tune preferences for this plan'
-            }
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: cardBg,
-                borderWidth: 1,
-                borderColor: cardBorder,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <SlidersHorizontal size={18} color={inkPrimary} strokeWidth={1.9} />
-              {hasOverrides && (
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: 6,
-                    right: 6,
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    backgroundColor: designTokens.colors.olive,
-                    borderWidth: 1.5,
-                    borderColor: cardBg,
-                  }}
-                />
-              )}
-            </View>
-          </Pressable>
         </View>
 
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          // iOS: inset the scroll view for the keyboard so the focused input
+          // (e.g. special instructions) stays visible above it.
+          automaticallyAdjustKeyboardInsets
         >
           {/* ── Meal plan duration ── */}
           <Animated.View
@@ -933,6 +1009,162 @@ export default function PlanMealsScreen() {
                 </View>
               )}
             </Pressable>
+          </Animated.View>
+
+          {/* ── Servings & cook time ── */}
+          <Animated.View
+            entering={FadeInDown.delay(90).springify()}
+            style={{ paddingHorizontal: 24, marginTop: 18 }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <UsersIcon size={12} color={inkTertiary} strokeWidth={1.8} />
+              <Text style={sectionEyebrow}>Servings & cook time</Text>
+            </View>
+
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: cardBorder,
+                backgroundColor: cardBg,
+              }}
+            >
+              {/* Serving size stepper */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 14.5,
+                    color: inkPrimary,
+                    letterSpacing: -0.15,
+                  }}
+                >
+                  Serving size
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Pressable
+                    onPress={() => setServingSize(servingSize - 1)}
+                    disabled={servingSize <= 1}
+                    hitSlop={8}
+                    style={{ opacity: servingSize <= 1 ? 0.35 : 1 }}
+                  >
+                    <CircleMinus size={26} color={inkTertiary} strokeWidth={1.6} />
+                  </Pressable>
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.semibold,
+                      fontSize: 18,
+                      color: inkPrimary,
+                      minWidth: 24,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {servingSize}
+                  </Text>
+                  <Pressable
+                    onPress={() => setServingSize(servingSize + 1)}
+                    disabled={servingSize >= 12}
+                    hitSlop={8}
+                    style={{ opacity: servingSize >= 12 ? 0.35 : 1 }}
+                  >
+                    <CirclePlus size={26} color={inkTertiary} strokeWidth={1.6} />
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={{ height: 1, backgroundColor: cardBorder, marginVertical: 14 }} />
+
+              {/* Meal time — snaps to the WeeknightMinutes ladder */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 14.5,
+                    color: inkPrimary,
+                    letterSpacing: -0.15,
+                  }}
+                >
+                  Meal time
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.semibold,
+                    fontSize: 15,
+                    color: designTokens.colors.brand,
+                  }}
+                >
+                  {cookMinutes} min
+                </Text>
+              </View>
+
+              <Slider
+                style={{ width: '100%', height: 36, marginTop: 4 }}
+                minimumValue={0}
+                maximumValue={COOK_MINUTE_STEPS.length - 1}
+                step={1}
+                value={cookMinutesIndex}
+                onValueChange={(v) => {
+                  const next = COOK_MINUTE_STEPS[Math.round(v)];
+                  if (next && next !== cookMinutes) {
+                    Haptics.selectionAsync();
+                    setCookMinutes(next);
+                  }
+                }}
+                minimumTrackTintColor={designTokens.colors.brand}
+                maximumTrackTintColor={cardBorder}
+                thumbTintColor={designTokens.colors.brand}
+              />
+
+              {/* Tick labels */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  marginTop: 2,
+                }}
+              >
+                {COOK_MINUTE_STEPS.map((m) => (
+                  <Text
+                    key={m}
+                    style={{
+                      fontFamily: designTokens.font.regular,
+                      fontSize: 11,
+                      color: m === cookMinutes ? designTokens.colors.brand : inkTertiary,
+                    }}
+                  >
+                    {m}
+                  </Text>
+                ))}
+              </View>
+
+              <Text
+                style={{
+                  marginTop: 8,
+                  fontFamily: designTokens.font.regular,
+                  fontSize: 12,
+                  color: inkTertiary,
+                  lineHeight: 17,
+                }}
+              >
+                Recipes will be sized for {servingSize}{' '}
+                {servingSize === 1 ? 'serving' : 'servings'} and kept to about{' '}
+                {cookMinutes} minutes.
+              </Text>
+            </View>
           </Animated.View>
 
           {/* ── How you like to cook ── */}
@@ -1300,6 +1532,156 @@ export default function PlanMealsScreen() {
               </ScrollView>
             )}
           </Animated.View>
+
+          {/* ── Optimise groceries + Special instructions ── */}
+          <Animated.View
+            entering={FadeInDown.delay(260).springify()}
+            style={{ paddingHorizontal: 24, marginTop: 22 }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+              <SparklesIcon size={12} color={inkTertiary} strokeWidth={1.8} />
+              <Text style={sectionEyebrow}>Smart planning</Text>
+            </View>
+
+            {/* Optimise groceries toggle */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: optimizeGrocery ? designTokens.colors.brand : cardBorder,
+                backgroundColor: cardBg,
+              }}
+            >
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.semibold,
+                    fontSize: 15,
+                    color: inkPrimary,
+                    letterSpacing: -0.2,
+                  }}
+                >
+                  Optimise groceries
+                </Text>
+                <Text
+                  style={{
+                    marginTop: 3,
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 12.5,
+                    color: inkTertiary,
+                    lineHeight: 17,
+                  }}
+                >
+                  {seedRecipes.length > 0
+                    ? `Build the week around fresh ingredients from your ${seedRecipes.length} pick${seedRecipes.length === 1 ? '' : 's'} — less to buy, less waste.`
+                    : 'Pick meals that share fresh produce & dairy — less to buy, less waste.'}
+                </Text>
+              </View>
+              <Switch
+                value={optimizeGrocery}
+                onValueChange={(v) => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setOptimizeGrocery(v);
+                }}
+                trackColor={{ false: cardBorder, true: designTokens.colors.brand }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            {/* Live "built around" preview — the shared fresh ingredients the
+                plan will centre on (from the selected favourites). */}
+            {optimizeGrocery && seedAnchorChips.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 10 }}>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 12,
+                    color: inkTertiary,
+                  }}
+                >
+                  Built around
+                </Text>
+                {seedAnchorChips.map((name) => (
+                  <View
+                    key={name}
+                    style={{
+                      paddingHorizontal: 9,
+                      paddingVertical: 4,
+                      borderRadius: 999,
+                      backgroundColor: isDark ? 'rgba(84,100,69,0.18)' : 'rgba(84,100,69,0.10)',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: designTokens.font.medium,
+                        fontSize: 12,
+                        color: designTokens.colors.brand,
+                      }}
+                    >
+                      {name}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Special instructions free-text */}
+            <View style={{ marginTop: 12 }}>
+              <TextInput
+                value={specialText}
+                onChangeText={setSpecialText}
+                placeholder="Special instructions — e.g. no beef, vegetarian only, more chicken"
+                placeholderTextColor={inkTertiary}
+                multiline
+                style={{
+                  minHeight: 64,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: cardBorder,
+                  backgroundColor: cardBg,
+                  fontFamily: designTokens.font.regular,
+                  fontSize: 14.5,
+                  color: inkPrimary,
+                  textAlignVertical: 'top',
+                }}
+              />
+              {/* Confirmation chip — echoes back what we parsed so a misread is
+                  visible and correctable (exclusions become HARD filters). */}
+              {describeInstructions(parsed) ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginTop: 8,
+                    alignSelf: 'flex-start',
+                    paddingHorizontal: 11,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: isDark ? 'rgba(84,100,69,0.18)' : 'rgba(84,100,69,0.10)',
+                  }}
+                >
+                  <Check size={12} color={designTokens.colors.brand} strokeWidth={2.4} />
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.medium,
+                      fontSize: 12.5,
+                      color: designTokens.colors.brand,
+                    }}
+                  >
+                    Got it — {describeInstructions(parsed)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </Animated.View>
         </ScrollView>
 
         {/* Sticky CTA */}
@@ -1524,20 +1906,6 @@ export default function PlanMealsScreen() {
           </View>
         </View>
       </Modal>
-
-      {/* Per-plan preference overrides — slides up from the bottom. */}
-      <PlanTuneSheet
-        visible={showTuneSheet}
-        basePreferences={preferences}
-        overrides={overrides}
-        oneTimeNote={oneTimeNote}
-        onChange={(nextOverrides, nextNote) => {
-          setOverrides(nextOverrides);
-          setOneTimeNote(nextNote);
-        }}
-        onClose={() => setShowTuneSheet(false)}
-        isDark={isDark}
-      />
     </View>
   );
 }

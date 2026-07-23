@@ -31,6 +31,7 @@ export type PaywallTrigger =
   | 'onboarding'
   | 'generating-plan'
   | 'speak-grocery-limit'
+  | 'collections'
   | 'generic';
 
 interface SubscriptionStore {

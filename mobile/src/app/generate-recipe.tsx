@@ -1211,10 +1211,34 @@ export default function GenerateRecipeScreen() {
             alignItems: 'center',
             justifyContent: 'space-between',
             paddingHorizontal: 20,
-            paddingTop: 8,
+            paddingTop: 24,
             paddingBottom: 14,
           }}
         >
+          {/* Left-aligned title, consistent with the other pages */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+            <Text
+              style={{
+                fontFamily: designTokens.font.medium,
+                fontSize: 22,
+                color: colors.ink,
+                letterSpacing: -0.4,
+              }}
+            >
+              Make your{' '}
+              <Text
+                style={{
+                  fontFamily: designTokens.font.serifItalic,
+                  fontStyle: serifItalicFontStyle,
+                  fontSize: 25,
+                  letterSpacing: -0.22,
+                }}
+              >
+                Own
+              </Text>
+            </Text>
+          </View>
+          {/* Close — right-aligned, in line with the title */}
           <Pressable
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1233,30 +1257,6 @@ export default function GenerateRecipeScreen() {
           >
             <X size={18} color={colors.ink} strokeWidth={1.7} />
           </Pressable>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <ChefHat size={16} color={designTokens.colors.ink2} strokeWidth={1.6} />
-            <Text
-              style={{
-                fontFamily: designTokens.font.medium,
-                fontSize: 19,
-                color: colors.ink,
-                letterSpacing: -0.38,
-              }}
-            >
-              Vibe{' '}
-              <Text
-                style={{
-                  fontFamily: designTokens.font.serifItalic,
-                  fontStyle: serifItalicFontStyle,
-                  fontSize: 22,
-                  letterSpacing: -0.22,
-                }}
-              >
-                cooking
-              </Text>
-            </Text>
-          </View>
-          <View style={{ width: 40 }} />
         </Animated.View>
 
         {/* ── Resume last vibe cook (only when payload exists) ───── */}
@@ -1838,7 +1838,7 @@ export default function GenerateRecipeScreen() {
             {/* ── Vibe deck — hero mood selector ─────────────── */}
             <Animated.View
               entering={FadeInDown.delay(120).springify()}
-              style={{ paddingBottom: 18 }}
+              style={{ paddingBottom: 34 }}
             >
               <Text
                 style={[
@@ -1846,7 +1846,7 @@ export default function GenerateRecipeScreen() {
                   { marginBottom: 12, paddingHorizontal: 20 },
                 ]}
               >
-                What's the vibe?
+                What's the mood?
               </Text>
               <VibeDeck
                 selectedVibeId={selectedVibeId}
@@ -1858,7 +1858,7 @@ export default function GenerateRecipeScreen() {
             {/* ── Meal type selector ──────────────────────────── */}
             <Animated.View
               entering={FadeInDown.delay(170).springify()}
-              style={{ paddingHorizontal: 16, paddingBottom: 18 }}
+              style={{ paddingHorizontal: 16, paddingBottom: 34 }}
             >
               <Text style={[sectionTitleStyle, { marginBottom: 12, paddingHorizontal: 4 }]}>Meal types</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -2142,7 +2142,7 @@ export default function GenerateRecipeScreen() {
               <Text
                 style={[sectionTitleStyle, { marginBottom: 4, paddingHorizontal: 4 }]}
               >
-                What's in your fridge?
+                What's in Your Kitchen?
               </Text>
               <Text
                 style={{
@@ -2154,7 +2154,7 @@ export default function GenerateRecipeScreen() {
                   lineHeight: 17,
                 }}
               >
-                We pulled these from your recent groceries and cooking — remove anything you don't have.
+                Remove anything you don't have.
               </Text>
               <InferredFridgeChips
                 items={fridgeIngredients}

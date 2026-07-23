@@ -50,6 +50,23 @@ function ingredientContainsAllergen(ingredientName: string, allergen: string): b
  * Returns info about which allergens are found and which ingredients contain them
  * Uses recipe.violations if available (more comprehensive), falls back to ingredient checking
  */
+/**
+ * Neutral allergen DISCLOSURE — every common allergen present in a recipe,
+ * independent of any user allergy profile. Powers the informational "Contains:
+ * …" label on the recipe page (a food-label, NOT a personalised warning), since
+ * the app no longer collects allergy data. Returns [] when none detected.
+ */
+export function detectAllergens(recipe: Recipe): string[] {
+  const present: string[] = [];
+  for (const allergen of Object.keys(ALLERGEN_KEYWORDS)) {
+    const hit = (recipe.ingredients ?? []).some((ing) =>
+      ingredientContainsAllergen(ing.name, allergen),
+    );
+    if (hit) present.push(allergen);
+  }
+  return present;
+}
+
 export function checkRecipeForAllergens(
   recipe: Recipe,
   userAllergies: string[]

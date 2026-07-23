@@ -14,7 +14,7 @@ import { useNeedsProfileSetup, useSubscriptionLoading, useSubscriptionStore } fr
 import { useMealPlanStore } from '@/lib/store';
 import { posthog, posthogEnabled, setFirebaseUserId } from '@/lib/analytics';
 import { PostHogProvider } from 'posthog-react-native';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import * as Linking from 'expo-linking';
 import { initializeCacheTable } from '@/lib/recipe-cache';
 import { PaywallSheet } from '@/components/PaywallSheet';
@@ -38,7 +38,10 @@ export const unstable_settings = {
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+// `.catch()` swallows the dev-only "No native splash screen registered…"
+// rejection that fires on Fast Refresh (the native splash is already gone by
+// then). Harmless — production cold starts still show/hide it correctly.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Globally disable font scaling to ensure UI consistency across devices,
 // especially on Android where system font scaling often breaks layouts.
@@ -65,6 +68,12 @@ function useProtectedRoute() {
   const isLoading = useAuthStore((s) => s.isLoading);
   const hasHydrated = useAuthStore((s) => s._hasHydrated);
   const isPasswordResetFlow = useAuthStore((s) => s.isPasswordResetFlow);
+  // One-time boot-landing guard. The login/signup paths redirect to Recipes
+  // explicitly, but a RESTORED session (existing user reopening the app) skips
+  // those screens and renders the tabs group root — which is `index` (Meal
+  // Plan). We nudge that first boot to Recipes once, then never again, so later
+  // taps on the Meal Plan tab aren't bounced.
+  const didInitialLanding = useRef(false);
 
   useEffect(() => {
     // Don't redirect while auth is still loading or hydrating
@@ -74,6 +83,25 @@ function useProtectedRoute() {
 
     const inAuthGroup = segments[0] === 'login' || segments[0] === 'signup' || segments[0] === 'reset-password' || segments[0] === 'verify-otp';
     const inOnboarding = segments[0] === 'onboarding';
+
+    // First settled render: if a signed-up user booted straight onto the tabs
+    // root (Meal Plan, the group index), send them to Recipes — the app's home.
+    // Runs exactly once per launch; if they're anywhere else (recipes, auth,
+    // onboarding) we just arm the guard so a later Meal Plan tap never bounces.
+    // Wait for segments to resolve (empty during the very first boot frames) so
+    // we don't arm the guard before the tabs route has mounted.
+    if (!didInitialLanding.current && segments.length > 0) {
+      didInitialLanding.current = true;
+      if (
+        isAuthenticated &&
+        !isAnonymous &&
+        segments[0] === '(tabs)' &&
+        segments.length === 1
+      ) {
+        router.replace('/(tabs)/recipes');
+        return;
+      }
+    }
 
     // If in password reset flow, don't redirect away from auth screens
     if (isPasswordResetFlow) {
@@ -101,7 +129,7 @@ function useProtectedRoute() {
       segments[0] !== 'verify-otp' &&
       !inOnboarding
     ) {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/recipes');
     }
   }, [isAuthenticated, isAnonymous, isLoading, hasHydrated, segments, router, isPasswordResetFlow, params.reauth]);
 }
@@ -276,7 +304,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         return;
       }
 
-      router.replace(result.type === 'recovery' ? '/reset-password' : '/(tabs)');
+      router.replace(result.type === 'recovery' ? '/reset-password' : '/(tabs)/recipes');
     };
 
     // Handle initial URL (app opened via link)
@@ -371,18 +399,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
             presentation: 'modal',
           }}
         />
-        <Stack.Screen
-          name="curated-meal-plan"
-          options={{
-            headerShown: false,
-            // 'card' (not 'modal') — entire curated flow is a fullscreen
-            // push stack from tabs. Using 'modal' here showed a bottom-
-            // sheet-style sheet that stayed visible behind the detail page
-            // when you tapped a plan (because card pushes inside the
-            // modal's nav stack, the modal effect persists).
-            presentation: 'card',
-          }}
-        />
+        {/* "curated-meal-plan" is now the "inspired" tab (app/(tabs)/inspired.tsx). */}
         <Stack.Screen
           name="curated-plan-detail"
           options={{

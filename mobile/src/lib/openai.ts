@@ -467,6 +467,12 @@ export interface GeneratedRecipeResponse {
   // photo instead of a fetched stock/AI image. Undefined for AI-generated recipes.
   imageUrl?: string;
   blurhash?: string;
+  // Curated identity — set only for recipes drawn from the Get Inspired library
+  // (`inspired::<id>`). Materialization maps this to the Recipe's
+  // `curatedSourceId` so a plan-placed curated pick dedups against the SAME
+  // library recipe already in the user's library (e.g. a saved taste pick or a
+  // bookmarked Get Inspired recipe) instead of appending a duplicate row.
+  sourceId?: string;
 }
 
 interface OpenAIChatResponse {

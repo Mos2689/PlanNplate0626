@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Keyboard, TouchableWithoutFeedback, Image, Animated as RNAnimated, Easing as RNEasing, LayoutChangeEvent } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Keyboard, TouchableWithoutFeedback, Image, Animated as RNAnimated, Easing as RNEasing, LayoutChangeEvent, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   X,
   Plus,
@@ -41,6 +41,8 @@ import { isOpenAIConfigured, generateRecipeImage } from '@/lib/openai';
 import { uploadRecipeImage } from '@/lib/uploadRecipeImage';
 import { supabase } from '@/lib/supabase';
 import { classifyRecipeByContent } from '@/lib/meal-type-validator';
+import { TagPicker } from '@/components/TagPicker';
+import { isMealTypeTag } from '@/lib/recipe-categories';
 import { validateIngredients } from '@/lib/ingredient-validator';
 import { useRecipeFeatureGate } from '@/hooks/useRecipeFeatureGate';
 import { apiCall, apiFormCall } from '@/lib/api-router';
@@ -363,6 +365,14 @@ The spoken text may mix languages or use non-English words/script (e.g. code-swi
 
 export default function AddRecipeScreen() {
   const router = useRouter();
+  // Optional deep-link action from the "Add a recipe" sheet: open straight into
+  // the Speak or Snap flow.
+  const { action } = useLocalSearchParams<{ action?: string }>();
+  const autoActionRan = useRef(false);
+  // Arrived from the "+ → Speak/Snap/Type" sheet: the choice is already made, so
+  // hide the entry cards + "or type manually" divider. Speak/Snap auto-open their
+  // flow; Type just lands on the basic-info form.
+  const cameFromSheet = action === 'speak' || action === 'snap' || action === 'type';
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const colors = getThemeColors(isDark);
@@ -381,7 +391,7 @@ export default function AddRecipeScreen() {
   const [cookTime, setCookTime] = useState('30');
   const [servings, setServings] = useState('4');
   const [calories, setCalories] = useState('');
-  const [tags, setTags] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [ingredients, setIngredients] = useState<IngredientInput[]>([
     { id: '1', name: '', quantity: '', unit: '', category: 'produce' },
   ]);
@@ -510,7 +520,7 @@ export default function AddRecipeScreen() {
       setCookTime(parsedRecipe.cookTime?.toString() || '30');
       setServings(parsedRecipe.servings?.toString() || '4');
       setCalories(parsedRecipe.calories?.toString() || '');
-      setTags(parsedRecipe.tags?.join(', ') || '');
+      setTags(parsedRecipe.tags ?? []);
 
       if (parsedRecipe.ingredients && parsedRecipe.ingredients.length > 0) {
         setIngredients(
@@ -565,7 +575,7 @@ export default function AddRecipeScreen() {
     setCookTime(parsedRecipe.cookTime?.toString() || '30');
     setServings(parsedRecipe.servings?.toString() || '4');
     setCalories(parsedRecipe.calories?.toString() || '');
-    setTags(parsedRecipe.tags?.join(', ') || '');
+    setTags(parsedRecipe.tags ?? []);
     setWasAutoFilled(true); // Mark as auto-filled via voice/upload
 
     if (parsedRecipe.ingredients && parsedRecipe.ingredients.length > 0) {
@@ -841,10 +851,7 @@ export default function AddRecipeScreen() {
 
     const validInstructions = instructions.filter((inst) => inst.trim());
 
-    const tagList = tags
-      .split(',')
-      .map((t) => t.trim().toLowerCase())
-      .filter((t) => t.length > 0);
+    const tagList = tags.map((t) => t.trim()).filter((t) => t.length > 0);
 
     // First, classify recipe by content to determine meal type
     const tempRecipe = {
@@ -866,9 +873,10 @@ export default function AddRecipeScreen() {
 
     const mealType = classifyRecipeByContent(tempRecipe as any);
 
-    // Add meal type to tags if not already present
+    // Only auto-add the classified meal type when the user didn't pick one
+    // in the TagPicker — an explicit choice always wins.
     const updatedTags = [...tagList];
-    if (!updatedTags.includes(mealType)) {
+    if (!updatedTags.some(isMealTypeTag)) {
       updatedTags.push(mealType);
     }
 
@@ -922,6 +930,35 @@ export default function AddRecipeScreen() {
   // native driver — same proven pattern as PendingGenerationBanner
   // (sidesteps the Reanimated worklet quirk we hit there).
   const micPulse = useRef(new RNAnimated.Value(1)).current;
+  // Auto-open the requested flow once. Snap just opens a modal, so a short
+  // timeout is fine. Speak activates the iOS audio session, which iOS rejects
+  // ('!rec' / CannotStartRecording) if fired mid-navigation — so wait for the
+  // screen transition to finish (InteractionManager) plus a small settle delay.
+  useEffect(() => {
+    if (autoActionRan.current) return;
+    if (action !== 'speak' && action !== 'snap') return;
+    autoActionRan.current = true;
+
+    if (action === 'snap') {
+      const t = setTimeout(() => setShowUploadModal(true), 300);
+      return () => clearTimeout(t);
+    }
+
+    let cancelled = false;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      settleTimer = setTimeout(() => {
+        if (!cancelled) startRecording();
+      }, 450);
+    });
+    return () => {
+      cancelled = true;
+      task.cancel();
+      if (settleTimer) clearTimeout(settleTimer);
+    };
+  }, [action, startRecording]);
+
   const micPulseLoopRef = useRef<RNAnimated.CompositeAnimation | null>(null);
   const micPulseActive = isApiConfigured;
   useEffect(() => {
@@ -1109,6 +1146,8 @@ export default function AddRecipeScreen() {
             contentContainerStyle={{ paddingBottom: 100 }}
             keyboardShouldPersistTaps="handled"
           >
+            {!cameFromSheet && (
+            <>
             {/* ── Voice & Upload entry cards ───────────────── */}
             <Animated.View
               entering={FadeInDown.delay(100).springify()}
@@ -1308,6 +1347,8 @@ export default function AddRecipeScreen() {
               </Text>
               <View style={{ flex: 1, height: 1, backgroundColor: designTokens.colors.hair2 }} />
             </View>
+            </>
+            )}
 
             {/* ── Basic Info ───────────────────────────────────── */}
             <Animated.View
@@ -1757,55 +1798,26 @@ export default function AddRecipeScreen() {
                 <Text style={sectionTitleStyle}>Tags</Text>
               </View>
 
-              {/* Auto-classified meal type chip */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 5,
-                  alignSelf: 'flex-start',
-                  paddingHorizontal: 11,
-                  paddingVertical: 6,
-                  borderRadius: 999,
-                  backgroundColor: '#E8ECDF',
-                  marginBottom: 12,
-                }}
-              >
-                <Tag size={11} color={designTokens.colors.brand} strokeWidth={2} />
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.semibold,
-                    fontSize: 11,
-                    letterSpacing: 0.55,
-                    textTransform: 'uppercase',
-                    color: designTokens.colors.brand,
-                  }}
-                >
-                  {classifiedMealType}
-                </Text>
-                <Check size={11} color={designTokens.colors.brand} strokeWidth={2.5} />
+              <View style={{ paddingHorizontal: 4 }}>
+                <TagPicker tags={tags} onChange={setTags} isDark={isDark} />
+                {!tags.some(isMealTypeTag) && (
+                  <Text
+                    style={{
+                      marginTop: 12,
+                      fontFamily: designTokens.font.regular,
+                      fontSize: 12,
+                      color: designTokens.colors.ink3,
+                      lineHeight: 17,
+                    }}
+                  >
+                    No meal type picked — we'll tag this as{' '}
+                    <Text style={{ fontFamily: designTokens.font.semibold, textTransform: 'capitalize' }}>
+                      {classifiedMealType}
+                    </Text>{' '}
+                    automatically.
+                  </Text>
+                )}
               </View>
-
-              <View style={fieldShellStyle}>
-                <TextInput
-                  value={tags}
-                  onChangeText={setTags}
-                  placeholder="e.g., healthy, quick, vegetarian"
-                  placeholderTextColor={designTokens.colors.ink3}
-                  style={fieldTextStyle}
-                />
-              </View>
-              <Text
-                style={{
-                  marginTop: 8,
-                  paddingHorizontal: 4,
-                  fontFamily: designTokens.font.regular,
-                  fontSize: 12,
-                  color: designTokens.colors.ink3,
-                }}
-              >
-                Separate with commas. The meal-type tag above is auto-detected.
-              </Text>
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>

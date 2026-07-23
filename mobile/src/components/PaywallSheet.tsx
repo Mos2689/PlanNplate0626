@@ -63,30 +63,30 @@ import { track } from '@/lib/analytics';
 type FeatureRow = { title: string; Icon: LucideIcon; free: string; premium: string };
 
 const FEATURES: FeatureRow[] = [
-  { title: 'Get inspired', Icon: Lightbulb, free: 'Unlimited', premium: 'Unlimited' },
-  { title: 'Get groceries', Icon: ShoppingBasket, free: 'Unlimited', premium: 'Unlimited' },
+  { title: 'Discover recipes', Icon: Lightbulb, free: 'Unlimited', premium: 'Unlimited' },
+  { title: 'Smart shopping lists', Icon: ShoppingBasket, free: 'Unlimited', premium: 'Unlimited' },
   {
-    title: 'Plan my meals',
+    title: 'Meal plans',
     Icon: CalendarHeart,
-    free: `${MONTHLY_FEATURE_LIMITS.planMeals} / month`,
+    free: `Up to ${MONTHLY_FEATURE_LIMITS.planMeals}`,
     premium: 'Unlimited',
   },
   {
-    title: 'Add recipe',
+    title: 'Save recipes',
     Icon: BookmarkPlus,
-    free: `${MONTHLY_FEATURE_LIMITS.addRecipe} / month`,
+    free: `Up to ${MONTHLY_FEATURE_LIMITS.addRecipe}`,
     premium: 'Unlimited',
   },
   {
-    title: 'Import recipe',
+    title: 'Import recipes',
     Icon: Download,
-    free: `${MONTHLY_FEATURE_LIMITS.importRecipe} / month`,
+    free: `Up to ${MONTHLY_FEATURE_LIMITS.importRecipe}`,
     premium: 'Unlimited',
   },
   {
-    title: 'Vibe cooking',
+    title: 'Smart Pantry meals',
     Icon: Soup,
-    free: `${MONTHLY_FEATURE_LIMITS.vibe} / month`,
+    free: `Up to ${MONTHLY_FEATURE_LIMITS.vibe}`,
     premium: 'Unlimited',
   },
 ];
@@ -155,7 +155,7 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
     track('paywall_dismissed', { trigger: trigger ?? 'unknown' });
     // Onboarding's only route forward is this sheet — skipping lands the user
     // on the home tab (gated actions re-fire the paywall later).
-    if (isOnboarding) router.replace('/(tabs)');
+    if (isOnboarding) router.replace('/(tabs)/recipes');
     closeSheet();
   }, [closeSheet, isOnboarding, router, trigger]);
 
@@ -210,7 +210,7 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
             text: 'Get Started',
             onPress: () => {
               closeSheet();
-              if (isOnboarding) router.replace('/(tabs)');
+              if (isOnboarding) router.replace('/(tabs)/recipes');
             },
           },
         ],

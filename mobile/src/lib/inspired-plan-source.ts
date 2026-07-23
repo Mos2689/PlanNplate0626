@@ -28,6 +28,13 @@ import { INSPIRED_RECIPES, type InspiredRecipe } from './inspired-recipe-library
 import type { GeneratedRecipeResponse, MealType } from './openai';
 import type { UserPreferences, Priority } from './store';
 import type { CuratedMatcher, CuratedTakeOptions } from './curated-recipe-source';
+import {
+  GroceryBasket,
+  buildSeedAnchors,
+  extractAnchors,
+  canonicalIngredient,
+  type RecipeAnchors,
+} from './grocery-optimization';
 
 // ── Static taxonomy helpers ─────────────────────────────────────────────────
 
@@ -338,6 +345,9 @@ function toGenerated(
   return {
     name: recipe.name,
     description: `${recipe.cuisine} · ${recipe.difficulty} · ${recipe.cookingTime}`,
+    // Curated identity → dedups against the same library recipe already saved
+    // (taste pick / bookmarked Get Inspired) when the plan places it.
+    sourceId: `inspired::${recipe.id}`,
     cookTime,
     prepTime,
     servings: factor !== 1 ? targetServings : recipe.servings,
@@ -370,6 +380,27 @@ export interface InspiredMatcherContext {
   boostCuisines?: string[];
   /** Their cooked meals skew quick — reward ≤30-min recipes. */
   preferQuick?: boolean;
+
+  // ── "Optimise groceries" (v1) ────────────────────────────────────────────
+  /**
+   * When true: cuisine scoring is dropped, and selection is driven by shared
+   * fresh produce/dairy overlap (within shelf-life windows), then anchor
+   * overlap, then cheap `costPerServe`, with a hard variety cap so the week
+   * doesn't collapse into seven near-identical dishes.
+   */
+  optimizeGrocery?: boolean;
+  /** Recipes (usually the user's selected favourites) that seed the overlap basket. */
+  optimizeSeedRecipes?: import("./grocery-optimization").IngredientBearer[];
+  /** Expected number of mains — sizes the variety caps. */
+  plannedMains?: number;
+
+  // ── Special Instructions (parsed) — apply regardless of optimise toggle ──
+  /** Hard-excluded ingredients/proteins (e.g. "no beef"). Canonicalised. */
+  excludeIngredients?: string[];
+  /** Soft-preferred ingredients (e.g. "more chicken"). */
+  includeIngredients?: string[];
+  /** Hard diet filters (match InspiredRecipe.dietary), e.g. "only vegetarian". */
+  dietFilters?: string[];
 }
 
 export function createInspiredMatcher(
@@ -417,6 +448,59 @@ export function createInspiredMatcher(
   );
   const behaviourPreferQuick = !!context.preferQuick;
 
+  // ── Optimise groceries + Special Instructions setup ──
+  const optimize = !!context.optimizeGrocery;
+  // Basket seeded from the favourites' weighted fresh/secondary anchors (empty
+  // when none selected — the greedy self-seeds from the first pick).
+  const basket = new GroceryBasket(
+    optimize && context.optimizeSeedRecipes?.length
+      ? buildSeedAnchors(context.optimizeSeedRecipes)
+      : undefined,
+  );
+  // Per-recipe anchor cache — extractAnchors is cheap but called a lot.
+  const anchorCache = new Map<string, RecipeAnchors>();
+  const anchorsOf = (r: InspiredRecipe): RecipeAnchors => {
+    let a = anchorCache.get(r.id);
+    if (!a) {
+      a = extractAnchors(r);
+      anchorCache.set(r.id, a);
+    }
+    return a;
+  };
+  // Monotonic pick counter — proxy for "day" so the basket's shelf-life window
+  // (measured in placements) reflects real fridge time. Mains dominate it.
+  let placeIndex = 0;
+  // Variety caps (optimise mode) — how many mains may share a cuisine / protein.
+  const plannedMains = context.plannedMains ?? 7;
+  const varietyCap = Math.max(2, Math.ceil(plannedMains / 3));
+  const cuisineUsed = new Map<string, number>();
+  const proteinUsed = new Map<string, number>();
+
+  // Special-instruction rules (apply whether or not optimise is on).
+  const excludeSet = new Set((context.excludeIngredients ?? []).map((s) => canonicalIngredient(s)));
+  const excludeRaw = (context.excludeIngredients ?? []).map((s) => s.toLowerCase());
+  const includeSet = new Set((context.includeIngredients ?? []).map((s) => canonicalIngredient(s)));
+  const instructionDiets = normList(context.dietFilters);
+
+  /** True if a recipe contains any hard-excluded food (ingredient or name). */
+  const hasExcluded = (r: InspiredRecipe): boolean => {
+    if (excludeSet.size === 0) return false;
+    for (const ing of r.ingredients) {
+      if (excludeSet.has(canonicalIngredient(ing.name))) return true;
+    }
+    const name = r.name.toLowerCase();
+    return excludeRaw.some((x) => name.includes(x));
+  };
+  /** Primary protein key for the variety cap — meat anchor, else name keyword. */
+  const proteinKey = (r: InspiredRecipe): string => {
+    const meat = r.ingredients.find((i) => i.category === 'meat');
+    if (meat) return canonicalIngredient(meat.name);
+    const veg = ['tofu', 'paneer', 'lentil', 'chickpea', 'bean', 'egg'].find((k) =>
+      r.name.toLowerCase().includes(k),
+    );
+    return veg ?? 'other';
+  };
+
   const usedNames = new Set<string>(); // handed-out this plan
 
   // Skill hard-allowed difficulties + preferred tier.
@@ -431,17 +515,19 @@ export function createInspiredMatcher(
     advanced: 3,
   };
 
-  // Dietary/allergen-passing pool per category (computed once).
+  // Dietary/allergen-passing pool per category (computed once). Now also honours
+  // the Special-Instructions HARD gates — parsed diet ("only vegetarian") and
+  // excluded foods ("no beef"). These are the guardrails that replaced the
+  // dropped diet preference, so they filter the pool before anything is scored.
+  const passesHardGates = (r: InspiredRecipe): boolean =>
+    satisfiesDietary(r, diets) &&
+    satisfiesDietary(r, instructionDiets) &&
+    isAllergenSafe(r, allergies) &&
+    !hasExcluded(r);
   const eligible: Record<PlanCategory, EnrichedRecord[]> = {
-    breakfast: RECORDS.breakfast.filter(
-      (r) => satisfiesDietary(r.recipe, diets) && isAllergenSafe(r.recipe, allergies),
-    ),
-    lunchdinner: RECORDS.lunchdinner.filter(
-      (r) => satisfiesDietary(r.recipe, diets) && isAllergenSafe(r.recipe, allergies),
-    ),
-    snack: RECORDS.snack.filter(
-      (r) => satisfiesDietary(r.recipe, diets) && isAllergenSafe(r.recipe, allergies),
-    ),
+    breakfast: RECORDS.breakfast.filter((r) => passesHardGates(r.recipe)),
+    lunchdinner: RECORDS.lunchdinner.filter((r) => passesHardGates(r.recipe)),
+    snack: RECORDS.snack.filter((r) => passesHardGates(r.recipe)),
   };
 
   // Diagnostic: how many onboarding taste picks reached this matcher and survived
@@ -477,6 +563,33 @@ export function createInspiredMatcher(
     // placed first; hard eligibility (diet/allergen/skill/time) is already
     // enforced in take() before scoring, so this never breaks a constraint.
     if (tasteIds.has(r.id)) s += 1_000_000;
+
+    // ── Optimise groceries: overlap-first scoring, cuisine dropped ──
+    if (optimize) {
+      const a = anchorsOf(r);
+      // 1. Shared fresh produce/dairy (within shelf-life window) — dominant.
+      s += basket.score(a, placeIndex) * 12_000;
+      // 2. Cheap main — grocery optimisation is budget-minded (chicken/lentils
+      //    beat salmon/prawn purely via costPerServe).
+      if (isMain) s += Math.max(0, 8 - r.costPerServe) * 1_500;
+      // 3. Special-instruction "more X" preference.
+      if (includeSet.size > 0) {
+        let hit = false;
+        for (const ing of r.ingredients) {
+          if (includeSet.has(canonicalIngredient(ing.name))) { hit = true; break; }
+        }
+        if (hit) s += 40_000;
+      }
+      if (isMain) {
+        // Keep skill + time bands (they still gate quality); cuisine is dropped.
+        const rank = DIFFICULTY_RANK[r.difficulty] ?? 1;
+        const pref = preferredTier[skill] ?? 2;
+        s += (10 - Math.abs(pref - rank)) * 2_000;
+        if (r.totalMinutes <= timeBase) s += 3_000;
+      }
+      s += Math.random() * 200;
+      return s;
+    }
 
     if (isMain) {
       // 2. Cuisine
@@ -583,6 +696,19 @@ export function createInspiredMatcher(
         const timed = pool.filter((r) => r.recipe.totalMinutes <= bandMax + 15);
         if (timed.length > 0) pool = timed;
       }
+
+      // Variety HARD cap (optimise mode) — refuse candidates whose cuisine or
+      // protein already hit the cap, so overlap can't collapse the week into
+      // seven identical curries. Gracefully relaxed if it would empty the pool
+      // (never leave a slot unfilled just to enforce variety).
+      if (optimize) {
+        const varied = pool.filter(
+          (r) =>
+            (cuisineUsed.get(r.recipe.cuisine.toLowerCase()) ?? 0) < varietyCap &&
+            (proteinUsed.get(proteinKey(r.recipe)) ?? 0) < varietyCap,
+        );
+        if (varied.length > 0) pool = varied;
+      }
     }
 
     // Pick the highest-scoring candidate.
@@ -601,6 +727,19 @@ export function createInspiredMatcher(
       console.log(`[BG-GEN] taste seed → placed "${best.recipe.name}" in ${mealType}`);
     }
     usedNames.add(best.recipe.name);
+
+    // Optimise mode: fold the placed recipe's anchors into the basket (so the
+    // next slot rewards overlap with it) and tick the variety counters.
+    if (optimize) {
+      basket.add(anchorsOf(best.recipe), placeIndex);
+      placeIndex++;
+      if (isMain) {
+        const cz = best.recipe.cuisine.toLowerCase();
+        cuisineUsed.set(cz, (cuisineUsed.get(cz) ?? 0) + 1);
+        const pk = proteinKey(best.recipe);
+        proteinUsed.set(pk, (proteinUsed.get(pk) ?? 0) + 1);
+      }
+    }
     return toGenerated(best.recipe, best.isNoCook, targetServings, mealType);
   }
 

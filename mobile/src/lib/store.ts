@@ -10,6 +10,7 @@ import { convertToBaseUnit, formatFromBaseUnit, canCombineIngredients, getCanoni
 import { getAverageWeightWithConfidence, shouldConvertCountToWeight, getContainerVolumeML, getLiquidDensityGPerMl } from './average-weight-lookup-au';
 import { validateIngredient, validateIngredients, splitCompoundIngredient } from './ingredient-validator';
 import { generateRecipesOptimized } from './optimized-recipe-generation';
+import type { InspiredRecipe } from './inspired-recipe-library';
 import { generateRecipeImage, type MealType, type GeneratedRecipeResponse } from './openai';
 import {
   computeTasteProfile as deriveTasteProfile,
@@ -459,6 +460,32 @@ export interface PlanningEvent {
   mealTypes: Array<'breakfast' | 'lunch' | 'dinner' | 'snack'>; // which meal slots the user filled
 }
 
+// A user-created recipe collection (Recipes tab → "My Collections").
+// PREMIUM-ONLY: creation is gated in the UI; the store itself is agnostic so
+// an expired subscriber keeps read access to what they already built.
+// Membership is explicit (`recipeIds`) — unlike the built-in smart
+// collections (All / Favorites / Recently Cooked / Recently Added), which are
+// derived at render time and never stored.
+export interface RecipeCollection {
+  id: string;
+  name: string;
+  color: string;              // one of COLLECTION_COLORS (card tint)
+  coverRecipeId?: string;     // manual cover; else first member with an image
+  sortOrder: number;
+  createdAt: string;
+  recipeIds: string[];        // insertion order = display order
+}
+
+/** Card tints offered when creating a collection (light-mode values). */
+export const COLLECTION_COLORS = [
+  '#E7F0DE', // sage
+  '#FBEEDC', // peach
+  '#EDE9F5', // lavender
+  '#DCEBF0', // sky
+  '#FAE3E3', // rose
+  '#EDEDE3', // stone
+] as const;
+
 // Ephemeral state describing an in-flight background generation job.
 // Drives the top-of-tab "Crafting your week" progress banner. NOT
 // persisted — if the app is killed mid-generation, the partial slots
@@ -575,15 +602,30 @@ export function servingSizeFromHousehold(household: Household | undefined): numb
 export type MonthlyFeature = 'planMeals' | 'addRecipe' | 'importRecipe' | 'vibe' | 'speakGrocery';
 
 export const MONTHLY_FEATURE_LIMITS: Record<MonthlyFeature, number> = {
-  planMeals: 5,
+  planMeals: 10,
   addRecipe: 10,
   importRecipe: 10,
-  vibe: 5,
+  vibe: 10,
   // Voice grocery entry: 5 SUCCESSFUL speak attempts per month (each attempt may
   // contain any number of items). Typing has no limit. Not shown on the paywall
   // feature list — exceeding it just pops the paywall with a contextual note.
   speakGrocery: 5,
 };
+
+// Free-tier features whose allowance is a LIFETIME total that NEVER resets —
+// once used up, the user must upgrade. Everything NOT listed here (currently
+// only `speakGrocery`) keeps the per-calendar-month reset. Counts for lifetime
+// features are stored in `preferences.lifetimeFeatureUsage` (no period), so a
+// month rollover can't wipe them.
+export const LIFETIME_FEATURES: readonly MonthlyFeature[] = [
+  'planMeals',
+  'addRecipe',
+  'importRecipe',
+  'vibe',
+];
+export function isLifetimeFeature(feature: MonthlyFeature): boolean {
+  return LIFETIME_FEATURES.includes(feature);
+}
 
 // Calendar-month key, e.g. "2026-06". Usage counters reset when this changes.
 export function currentMonthKey(date: Date = new Date()): string {
@@ -651,12 +693,17 @@ export interface UserPreferences {
   freeVibeUsed?: number;
 
   // ── Monthly feature usage (paywall limits) ──
-  // Per-calendar-month usage counters for the gated features. `period` is the
-  // month key ("YYYY-MM"); when the current month differs, the counts are
-  // treated as 0 (a fresh month). See MONTHLY_FEATURE_LIMITS.
+  // Per-calendar-month usage counters for the MONTHLY gated features. `period`
+  // is the month key ("YYYY-MM"); when the current month differs, the counts
+  // are treated as 0 (a fresh month). See MONTHLY_FEATURE_LIMITS.
   monthlyFeatureUsage?: {
     period: string;
   } & Partial<Record<MonthlyFeature, number>>;
+
+  // ── Lifetime feature usage (paywall limits) ──
+  // Cumulative usage counters for LIFETIME_FEATURES — no period, never reset.
+  // Once a feature reaches MONTHLY_FEATURE_LIMITS, the free user must upgrade.
+  lifetimeFeatureUsage?: Partial<Record<MonthlyFeature, number>>;
 
   // ── Review-prompt signal ──
   // Lifetime count of successfully completed plan generations. Used to fire the
@@ -797,6 +844,16 @@ interface MealPlanStore {
   planningEvents: PlanningEvent[];        // append-only, capped at 100
   logPlanningEvent: (e: Omit<PlanningEvent, 'id'>) => void;
 
+  // ───── Recipe collections (Premium) ─────
+  collections: RecipeCollection[];
+  createCollection: (name: string, color?: string) => string;
+  renameCollection: (id: string, name: string) => void;
+  deleteCollection: (id: string) => void;
+  /** Adds when absent, removes when present. Returns the new membership. */
+  toggleRecipeInCollection: (collectionId: string, recipeId: string) => boolean;
+  addRecipesToCollection: (collectionId: string, recipeIds: string[]) => void;
+  removeRecipeFromCollection: (collectionId: string, recipeId: string) => void;
+
   // ───── Background generation state ─────
   pendingGeneration: PendingGenerationState | null;
   startBackgroundGeneration: (params: {
@@ -836,6 +893,15 @@ interface MealPlanStore {
     // structured params + validation (not just the prompt text). Empty/undefined
     // → identical to using the saved profile.
     overrides?: Partial<UserPreferences>;
+    // ── Optimise groceries (v1) ──
+    // When true, the curated matcher selects for shared fresh produce/dairy
+    // (waste-minimising) instead of cuisine, seeded from `optimizeSeedRecipes`
+    // (the user's chosen favourites). `specialInstructions` carries the parsed
+    // free-text rules — hard excludes/diets + soft includes — which apply
+    // regardless of the toggle.
+    optimizeGrocery?: boolean;
+    optimizeSeedRecipes?: import("./grocery-optimization").IngredientBearer[];
+    specialInstructions?: { exclude: string[]; include: string[]; diets: string[] };
   }) => void;
   // User-initiated cancel of an in-flight plan generation. Stops the engine
   // cooperatively (no more recipes are placed) and clears the progress banner.
@@ -1269,6 +1335,9 @@ export const useMealPlanStore = create<MealPlanStore>()(
       // ───── Behavior Intelligence state ─────
       planningEvents: [],
 
+      // ───── Recipe collections (Premium) ─────
+      collections: [],
+
       // ───── Background generation state ─────
       pendingGeneration: null,
 
@@ -1315,6 +1384,130 @@ export const useMealPlanStore = create<MealPlanStore>()(
       },
 
       // ─────────────────────────────────────────────────────────────────
+      // Recipe collections (Premium). Optimistic local write, then a
+      // fire-and-forget Supabase sync — same shape as the nudge writers
+      // above. The premium gate lives in the UI so an expired subscriber
+      // never loses read access to collections they already built.
+      // ─────────────────────────────────────────────────────────────────
+      createCollection: (name, color) => {
+        const id = uuidv4();
+        const collection: RecipeCollection = {
+          id,
+          name: name.trim(),
+          color: color ?? COLLECTION_COLORS[0],
+          sortOrder: get().collections.length,
+          createdAt: new Date().toISOString(),
+          recipeIds: [],
+        };
+        set((state) => ({ collections: [...state.collections, collection] }));
+        const userId = getCurrentUserId();
+        if (userId) {
+          const { recipeIds, ...row } = collection;
+          db.upsertCollection(userId, row).catch((err) =>
+            console.warn('[COLLECTIONS] Failed to sync new collection:', err)
+          );
+        }
+        return id;
+      },
+
+      renameCollection: (id, name) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        set((state) => ({
+          collections: state.collections.map((c) =>
+            c.id === id ? { ...c, name: trimmed } : c
+          ),
+        }));
+        const userId = getCurrentUserId();
+        const updated = get().collections.find((c) => c.id === id);
+        if (userId && updated) {
+          const { recipeIds, ...row } = updated;
+          db.upsertCollection(userId, row).catch((err) =>
+            console.warn('[COLLECTIONS] Failed to sync rename:', err)
+          );
+        }
+      },
+
+      deleteCollection: (id) => {
+        set((state) => ({
+          collections: state.collections.filter((c) => c.id !== id),
+        }));
+        const userId = getCurrentUserId();
+        if (userId) {
+          db.deleteCollection(userId, id).catch((err) =>
+            console.warn('[COLLECTIONS] Failed to sync delete:', err)
+          );
+        }
+      },
+
+      toggleRecipeInCollection: (collectionId, recipeId) => {
+        const existing = get().collections.find((c) => c.id === collectionId);
+        const isMember = !!existing?.recipeIds.includes(recipeId);
+        set((state) => ({
+          collections: state.collections.map((c) =>
+            c.id === collectionId
+              ? {
+                  ...c,
+                  recipeIds: isMember
+                    ? c.recipeIds.filter((r) => r !== recipeId)
+                    : [...c.recipeIds, recipeId],
+                }
+              : c
+          ),
+        }));
+        const userId = getCurrentUserId();
+        if (userId) {
+          const op = isMember
+            ? db.removeRecipeFromCollection(userId, collectionId, recipeId)
+            : db.addRecipesToCollection(userId, collectionId, [recipeId]);
+          op.catch((err) =>
+            console.warn('[COLLECTIONS] Failed to sync membership:', err)
+          );
+        }
+        return !isMember;
+      },
+
+      addRecipesToCollection: (collectionId, recipeIds) => {
+        if (recipeIds.length === 0) return;
+        set((state) => ({
+          collections: state.collections.map((c) =>
+            c.id === collectionId
+              ? {
+                  ...c,
+                  // Preserve existing order; append only what's new.
+                  recipeIds: [
+                    ...c.recipeIds,
+                    ...recipeIds.filter((r) => !c.recipeIds.includes(r)),
+                  ],
+                }
+              : c
+          ),
+        }));
+        const userId = getCurrentUserId();
+        if (userId) {
+          db.addRecipesToCollection(userId, collectionId, recipeIds).catch((err) =>
+            console.warn('[COLLECTIONS] Failed to sync bulk add:', err)
+          );
+        }
+      },
+
+      removeRecipeFromCollection: (collectionId, recipeId) => {
+        set((state) => ({
+          collections: state.collections.map((c) =>
+            c.id === collectionId
+              ? { ...c, recipeIds: c.recipeIds.filter((r) => r !== recipeId) }
+              : c
+          ),
+        }));
+        const userId = getCurrentUserId();
+        if (userId) {
+          db.removeRecipeFromCollection(userId, collectionId, recipeId).catch((err) =>
+            console.warn('[COLLECTIONS] Failed to sync removal:', err)
+          );
+        }
+      },
+
+      // ─────────────────────────────────────────────────────────────────
       // Background recipe generation — fire-and-forget.
       //
       // Lifts the heavy lifting that used to live inline in
@@ -1343,7 +1536,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
         console.log('[BG-GEN] Generation cancelled by user.');
       },
 
-      startBackgroundGeneration: ({ selectedMealTypes, days, enrichedInstructions, startDate: startDateParam, mealHabits: planMealHabits, presetFavoriteIds, cookStyle, batch: batchConfig, overrides: planOverrides }) => {
+      startBackgroundGeneration: ({ selectedMealTypes, days, enrichedInstructions, startDate: startDateParam, mealHabits: planMealHabits, presetFavoriteIds, cookStyle, batch: batchConfig, overrides: planOverrides, optimizeGrocery: planOptimizeGrocery, optimizeSeedRecipes: planSeedRecipes, specialInstructions: planSpecialInstructions }) => {
         // Guard: never let two generations run concurrently. The screen
         // disables its CTA when pendingGeneration.active is true, but
         // double-guard here in case anything slips through.
@@ -1535,7 +1728,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
               instructions: r.instructions,
               tags: [...(r.tags || []), mealType],
               calories: r.calories,
-              isAIGenerated: true,
+              // Curated library picks carry a sourceId → stamp curatedSourceId
+              // (so they dedup against a saved taste pick / bookmarked recipe)
+              // and are NOT AI-generated. Genuine OpenAI recipes lack sourceId.
+              isAIGenerated: !r.sourceId,
+              ...(r.sourceId ? { curatedSourceId: r.sourceId } : {}),
               isSaved: false,
               createdAt: new Date().toISOString(),
             };
@@ -1793,6 +1990,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
                         avoidCuisines: behaviourSignals.avoidCuisines,
                         avoidRecipeNames: behaviourSignals.avoidDishNames,
                         preferQuick: behaviourSignals.preferQuick,
+                        optimizeGroceryOverlap: planOptimizeGrocery,
+                        optimizeSeedRecipes: planSeedRecipes,
+                        excludeIngredients: planSpecialInstructions?.exclude,
+                        includeIngredients: planSpecialInstructions?.include,
+                        dietFilters: planSpecialInstructions?.diets,
                         shouldCancel: () => generationCancelRequested,
                       },
                       {
@@ -1844,7 +2046,10 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   instructions: r.instructions,
                   tags: [...(r.tags || []), slotMealType],
                   calories: r.calories,
-                  isAIGenerated: true,
+                  // Curated picks (with sourceId) dedup against the library and
+                  // aren't AI — see the daily path above.
+                  isAIGenerated: !r.sourceId,
+                  ...(r.sourceId ? { curatedSourceId: r.sourceId } : {}),
                   isSaved: false,
                   createdAt: new Date().toISOString(),
                 };
@@ -2013,6 +2218,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 avoidCuisines: behaviourSignals.avoidCuisines,
                 avoidRecipeNames: behaviourSignals.avoidDishNames,
                 preferQuick: behaviourSignals.preferQuick,
+                optimizeGroceryOverlap: planOptimizeGrocery,
+                optimizeSeedRecipes: planSeedRecipes,
+                excludeIngredients: planSpecialInstructions?.exclude,
+                includeIngredients: planSpecialInstructions?.include,
+                dietFilters: planSpecialInstructions?.diets,
                 shouldCancel: () => generationCancelRequested,
               },
               {
@@ -2500,6 +2710,10 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
       // ── Monthly feature usage (paywall limits) ──
       getMonthlyFeatureCount: (feature) => {
+        // Lifetime features read from a non-resetting bucket.
+        if (isLifetimeFeature(feature)) {
+          return get().preferences.lifetimeFeatureUsage?.[feature] ?? 0;
+        }
         const usage = get().preferences.monthlyFeatureUsage;
         const period = currentMonthKey();
         if (!usage || usage.period !== period) return 0;
@@ -2508,6 +2722,19 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
       recordMonthlyFeatureUse: (feature) => {
         set((state) => {
+          // Lifetime features accumulate forever — no period, never reset.
+          if (isLifetimeFeature(feature)) {
+            const cur = state.preferences.lifetimeFeatureUsage ?? {};
+            return {
+              preferences: {
+                ...state.preferences,
+                lifetimeFeatureUsage: {
+                  ...cur,
+                  [feature]: (cur[feature] ?? 0) + 1,
+                },
+              },
+            };
+          }
           const period = currentMonthKey();
           const cur = state.preferences.monthlyFeatureUsage;
           // Start a fresh bucket when the stored period is a previous month
@@ -3826,7 +4053,10 @@ export const useMealPlanStore = create<MealPlanStore>()(
             id: generateGroceryItemId(), // Generate new IDs for editing
             // Keep the isChecked state from the saved list
             isChecked: item.isChecked || false,
-            recipeIds: [],
+            // Preserve which recipes each item came from so the saved-list
+            // view can show the "Used in N recipes" tag, same as the live
+            // grocery list. (Provenance only — used for the count.)
+            recipeIds: item.recipeIds ?? [],
           })),
         });
 
@@ -4034,10 +4264,16 @@ export const useMealPlanStore = create<MealPlanStore>()(
           console.log('[STORE] Fetching user data from database...');
           const data = await db.fetchAllUserData(userId);
           const savedGroceryLists = await db.fetchUserSavedGroceryLists(userId);
-          const [remoteCookingLogs, remoteRecipeRatings, remotePlanningEvents] = await Promise.all([
+          const [
+            remoteCookingLogs,
+            remoteRecipeRatings,
+            remotePlanningEvents,
+            remoteCollections,
+          ] = await Promise.all([
             db.fetchCookingLogs(userId).catch(() => []),
             db.fetchRecipeRatings(userId).catch(() => []),
             db.fetchPlanningEvents(userId).catch(() => [] as PlanningEvent[]),
+            db.fetchCollections(userId).catch(() => [] as db.RecipeCollectionRow[]),
           ]);
 
           console.log('[STORE] Data fetched:', {
@@ -4103,6 +4339,33 @@ export const useMealPlanStore = create<MealPlanStore>()(
             );
             return all.length > 100 ? all.slice(all.length - 100) : all;
           })();
+          // Collections: remote is authoritative for rows the server knows
+          // about; locally-created ones not yet synced are appended so an
+          // offline create survives the next cold start.
+          const mergedCollections = (() => {
+            const byId = new Map<string, RecipeCollection>(
+              remoteCollections.map((c) => [
+                c.id,
+                {
+                  id: c.id,
+                  name: c.name,
+                  color: c.color,
+                  coverRecipeId: c.coverRecipeId ?? undefined,
+                  sortOrder: c.sortOrder,
+                  createdAt: c.createdAt,
+                  recipeIds: c.recipeIds,
+                },
+              ]),
+            );
+            for (const local of localState.collections || []) {
+              if (!byId.has(local.id)) byId.set(local.id, local);
+            }
+            return Array.from(byId.values()).sort(
+              (a, b) =>
+                a.sortOrder - b.sortOrder ||
+                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+            );
+          })();
 
           // Fold locally-persisted free-credit counters back into the DB
           // payload. Both `freePlanBuildsUsed` and `freeGroceryBuildsUsed`
@@ -4124,6 +4387,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 // would zero the month's counts and hand out fresh allowances.
                 monthlyFeatureUsage:
                   data.preferences.monthlyFeatureUsage ?? localPrefs.monthlyFeatureUsage,
+                // Lifetime paywall-limit usage (never resets) — same fold-back
+                // so a rehydrate can't wipe the cumulative counts and re-grant
+                // the free allowance.
+                lifetimeFeatureUsage:
+                  data.preferences.lifetimeFeatureUsage ?? localPrefs.lifetimeFeatureUsage,
                 // Completed-plan counter (drives the review prompt) — keep the
                 // higher of remote/local so a sync can't rewind it.
                 plansCompletedCount: Math.max(
@@ -4159,6 +4427,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
             cookingLogs: mergedLogs,
             recipeRatings: mergedRatings,
             planningEvents: mergedPlanningEvents,
+            collections: mergedCollections,
             isSyncing: false,
           });
 
@@ -4197,6 +4466,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
           nudgeDismissals: {},
           lastWeeklyPromptAt: null,
           planningEvents: [],
+          collections: [],
           pendingGeneration: null,
         });
       },
@@ -4218,6 +4488,8 @@ export const useMealPlanStore = create<MealPlanStore>()(
         lastWeeklyPromptAt: state.lastWeeklyPromptAt,
         // Behavior Intelligence — offline-first, also synced to Supabase
         planningEvents: state.planningEvents,
+        // Recipe collections — offline-first, also synced to Supabase
+        collections: state.collections,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);

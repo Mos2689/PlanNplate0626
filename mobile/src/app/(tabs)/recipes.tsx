@@ -2,28 +2,35 @@
 // (Geist + Instrument Serif italic, sage #546445, terracotta #E46D46, hair borders).
 // Visual-only redesign — every store read, callback, route, and side effect
 // from the previous implementation is preserved.
-import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, FlatList } from 'react-native';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, FlatList, Modal, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   Search,
   Plus,
+  Mic,
+  Camera,
+  Share2,
+  Keyboard as KeyboardIcon,
   Clock,
   Flame,
   Heart,
   ChefHat,
   CookingPot,
   X,
-  Download,
   Link as LinkIcon,
   Users,
   Copy,
-  ChevronDown,
   CalendarPlus,
   Globe,
   Pencil,
+  Bookmark as BookmarkIcon,
+  Trash2,
+  BookOpen,
+  ArrowRight,
 } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
@@ -38,19 +45,58 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import { useMealPlanStore, type Recipe } from '@/lib/store';
+import { useHasPremiumAccess, useSubscriptionStore } from '@/lib/subscription-store';
 import { useColorScheme } from '@/lib/useColorScheme';
-import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
+import { designTokens, getThemeColors, serifItalicFontStyle, elevation } from '@/lib/design-tokens';
 import { t } from '@/lib/platform-tokens';
 import { CURATED_MEAL_PLANS } from '@/lib/curated-meal-plans';
+import { FILTER_CATEGORIES } from '@/lib/recipe-categories';
+import { isDefaultRecipeImage } from '@/lib/recipe-image';
 import { DuplicateRecipeModal, findDuplicateGroups } from '@/components/DuplicateRecipeModal';
+import { NewCollectionModal } from '@/components/NewCollectionModal';
+import { SaveToCollectionSheet } from '@/components/SaveToCollectionSheet';
+import { CollectionRecipePicker } from '@/components/CollectionRecipePicker';
 
-const CATEGORIES = [
-  { key: 'all', label: 'All' },
-  { key: 'breakfast', label: 'Breakfast' },
-  { key: 'lunch', label: 'Lunch' },
-  { key: 'dinner', label: 'Dinner' },
-  { key: 'snack', label: 'Snack' },
-] as const;
+// Filter chips mirror the "Get Inspired" classification. The taxonomy lives
+// in src/lib/recipe-categories.ts so the TagPicker writes tags the filter
+// recognises.
+const CATEGORIES = FILTER_CATEGORIES;
+
+// ── My Collections — the saved-recipe lenses shown at the top of the tab.
+// Selecting one drives what the "All recipes" grid below shows.
+//
+// Two kinds: the four built-in SMART collections below (membership derived at
+// render time, never stored) and user-created CUSTOM collections (explicit
+// `recipeIds`, Premium-only, synced to Supabase). A selection is either a
+// smart id or `custom:<uuid>`.
+type SmartCollectionId = 'all' | 'favorites' | 'cooked' | 'added';
+type CollectionId = SmartCollectionId | `custom:${string}`;
+
+const customSelection = (id: string): CollectionId => `custom:${id}`;
+const customIdOf = (sel: CollectionId): string | null =>
+  sel.startsWith('custom:') ? sel.slice('custom:'.length) : null;
+
+/** "Recently Added" window — recipes saved within this many days. */
+const RECENTLY_ADDED_DAYS = 30;
+
+// TEMPORARILY OFF FOR TESTING. Collections are a Premium feature — flip this
+// back to `true` to re-enable the paywall on every entry point (the New
+// Collection card, the save sheet, and the bulk picker).
+const COLLECTIONS_GATED = false;
+
+const COLLECTIONS: {
+  id: SmartCollectionId;
+  title: string;
+  Icon: React.ComponentType<any>;
+  bg: string;
+  bgDark: string;
+  fg: string;
+}[] = [
+  { id: 'all', title: 'All Recipes', Icon: CookingPot, bg: '#EDEDE3', bgDark: '#26261f', fg: '#5F6B4E' },
+  { id: 'favorites', title: 'Favorites', Icon: Heart, bg: '#E7F0DE', bgDark: '#20291b', fg: '#4F6B33' },
+  { id: 'cooked', title: 'Recently Cooked', Icon: Flame, bg: '#FBEEDC', bgDark: '#332b1a', fg: '#C0803A' },
+  { id: 'added', title: 'Recently Added', Icon: Clock, bg: '#EDE9F5', bgDark: '#26232f', fg: '#6E5FA6' },
+];
 
 // Pre-built reverse map: sourceId override (e.g. "R7-leftover") → plan name.
 // Covers sub-plan recipes that use a short sourceId instead of "planId::slug".
@@ -66,35 +112,40 @@ const CURATED_OVERRIDE_TO_PLAN_NAME = (() => {
 })();
 
 // ── Source badge ──────────────────────────────────────────────────────
-function SourceBadge({ recipe }: { recipe: Recipe }) {
+// `overlay` renders a solid dark chip with white text, legible over a photo.
+function SourceBadge({ recipe, overlay = false }: { recipe: Recipe; overlay?: boolean }) {
   let label: string;
-  let textColor: string;
-  let bgColor: string;
-  let icon: React.ReactNode = null;
+  let tint: string;
+  let bgTint: string;
+  let IconComp: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
   if (recipe.isAIGenerated) {
     label = 'PnP';
-    textColor = designTokens.colors.brand;
-    bgColor = 'rgba(84,100,69,0.10)';
-    icon = <ChefHat size={9} color={textColor} strokeWidth={2} />;
+    tint = designTokens.colors.brand;
+    bgTint = 'rgba(84,100,69,0.10)';
+    IconComp = ChefHat;
   } else if (recipe.isImported) {
     label = 'Social';
-    textColor = '#5B7FA6';
-    bgColor = 'rgba(91,127,166,0.10)';
-    icon = <Globe size={9} color={textColor} strokeWidth={2} />;
+    tint = '#5B7FA6';
+    bgTint = 'rgba(91,127,166,0.10)';
+    IconComp = Globe;
   } else if (recipe.curatedSourceId) {
     const planId = recipe.curatedSourceId.split('::')[0];
     const plan = CURATED_MEAL_PLANS.find((p) => p.id === planId);
     label = plan?.name ?? CURATED_OVERRIDE_TO_PLAN_NAME.get(recipe.curatedSourceId) ?? 'Curated';
-    textColor = designTokens.colors.brand;
-    bgColor = 'rgba(84,100,69,0.10)';
-    icon = <CookingPot size={9} color={textColor} strokeWidth={2} />;
+    tint = designTokens.colors.brand;
+    bgTint = 'rgba(84,100,69,0.10)';
+    IconComp = CookingPot;
   } else {
     label = 'By You';
-    textColor = designTokens.colors.ink2;
-    bgColor = designTokens.colors.hair2;
-    icon = <Pencil size={9} color={textColor} strokeWidth={2} />;
+    tint = designTokens.colors.ink2;
+    bgTint = designTokens.colors.hair2;
+    IconComp = Pencil;
   }
+
+  const textColor = overlay ? '#FFFFFF' : tint;
+  const bgColor = overlay ? 'rgba(0,0,0,0.55)' : bgTint;
+
   return (
     <View
       style={{
@@ -109,7 +160,7 @@ function SourceBadge({ recipe }: { recipe: Recipe }) {
         minWidth: 0,
       }}
     >
-      {icon}
+      <IconComp size={9} color={textColor} strokeWidth={2} />
       <Text
         numberOfLines={1}
         ellipsizeMode="tail"
@@ -162,212 +213,302 @@ function RecipeRow({ recipe, onPress, onToggleSave, onAddToPlan, isDark, index }
   }, [recipe.sourceUrl]);
 
   const totalMin = (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);
+  const metaParts: string[] = [];
+  if (totalMin > 0) metaParts.push(`${totalMin} min`);
+  if (recipe.calories) metaParts.push(`${recipe.calories} cal`);
+  if (recipe.servings) metaParts.push(`${recipe.servings} ${recipe.servings === 1 ? 'serve' : 'serves'}`);
+
+  const roundBtn = {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.34)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  };
 
   return (
     <Animated.View
       entering={FadeInUp.delay(Math.min(index * 80, 400)).springify()}
       layout={Layout.springify()}
-      style={{ marginBottom: 10 }}
+      style={{ marginBottom: 14 }}
     >
       <Pressable
         onPress={onPress}
         style={{
-          flexDirection: 'row',
-          gap: 12,
-          padding: 10,
-          borderRadius: 18,
+          borderRadius: 20,
+          overflow: 'hidden',
           borderWidth: 1,
           borderColor: colors.hair,
           backgroundColor: colors.bg,
         }}
       >
-        <Image
-          source={{ uri: recipe.imageUrl }}
-          style={{
-            width: 84,
-            height: 84,
-            borderRadius: 12,
-            backgroundColor: '#F4F0E8',
-            flexShrink: 0,
-          }}
-          contentFit="cover"
-          transition={150}
-        />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          {/* Top row: title + (optional link) + heart */}
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-              gap: 8,
-            }}
-          >
+        <View style={{ position: 'relative' }}>
+          <Image
+            source={{ uri: recipe.imageUrl }}
+            style={{ width: '100%', aspectRatio: 1.55, backgroundColor: '#F4F0E8' }}
+            contentFit="cover"
+            transition={150}
+          />
+
+          {/* Legibility gradients — subtle at top (badges/heart), strong at bottom (text). */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.32)', 'transparent']}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 72 }}
+            pointerEvents="none"
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.80)']}
+            locations={[0, 0.45, 1]}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: '32%' }}
+            pointerEvents="none"
+          />
+
+          {/* Top-left: source chip */}
+          <View style={{ position: 'absolute', top: 12, left: 12, flexDirection: 'row', maxWidth: '62%' }}>
+            <SourceBadge recipe={recipe} overlay />
+          </View>
+
+          {/* Top-right: favourite (+ optional source link) */}
+          <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 8 }}>
+            {recipe.sourceUrl ? (
+              <Pressable onPress={handleLinkPress} hitSlop={8} style={roundBtn}>
+                <LinkIcon size={15} color="#FFFFFF" strokeWidth={2} />
+              </Pressable>
+            ) : null}
+            <Pressable onPress={handleSavePress} hitSlop={8} style={roundBtn}>
+              <Heart
+                size={17}
+                color={recipe.isSaved ? designTokens.colors.olive : '#FFFFFF'}
+                fill={recipe.isSaved ? designTokens.colors.olive : 'transparent'}
+                strokeWidth={2}
+              />
+            </Pressable>
+          </View>
+
+          {/* Bottom-left: name + meta, overlaid on the photo */}
+          <View style={{ position: 'absolute', left: 16, right: 74, bottom: 16 }}>
             <Text
+              numberOfLines={2}
               style={{
-                fontFamily: designTokens.font.medium,
-                fontSize: 15,
-                color: colors.ink,
-                letterSpacing: -0.15,
-                lineHeight: 19,
-                flex: 1,
-                minWidth: 0,
+                fontFamily: designTokens.font.semibold,
+                fontSize: 18,
+                lineHeight: 22,
+                color: '#FFFFFF',
+                letterSpacing: -0.3,
               }}
-              numberOfLines={1}
             >
               {recipe.name}
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              {recipe.sourceUrl ? (
-                <Pressable
-                  onPress={handleLinkPress}
-                  hitSlop={8}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <LinkIcon size={14} color={designTokens.colors.ink2} strokeWidth={1.7} />
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={handleSavePress}
-                hitSlop={8}
+            {metaParts.length > 0 && (
+              <Text
                 style={{
-                  width: 24,
-                  height: 24,
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  marginTop: 6,
+                  fontFamily: designTokens.font.regular,
+                  fontSize: 12.5,
+                  color: 'rgba(255,255,255,0.92)',
                 }}
               >
-                <Heart
-                  size={17}
-                  color={recipe.isSaved ? designTokens.colors.olive : designTokens.colors.ink3}
-                  fill={recipe.isSaved ? designTokens.colors.olive : 'transparent'}
-                  strokeWidth={1.7}
-                />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Meta row */}
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              marginTop: 8,
-              flexWrap: 'wrap',
-            }}
-          >
-            {totalMin > 0 && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Clock size={11} color={designTokens.colors.ink2} strokeWidth={1.8} />
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 12,
-                    color: colors.ink2,
-                  }}
-                >
-                  {totalMin} min
-                </Text>
-              </View>
+                {metaParts.join('  ·  ')}
+              </Text>
             )}
-            {recipe.calories ? (
-              <>
-                <View
-                  style={{
-                    width: 2,
-                    height: 2,
-                    borderRadius: 999,
-                    backgroundColor: designTokens.colors.ink3,
-                  }}
-                />
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Flame size={11} color={designTokens.colors.ink2} strokeWidth={1.8} />
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 12,
-                      color: colors.ink2,
-                    }}
-                  >
-                    {recipe.calories} cal
-                  </Text>
-                </View>
-              </>
-            ) : null}
-            {recipe.servings ? (
-              <>
-                <View
-                  style={{
-                    width: 2,
-                    height: 2,
-                    borderRadius: 999,
-                    backgroundColor: designTokens.colors.ink3,
-                  }}
-                />
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Users size={11} color={designTokens.colors.ink2} strokeWidth={1.8} />
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 12,
-                      color: colors.ink2,
-                    }}
-                  >
-                    {recipe.servings}
-                  </Text>
-                </View>
-              </>
-            ) : null}
           </View>
 
-          {/* Footer: source badge + Add to plan */}
-          <View
+          {/* Bottom-right: + add to plan */}
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              onAddToPlan();
+            }}
+            hitSlop={8}
             style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
+              position: 'absolute',
+              right: 14,
+              bottom: 14,
+              width: 46,
+              height: 46,
+              borderRadius: 15,
+              backgroundColor: designTokens.colors.brand,
               alignItems: 'center',
-              gap: 8,
-              marginTop: 8,
+              justifyContent: 'center',
+              ...elevation.card,
             }}
           >
-            <SourceBadge recipe={recipe} />
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                onAddToPlan();
-              }}
-              hitSlop={6}
+            <Plus size={24} color={designTokens.colors.cream} strokeWidth={2.6} />
+          </Pressable>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ── RecipeGridCard — 2-up visual grid tile (image + overlaid name/meta) ──
+const GRID_CARD_W = (Dimensions.get('window').width - 40 - 12) / 2; // 20px pad ×2 + 12px gap
+
+interface RecipeGridCardProps {
+  recipe: Recipe;
+  onPress: () => void;
+  onToggleSave: () => void;
+  /** Quick-add → opens the add-to-meal-plan picker without opening the recipe. */
+  onAddToPlan: () => void;
+  /** Long-press → "Save to collection" sheet. */
+  onLongPress?: () => void;
+  isDark: boolean;
+  index: number;
+}
+
+function RecipeGridCard({
+  recipe,
+  onPress,
+  onToggleSave,
+  onAddToPlan,
+  onLongPress,
+  isDark,
+  index,
+}: RecipeGridCardProps) {
+  const colors = getThemeColors(isDark);
+  const totalMin = (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);
+  const meta: string[] = [];
+  if (totalMin > 0) meta.push(`${totalMin} min`);
+  if (recipe.calories) meta.push(`${recipe.calories} cal`);
+  const handleSave = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onToggleSave();
+  };
+  return (
+    <Animated.View
+      entering={FadeInUp.delay(Math.min(index * 60, 400)).springify()}
+      layout={Layout.springify()}
+      style={{ width: GRID_CARD_W, marginBottom: 12 }}
+    >
+      <Pressable
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={350}
+        style={{
+          borderRadius: 16,
+          overflow: 'hidden',
+          borderWidth: 1,
+          borderColor: colors.hair,
+          backgroundColor: colors.bg,
+        }}
+      >
+        <View style={{ position: 'relative' }}>
+          <Image
+            source={{ uri: recipe.imageUrl }}
+            style={{ width: '100%', aspectRatio: 1, backgroundColor: '#F4F0E8' }}
+            contentFit="cover"
+            transition={150}
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.78)']}
+            locations={[0.4, 1]}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: '38%' }}
+            pointerEvents="none"
+          />
+          {/* Default-image nudge — label only, shown on the stock placeholder
+              photo (never a real photo). Tapping the card opens the recipe
+              where the photo can be updated. */}
+          {isDefaultRecipeImage(recipe.imageUrl) && (
+            <View
+              pointerEvents="none"
               style={{
+                position: 'absolute',
+                top: 8,
+                left: 8,
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 5,
-                paddingHorizontal: 11,
-                paddingVertical: 6,
+                gap: 4,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
                 borderRadius: 999,
-                flexShrink: 0,
-                // Theme-aware so the pill stays readable in dark mode
-                // (was static `hair2` cream, which left white text invisible).
-                backgroundColor: colors.pill,
+                backgroundColor: designTokens.colors.brand,
               }}
             >
-              <CalendarPlus size={13} color={colors.ink} strokeWidth={1.8} />
+              <Camera size={11} color={designTokens.colors.cream} strokeWidth={2} />
               <Text
                 style={{
                   fontFamily: designTokens.font.medium,
-                  fontSize: 12,
-                  color: colors.ink,
-                  letterSpacing: -0.06,
+                  fontSize: 10,
+                  color: designTokens.colors.cream,
+                  letterSpacing: -0.05,
                 }}
               >
-                Add to plan
+                Update image
               </Text>
-            </Pressable>
+            </View>
+          )}
+          <Pressable
+            onPress={handleSave}
+            hitSlop={8}
+            style={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              backgroundColor: 'rgba(0,0,0,0.28)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Heart
+              size={15}
+              color={recipe.isSaved ? designTokens.colors.olive : '#FFFFFF'}
+              fill={recipe.isSaved ? designTokens.colors.olive : 'transparent'}
+              strokeWidth={2}
+            />
+          </Pressable>
+          {/* Quick add to meal plan — skips opening the recipe first. */}
+          <Pressable
+            onPress={onAddToPlan}
+            hitSlop={8}
+            style={{
+              position: 'absolute',
+              right: 8,
+              bottom: 8,
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              backgroundColor: designTokens.colors.brand,
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: '#000',
+              shadowOpacity: 0.25,
+              shadowRadius: 5,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 3,
+            }}
+          >
+            <Plus size={17} color="#FFFFFF" strokeWidth={2.4} />
+          </Pressable>
+          {/* Right inset keeps long titles clear of the quick-add button. */}
+          <View style={{ position: 'absolute', left: 10, right: 44, bottom: 10 }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                fontFamily: designTokens.font.semibold,
+                fontSize: 14,
+                color: '#FFFFFF',
+                letterSpacing: -0.2,
+              }}
+            >
+              {recipe.name}
+            </Text>
+            {meta.length > 0 && (
+              <Text
+                numberOfLines={1}
+                style={{
+                  marginTop: 3,
+                  fontFamily: designTokens.font.regular,
+                  fontSize: 11,
+                  color: 'rgba(255,255,255,0.9)',
+                }}
+              >
+                {meta.join('  ·  ')}
+              </Text>
+            )}
           </View>
         </View>
       </Pressable>
@@ -390,12 +531,33 @@ export default function RecipesScreen() {
   // isn't re-flagged next session, but a newly-added similar recipe is.
   const dismissedDuplicateRecipeGroups = useMealPlanStore((s) => s.dismissedDuplicateRecipeGroups);
   const dismissDuplicateRecipeGroup = useMealPlanStore((s) => s.dismissDuplicateRecipeGroup);
+  // Drives the "Recently Cooked" collection.
+  const cookingLogs = useMealPlanStore((s) => s.cookingLogs);
+  // First-time intro nudge — reuses the persisted nudge-dismissal map.
+  const mealSlots = useMealPlanStore((s) => s.mealSlots);
+  const nudgeDismissals = useMealPlanStore((s) => s.nudgeDismissals);
+  const dismissNudge = useMealPlanStore((s) => s.dismissNudge);
+  // ── Custom collections (Premium) ──
+  const collections = useMealPlanStore((s) => s.collections);
+  const deleteCollectionAction = useMealPlanStore((s) => s.deleteCollection);
+  const renameCollection = useMealPlanStore((s) => s.renameCollection);
+  const hasPremium = useHasPremiumAccess();
+  const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
 
   // ── Local state — identical to inventory ──────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [collection, setCollection] = useState<CollectionId>('all');
+  // Collection surfaces: create composer, per-recipe save sheet, manage
+  // (rename/delete) dialog, and the bulk add-recipes picker.
+  const [newCollectionOpen, setNewCollectionOpen] = useState(false);
+  const [saveSheetRecipe, setSaveSheetRecipe] = useState<Recipe | null>(null);
+  const [manageCollectionId, setManageCollectionId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [pickerCollectionId, setPickerCollectionId] = useState<string | null>(null);
 
   // Deduplicate recipes by name (keep the first occurrence) — identical
   const uniqueRecipes = useMemo(() => {
@@ -410,9 +572,17 @@ export default function RecipesScreen() {
     });
   }, [recipes]);
 
-  const savedRecipesCount = useMemo(() => {
-    return uniqueRecipes.filter((r) => r.isSaved).length;
-  }, [uniqueRecipes]);
+  // First-time intro nudge: show once the library has recipes, until the user
+  // dismisses it OR starts planning (any slot with a recipe). Persisted via the
+  // nudge-dismissal map so it never reappears after being closed.
+  const hasPlannedMeal = useMemo(
+    () => mealSlots.some((s) => !!s.recipeId),
+    [mealSlots],
+  );
+  const showRecipesIntro =
+    uniqueRecipes.length > 0 &&
+    !hasPlannedMeal &&
+    !nudgeDismissals['recipes-intro'];
 
   const categoryCount = useMemo(() => {
     const counts: Record<string, number> = {
@@ -420,18 +590,80 @@ export default function RecipesScreen() {
     };
     CATEGORIES.slice(1).forEach((cat) => {
       counts[cat.key] = uniqueRecipes.filter((r) =>
-        r.tags.some((t) => t.toLowerCase() === cat.key.toLowerCase()),
+        r.tags.some((t) => cat.match.includes(t.toLowerCase())),
       ).length;
     });
     return counts;
   }, [uniqueRecipes]);
 
-  const filteredRecipes = useMemo(() => {
-    let filtered = uniqueRecipes;
-
-    if (showSavedOnly) {
-      filtered = filtered.filter((r) => r.isSaved);
+  // Most recent "cooked" timestamp per recipe id — powers the Recently Cooked
+  // collection (membership + ordering).
+  const lastCookedAt = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of cookingLogs ?? []) {
+      if (l.status !== 'cooked' || !l.recipeId) continue;
+      const at = new Date(l.cookedAt).getTime();
+      if (Number.isNaN(at)) continue;
+      if (at > (m.get(l.recipeId) ?? 0)) m.set(l.recipeId, at);
     }
+    return m;
+  }, [cookingLogs]);
+
+  const inCollection = useCallback(
+    (r: Recipe, id: CollectionId) => {
+      const customId = customIdOf(id);
+      if (customId) {
+        const c = collections.find((x) => x.id === customId);
+        return !!c?.recipeIds.includes(r.id);
+      }
+      switch (id) {
+        case 'all':
+          return true;
+        case 'favorites':
+          return !!r.isSaved;
+        case 'cooked':
+          return lastCookedAt.has(r.id);
+        case 'added': {
+          const at = r.createdAt ? new Date(r.createdAt).getTime() : 0;
+          return at > 0 && Date.now() - at <= RECENTLY_ADDED_DAYS * 86400000;
+        }
+        default:
+          return true;
+      }
+    },
+    [lastCookedAt, collections],
+  );
+
+  // Per-collection recipe count + cover photo for the collection cards
+  // (smart + custom, keyed by selection id).
+  const collectionMeta = useMemo(() => {
+    const out: Record<string, { count: number; cover?: string }> = {};
+    const measure = (sel: CollectionId) => {
+      const members = uniqueRecipes.filter((r) => inCollection(r, sel));
+      out[sel] = { count: members.length, cover: members.find((r) => r.imageUrl)?.imageUrl };
+    };
+    for (const c of COLLECTIONS) measure(c.id);
+    for (const c of collections) measure(customSelection(c.id));
+    return out;
+  }, [uniqueRecipes, inCollection, collections]);
+
+  // Selecting a collection that later disappears (deleted) falls back to All.
+  const activeCustom = useMemo(() => {
+    const id = customIdOf(collection);
+    return id ? collections.find((c) => c.id === id) ?? null : null;
+  }, [collection, collections]);
+
+  useEffect(() => {
+    if (customIdOf(collection) && !activeCustom) setCollection('all');
+  }, [collection, activeCustom]);
+
+  const activeCollectionTitle = activeCustom
+    ? activeCustom.name
+    : COLLECTIONS.find((c) => c.id === collection)?.title ?? 'All recipes';
+
+  const filteredRecipes = useMemo(() => {
+    // The selected collection is the outermost lens; the chips/search narrow it.
+    let filtered = uniqueRecipes.filter((r) => inCollection(r, collection));
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -444,19 +676,32 @@ export default function RecipesScreen() {
     }
 
     if (selectedCategory !== 'all') {
+      const match = CATEGORIES.find((c) => c.key === selectedCategory)?.match ?? [];
       filtered = filtered.filter((r) =>
-        r.tags.some((t) => t.toLowerCase() === selectedCategory.toLowerCase()),
+        r.tags.some((t) => match.includes(t.toLowerCase())),
       );
     }
 
-    filtered.sort((a, b) => {
-      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return dateB - dateA;
-    });
+    if (collection === 'cooked') {
+      // Most recently cooked first — the point of that collection.
+      filtered.sort((a, b) => (lastCookedAt.get(b.id) ?? 0) - (lastCookedAt.get(a.id) ?? 0));
+    } else {
+      filtered.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+    }
 
     return filtered;
-  }, [uniqueRecipes, searchQuery, selectedCategory, showSavedOnly]);
+  }, [
+    uniqueRecipes,
+    searchQuery,
+    selectedCategory,
+    collection,
+    inCollection,
+    lastCookedAt,
+  ]);
 
   // Signature of a group = its sorted member recipe ids. Adding a NEW similar
   // recipe changes the membership → new signature → the group is shown again.
@@ -515,6 +760,70 @@ export default function RecipesScreen() {
     setSelectedCategory(category);
   }, []);
 
+  // ── Collections (Premium) ────────────────────────────────────────
+  // Every entry point routes through this gate: non-subscribers get the
+  // paywall instead of the feature.
+  const requirePremium = useCallback(() => {
+    if (!COLLECTIONS_GATED) return true;
+    if (hasPremium) return true;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    openPaywallSheet('collections');
+    return false;
+  }, [hasPremium, openPaywallSheet]);
+
+  const handleOpenNewCollection = useCallback(() => {
+    if (!requirePremium()) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setNewCollectionOpen(true);
+  }, [requirePremium]);
+
+  // Long-press a recipe card → "Save to collection".
+  const handleOpenSaveSheet = useCallback(
+    (recipe: Recipe) => {
+      if (!requirePremium()) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setSaveSheetRecipe(recipe);
+    },
+    [requirePremium],
+  );
+
+  // Bulk add/remove for the collection currently being viewed.
+  const handleOpenPicker = useCallback(
+    (id: string) => {
+      if (!requirePremium()) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setPickerCollectionId(id);
+    },
+    [requirePremium],
+  );
+
+  const handleOpenManage = useCallback(
+    (id: string) => {
+      const current = collections.find((c) => c.id === id);
+      setRenameDraft(current?.name ?? '');
+      setManageCollectionId(id);
+    },
+    [collections],
+  );
+
+  const handleSaveRename = useCallback(() => {
+    const name = renameDraft.trim();
+    if (!manageCollectionId || !name) return;
+    renameCollection(manageCollectionId, name);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setManageCollectionId(null);
+  }, [manageCollectionId, renameDraft, renameCollection]);
+
+  const handleDeleteCollection = useCallback(
+    (id: string) => {
+      deleteCollectionAction(id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setManageCollectionId(null);
+      setCollection('all');
+    },
+    [deleteCollectionAction],
+  );
+
   // NEW additive interaction — same route+params used from recipe-detail
   const handleAddToPlan = useCallback(
     (recipeId: string) => {
@@ -569,50 +878,67 @@ export default function RecipesScreen() {
                       justifyContent: 'space-between',
                     }}
                   >
-                    <Text
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.8}
+                    <View
                       style={{
                         flex: 1,
                         paddingRight: 12,
-                        fontFamily: designTokens.font.medium,
-                        fontSize: t(28, 24),
-                        color: colors.ink,
-                        letterSpacing: t(-0.56, -0.4),
-                        lineHeight: t(40, 34),
+                        flexDirection: 'row',
+                        alignItems: 'baseline',
+                        flexWrap: 'wrap',
                       }}
                     >
                       <Text
                         style={{
-                          fontFamily: designTokens.font.serifItalic,
-                          fontSize: t(32, 28),
-                          fontStyle: serifItalicFontStyle,
+                          fontFamily: designTokens.font.medium,
+                          fontSize: t(28, 24),
+                          color: colors.ink,
+                          letterSpacing: t(-0.56, -0.4),
+                          lineHeight: t(40, 34),
                         }}
                       >
-                        Your Recipes
+                        Your{' '}
                       </Text>
-                    </Text>
+                      <Text
+                        style={{
+                          fontFamily: designTokens.font.serifItalic,
+                          fontStyle: serifItalicFontStyle,
+                          fontSize: t(32, 28),
+                          color: colors.ink,
+                          letterSpacing: t(-0.64, -0.5),
+                          lineHeight: t(40, 34),
+                        }}
+                      >
+                        Recipes
+                      </Text>
+                    </View>
 
                   {/* Header buttons */}
                   <View style={{ flexDirection: 'row', gap: 6 }}>
                     <Pressable
                       onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        router.push('/import-recipe');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSearchOpen((v) => {
+                          const next = !v;
+                          if (!next) setSearchQuery(''); // collapsing clears the query
+                          return next;
+                        });
                       }}
                       style={{
                         width: 40,
                         height: 40,
                         borderRadius: 999,
                         borderWidth: 1,
-                        borderColor: colors.hair,
-                        backgroundColor: colors.bg,
+                        borderColor: searchOpen ? designTokens.colors.brand : colors.hair,
+                        backgroundColor: searchOpen ? 'rgba(84,100,69,0.10)' : colors.bg,
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <Download size={18} color={colors.ink} strokeWidth={1.7} />
+                      <Search
+                        size={18}
+                        color={searchOpen ? designTokens.colors.brand : colors.ink}
+                        strokeWidth={1.7}
+                      />
                     </Pressable>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Pressable
@@ -639,18 +965,23 @@ export default function RecipesScreen() {
                       <Pressable
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                          router.push('/add-recipe');
+                          setAddSheetOpen(true);
                         }}
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 999,
-                          backgroundColor: designTokens.colors.ink,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
+                        style={{ width: 40, height: 40, borderRadius: 999, overflow: 'hidden' }}
                       >
-                        <Plus size={20} color={designTokens.colors.cream} strokeWidth={1.8} />
+                        <LinearGradient
+                          colors={['#181612', '#2d1811']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={{
+                            width: 40,
+                            height: 40,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Plus size={20} color={designTokens.colors.cream} strokeWidth={1.8} />
+                        </LinearGradient>
                       </Pressable>
                     </View>
                   </View>
@@ -669,70 +1000,117 @@ export default function RecipesScreen() {
                 </View>
               </Animated.View>
 
-              {/* ── Snapshot row ───────────────────────────────── */}
-              <Animated.View
-                entering={FadeInDown.delay(100).springify()}
-                style={{ paddingHorizontal: 20, paddingBottom: 22 }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.semibold,
-                        fontSize: t(22, 19),
-                        color: colors.ink,
-                        lineHeight: t(24, 22),
-                        letterSpacing: t(-0.44, -0.3),
-                      }}
-                    >
-                      {uniqueRecipes.length}
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.regular,
-                        fontSize: 12.5,
-                        color: colors.ink2,
-                      }}
-                    >
-                      recipes
-                    </Text>
-                  </View>
+              {/* Snapshot stats row (recipes · favorites) removed per design. */}
+
+              {/* ── First-time intro nudge ─────────────────────── */}
+              {showRecipesIntro && (
+                <Animated.View
+                  entering={FadeInDown.delay(80).springify()}
+                  style={{ paddingHorizontal: 20, paddingBottom: 16 }}
+                >
                   <View
                     style={{
-                      width: 1,
-                      height: 22,
-                      backgroundColor: designTokens.colors.hair,
-                      marginHorizontal: 16,
+                      flexDirection: 'row',
+                      gap: 12,
+                      paddingHorizontal: 13,
+                      paddingVertical: 13,
+                      borderRadius: 14,
+                      backgroundColor: isDark ? 'rgba(84,100,69,0.16)' : 'rgba(84,100,69,0.08)',
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(139,155,120,0.28)' : 'rgba(84,100,69,0.18)',
                     }}
-                  />
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                    <Text
+                  >
+                    <View
                       style={{
-                        fontFamily: designTokens.font.semibold,
-                        fontSize: t(22, 19),
-                        color: colors.ink,
-                        lineHeight: t(24, 22),
-                        letterSpacing: t(-0.44, -0.3),
+                        width: 38,
+                        height: 38,
+                        borderRadius: 11,
+                        backgroundColor: designTokens.colors.brand,
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
                     >
-                      {savedRecipesCount}
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.regular,
-                        fontSize: 12.5,
-                        color: colors.ink2,
-                      }}
-                    >
-                      favorites
-                    </Text>
+                      <BookOpen size={19} color={designTokens.colors.cream} strokeWidth={1.9} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: designTokens.font.semibold,
+                            fontSize: 14.5,
+                            color: isDark ? '#cdd6c0' : '#2E3826',
+                            letterSpacing: -0.15,
+                          }}
+                        >
+                          Your recipes are ready
+                        </Text>
+                        <Pressable
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            dismissNudge('recipes-intro');
+                          }}
+                          hitSlop={8}
+                        >
+                          <X size={15} color={designTokens.colors.ink3} strokeWidth={2} />
+                        </Pressable>
+                      </View>
+                      <Text
+                        style={{
+                          marginTop: 3,
+                          fontFamily: designTokens.font.regular,
+                          fontSize: 12.5,
+                          lineHeight: 18,
+                          color: isDark ? '#a9a498' : colors.ink2,
+                        }}
+                      >
+                        Add them to your meal plan, or head to Plan My Meals for personalised
+                        suggestions.
+                      </Text>
+                      <Pressable
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          router.push('/plan-meals');
+                        }}
+                        style={{
+                          alignSelf: 'flex-start',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 5,
+                          marginTop: 11,
+                          paddingHorizontal: 13,
+                          paddingVertical: 7,
+                          borderRadius: 999,
+                          backgroundColor: designTokens.colors.brand,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: designTokens.font.medium,
+                            fontSize: 12.5,
+                            color: designTokens.colors.cream,
+                            letterSpacing: -0.05,
+                          }}
+                        >
+                          Plan My Meals
+                        </Text>
+                        <ArrowRight size={14} color={designTokens.colors.cream} strokeWidth={2} />
+                      </Pressable>
+                    </View>
                   </View>
-                </View>
-              </Animated.View>
+                </Animated.View>
+              )}
 
-              {/* ── Search bar ─────────────────────────────────── */}
+              {/* ── Search bar (collapsible — opens from the header search icon) ── */}
+              {searchOpen && (
               <Animated.View
-                entering={FadeInDown.delay(150).springify()}
+                entering={FadeInDown.springify()}
                 style={{ paddingHorizontal: 20, paddingBottom: 12 }}
               >
                 <View
@@ -752,6 +1130,7 @@ export default function RecipesScreen() {
                   <TextInput
                     value={searchQuery}
                     onChangeText={setSearchQuery}
+                    autoFocus
                     placeholder="Search recipes, ingredients, cuisines"
                     placeholderTextColor={designTokens.colors.ink3}
                     style={{
@@ -769,122 +1148,207 @@ export default function RecipesScreen() {
                   )}
                 </View>
               </Animated.View>
+              )}
 
-              {/* ── Filter chips ────────────────────────────────── */}
+              {/* ── My Collections ──────────────────────────────── */}
               <Animated.View
-                entering={FadeInDown.delay(200).springify()}
-                style={{ paddingBottom: 16 }}
+                entering={FadeInDown.delay(150).springify()}
+                style={{ paddingBottom: 20 }}
               >
+                <View style={{ paddingHorizontal: 20, paddingBottom: 12 }}>
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.medium,
+                      fontSize: t(18, 16),
+                      color: colors.ink,
+                      letterSpacing: t(-0.36, -0.25),
+                    }}
+                  >
+                    My Collections
+                  </Text>
+                </View>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+                  contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
+                  style={{ flexGrow: 0 }}
                 >
-                  {/* Favorites chip (olive accent when active) */}
-                  <Pressable
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setShowSavedOnly(!showSavedOnly);
-                    }}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      paddingVertical: 8,
-                      paddingHorizontal: 13,
-                      borderRadius: 999,
-                      backgroundColor: showSavedOnly
-                        ? designTokens.colors.olive
-                        : colors.bg,
-                      borderWidth: 1,
-                      borderColor: showSavedOnly
-                        ? designTokens.colors.olive
-                        : designTokens.colors.hair,
-                    }}
-                  >
-                    <Heart
-                      size={13}
-                      color={showSavedOnly ? '#fff' : designTokens.colors.olive}
-                      fill={showSavedOnly ? '#fff' : 'transparent'}
-                      strokeWidth={1.8}
-                    />
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.medium,
-                        fontSize: 13,
-                        color: showSavedOnly ? '#fff' : colors.ink,
-                        letterSpacing: -0.065,
-                      }}
-                    >
-                      Favorites
-                    </Text>
-                    {savedRecipesCount > 0 && (
-                      <Text
-                        style={{
-                          fontFamily: designTokens.font.medium,
-                          fontSize: 11,
-                          color: showSavedOnly
-                            ? 'rgba(255,255,255,0.7)'
-                            : designTokens.colors.ink3,
-                        }}
-                      >
-                        {savedRecipesCount}
-                      </Text>
-                    )}
-                  </Pressable>
-
-                  {/* Category chips */}
-                  {CATEGORIES.map((category) => {
-                    const isActive = selectedCategory === category.key;
-                    const count = categoryCount[category.key] ?? 0;
+                  {COLLECTIONS.map((c) => {
+                    const meta = collectionMeta[c.id];
+                    const active = collection === c.id;
+                    const Icon = c.Icon;
                     return (
                       <Pressable
-                        key={category.key}
-                        onPress={() => handleCategorySelect(category.key)}
+                        key={c.id}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setCollection(c.id);
+                        }}
                         style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 6,
-                          paddingVertical: 8,
-                          paddingHorizontal: 13,
-                          borderRadius: 999,
-                          backgroundColor: isActive
-                            ? designTokens.colors.brand
-                            : colors.bg,
-                          borderWidth: 1,
-                          borderColor: isActive
-                            ? designTokens.colors.brand
-                            : designTokens.colors.hair,
+                          width: 150,
+                          borderRadius: 18,
+                          padding: 14,
+                          backgroundColor: isDark ? c.bgDark : c.bg,
+                          borderWidth: active ? 1.5 : 0,
+                          borderColor: c.fg,
                         }}
                       >
+                        <Icon
+                          size={19}
+                          color={c.fg}
+                          strokeWidth={2}
+                          fill={c.id === 'favorites' ? c.fg : 'transparent'}
+                        />
                         <Text
+                          numberOfLines={1}
                           style={{
-                            fontFamily: isActive
-                              ? designTokens.font.semibold
-                              : designTokens.font.medium,
-                            fontSize: 13,
-                            color: isActive ? designTokens.colors.cream : colors.ink,
-                            letterSpacing: -0.065,
+                            marginTop: 10,
+                            fontFamily: designTokens.font.semibold,
+                            fontSize: 15,
+                            color: colors.ink,
+                            letterSpacing: -0.2,
                           }}
                         >
-                          {category.label}
+                          {c.title}
                         </Text>
-                        {count > 0 && (
-                          <Text
+                        <Text
+                          style={{
+                            marginTop: 2,
+                            fontFamily: designTokens.font.regular,
+                            fontSize: 12,
+                            color: colors.ink2,
+                          }}
+                        >
+                          {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
+                        </Text>
+                        {meta.cover ? (
+                          <Image
+                            source={{ uri: meta.cover }}
                             style={{
-                              fontFamily: designTokens.font.medium,
-                              fontSize: 11,
-                              color: isActive
-                                ? 'rgba(250,247,240,0.65)'
-                                : designTokens.colors.ink3,
+                              width: 88,
+                              height: 88,
+                              borderRadius: 44,
+                              marginTop: 12,
+                              alignSelf: 'center',
                             }}
-                          >
-                            {count}
-                          </Text>
+                            contentFit="cover"
+                            transition={150}
+                          />
+                        ) : (
+                          <View style={{ height: 100 }} />
                         )}
                       </Pressable>
                     );
                   })}
+
+                  {/* Custom collections (Premium). Long-press to manage. */}
+                  {collections.map((c) => {
+                    const sel = customSelection(c.id);
+                    const meta = collectionMeta[sel] ?? { count: 0 };
+                    const active = collection === sel;
+                    return (
+                      <Pressable
+                        key={c.id}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setCollection(sel);
+                        }}
+                        onLongPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          handleOpenManage(c.id);
+                        }}
+                        style={{
+                          width: 150,
+                          borderRadius: 18,
+                          padding: 14,
+                          backgroundColor: isDark ? colors.surfaceMuted : c.color,
+                          borderWidth: active ? 1.5 : 0,
+                          borderColor: designTokens.colors.ink2,
+                        }}
+                      >
+                        <BookmarkIcon size={19} color={designTokens.colors.ink2} strokeWidth={2} />
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            marginTop: 10,
+                            fontFamily: designTokens.font.semibold,
+                            fontSize: 15,
+                            color: colors.ink,
+                            letterSpacing: -0.2,
+                          }}
+                        >
+                          {c.name}
+                        </Text>
+                        <Text
+                          style={{
+                            marginTop: 2,
+                            fontFamily: designTokens.font.regular,
+                            fontSize: 12,
+                            color: colors.ink2,
+                          }}
+                        >
+                          {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
+                        </Text>
+                        {meta.cover ? (
+                          <Image
+                            source={{ uri: meta.cover }}
+                            style={{
+                              width: 88,
+                              height: 88,
+                              borderRadius: 44,
+                              marginTop: 12,
+                              alignSelf: 'center',
+                            }}
+                            contentFit="cover"
+                            transition={150}
+                          />
+                        ) : (
+                          <View style={{ height: 100 }} />
+                        )}
+                      </Pressable>
+                    );
+                  })}
+
+                  {/* + New Collection — free for everyone. */}
+                  <Pressable
+                    onPress={handleOpenNewCollection}
+                    style={{
+                      width: 150,
+                      borderRadius: 18,
+                      padding: 14,
+                      borderWidth: 1.5,
+                      borderStyle: 'dashed',
+                      borderColor: colors.hair,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minHeight: 186,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 999,
+                        backgroundColor: colors.pill,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Plus size={18} color={colors.ink} strokeWidth={2} />
+                    </View>
+                    <Text
+                      style={{
+                        marginTop: 10,
+                        fontFamily: designTokens.font.medium,
+                        fontSize: 13.5,
+                        color: colors.ink,
+                        letterSpacing: -0.15,
+                        textAlign: 'center',
+                      }}
+                    >
+                      New Collection
+                    </Text>
+                  </Pressable>
                 </ScrollView>
               </Animated.View>
 
@@ -973,61 +1437,144 @@ export default function RecipesScreen() {
               )}
 
               {/* ── Section header ──────────────────────────────── */}
+              {/* `baseline` alignment pushes a padded Pressable down by its
+                  own padding, which made the "Add recipes" pill bleed into
+                  the chips row below — so centre-align whenever it's shown. */}
               <View
                 style={{
                   paddingHorizontal: 20,
                   paddingBottom: 12,
                   flexDirection: 'row',
                   justifyContent: 'space-between',
-                  alignItems: 'baseline',
+                  alignItems: activeCustom ? 'center' : 'baseline',
+                  gap: 10,
                 }}
               >
                 <Text
+                  numberOfLines={1}
                   style={{
+                    flexShrink: 1,
+                    minWidth: 0,
                     fontFamily: designTokens.font.medium,
                     fontSize: t(18, 16),
                     color: colors.ink,
                     letterSpacing: t(-0.36, -0.25),
                   }}
                 >
-                  All recipes
+                  {activeCollectionTitle}
                 </Text>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  <Text
+                {activeCustom ? (
+                  // Inside a custom collection the sort label is replaced by
+                  // the bulk add/remove entry point.
+                  <Pressable
+                    onPress={() => handleOpenPicker(activeCustom.id)}
+                    hitSlop={6}
                     style={{
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 12.5,
-                      color: colors.ink2,
+                      flexShrink: 0,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 5,
+                      paddingHorizontal: 11,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.hair,
+                      backgroundColor: colors.bg,
                     }}
                   >
-                    Recently saved
-                  </Text>
-                  <ChevronDown
-                    size={13}
-                    color={designTokens.colors.ink2}
-                    strokeWidth={1.6}
-                  />
-                </View>
+                    <Plus size={13} color={colors.ink} strokeWidth={2} />
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontFamily: designTokens.font.medium,
+                        fontSize: 12.5,
+                        color: colors.ink,
+                      }}
+                    >
+                      Add recipes
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
+
+              {/* ── Filter chips ────────────────────────────────── */}
+              <Animated.View
+                entering={FadeInDown.delay(200).springify()}
+                style={{ paddingBottom: 16 }}
+              >
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+                >
+                  {/* Category chips — Favorites now lives in My Collections. */}
+                  {CATEGORIES.map((category) => {
+                    const isActive = selectedCategory === category.key;
+                    const count = categoryCount[category.key] ?? 0;
+                    return (
+                      <Pressable
+                        key={category.key}
+                        onPress={() => handleCategorySelect(category.key)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                          paddingVertical: 8,
+                          paddingHorizontal: 13,
+                          borderRadius: 999,
+                          backgroundColor: isActive
+                            ? designTokens.colors.brand
+                            : colors.bg,
+                          borderWidth: 1,
+                          borderColor: isActive
+                            ? designTokens.colors.brand
+                            : designTokens.colors.hair,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: isActive
+                              ? designTokens.font.semibold
+                              : designTokens.font.medium,
+                            fontSize: 13,
+                            color: isActive ? designTokens.colors.cream : colors.ink,
+                            letterSpacing: -0.065,
+                          }}
+                        >
+                          {category.label}
+                        </Text>
+                        {count > 0 && (
+                          <Text
+                            style={{
+                              fontFamily: designTokens.font.medium,
+                              fontSize: 11,
+                              color: isActive
+                                ? 'rgba(250,247,240,0.65)'
+                                : designTokens.colors.ink3,
+                            }}
+                          >
+                            {count}
+                          </Text>
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </Animated.View>
             </View>
           }
+          numColumns={2}
+          columnWrapperStyle={{ paddingHorizontal: 20, gap: 12 }}
           renderItem={({ item, index }) => (
-            <View style={{ paddingHorizontal: 20 }}>
-              <RecipeRow
-                recipe={item}
-                onPress={() => handleRecipePress(item)}
-                onToggleSave={() => handleToggleSave(item.id)}
-                onAddToPlan={() => handleAddToPlan(item.id)}
-                isDark={isDark}
-                index={index}
-              />
-            </View>
+            <RecipeGridCard
+              recipe={item}
+              onPress={() => handleRecipePress(item)}
+              onToggleSave={() => handleToggleSave(item.id)}
+              onAddToPlan={() => handleAddToPlan(item.id)}
+              onLongPress={() => handleOpenSaveSheet(item)}
+              isDark={isDark}
+              index={index}
+            />
           )}
           ListEmptyComponent={
             <Animated.View
@@ -1046,7 +1593,11 @@ export default function RecipesScreen() {
                   marginBottom: 14,
                 }}
               >
-                <Search size={22} color={designTokens.colors.ink3} strokeWidth={1.6} />
+                {activeCustom ? (
+                  <BookmarkIcon size={22} color={designTokens.colors.ink3} strokeWidth={1.6} />
+                ) : (
+                  <Search size={22} color={designTokens.colors.ink3} strokeWidth={1.6} />
+                )}
               </View>
               <Text
                 style={{
@@ -1056,7 +1607,7 @@ export default function RecipesScreen() {
                   letterSpacing: -0.15,
                 }}
               >
-                No recipes found
+                {activeCustom ? 'This collection is empty' : 'No recipes found'}
               </Text>
               <Text
                 style={{
@@ -1068,10 +1619,16 @@ export default function RecipesScreen() {
                   paddingHorizontal: 32,
                 }}
               >
-                Try adjusting your filters or generate a new recipe
+                {activeCustom
+                  ? `Pick recipes from your library to add to ${activeCustom.name}`
+                  : 'Try adjusting your filters or generate a new recipe'}
               </Text>
               <Pressable
-                onPress={() => router.push('/generate-recipe')}
+                onPress={() =>
+                  activeCustom
+                    ? handleOpenPicker(activeCustom.id)
+                    : router.push('/generate-recipe')
+                }
                 style={{
                   marginTop: 18,
                   paddingHorizontal: 22,
@@ -1088,7 +1645,7 @@ export default function RecipesScreen() {
                     letterSpacing: -0.145,
                   }}
                 >
-                  Generate recipe
+                  {activeCustom ? 'Add recipes' : 'Generate recipe'}
                 </Text>
               </Pressable>
             </Animated.View>
@@ -1145,7 +1702,375 @@ export default function RecipesScreen() {
         onKeepAllGroup={handleKeepAllGroup}
         isDark={isDark}
       />
+
+      {/* ── "Add a recipe" sheet (opened by the + button) ─────────── */}
+      <Modal
+        visible={addSheetOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddSheetOpen(false)}
+      >
+        <Pressable
+          onPress={() => setAddSheetOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: isDark ? '#1c1b18' : '#FFFFFF',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              paddingHorizontal: 20,
+              paddingTop: 12,
+              paddingBottom: 36,
+            }}
+          >
+            {/* grabber */}
+            <View
+              style={{
+                alignSelf: 'center',
+                width: 40,
+                height: 5,
+                borderRadius: 3,
+                backgroundColor: colors.hair,
+                marginBottom: 14,
+              }}
+            />
+            {/* header */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 18,
+              }}
+            >
+              <Text style={{ fontFamily: designTokens.font.semibold, fontSize: 18, color: colors.ink }}>
+                Add a recipe
+              </Text>
+              <Pressable
+                onPress={() => setAddSheetOpen(false)}
+                hitSlop={10}
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: colors.pill,
+                }}
+              >
+                <X size={16} color={colors.ink} strokeWidth={2} />
+              </Pressable>
+            </View>
+
+            {/* Big card — Add from Social */}
+            <Pressable
+              onPress={() => {
+                setAddSheetOpen(false);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/import-recipe');
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 14,
+                padding: 14,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.hair,
+                backgroundColor: colors.bg,
+              }}
+            >
+              <View
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 16,
+                  backgroundColor: 'rgba(84,100,69,0.12)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Share2 size={24} color={designTokens.colors.brand} strokeWidth={1.9} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontFamily: designTokens.font.semibold, fontSize: 16, color: colors.ink }}>
+                  Add from Social
+                </Text>
+                <Text
+                  style={{
+                    marginTop: 2,
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 12.5,
+                    color: colors.ink2,
+                  }}
+                >
+                  Instagram, TikTok, Facebook & more
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Speak it · Snap it */}
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+              {[
+                {
+                  label: 'Speak it',
+                  Icon: Mic,
+                  tint: 'rgba(228,109,70,0.14)',
+                  color: designTokens.colors.olive,
+                  action: 'speak' as const,
+                },
+                {
+                  label: 'Snap it',
+                  Icon: Camera,
+                  tint: 'rgba(84,100,69,0.12)',
+                  color: designTokens.colors.brand,
+                  action: 'snap' as const,
+                },
+                {
+                  label: 'Type it',
+                  Icon: KeyboardIcon,
+                  tint: colors.pill,
+                  color: colors.ink,
+                  action: 'type' as const,
+                },
+              ].map(({ label, Icon, tint, color, action }) => (
+                <Pressable
+                  key={label}
+                  onPress={() => {
+                    setAddSheetOpen(false);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push({ pathname: '/add-recipe', params: { action } } as any);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: 16,
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: colors.hair,
+                    backgroundColor: colors.bg,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      backgroundColor: tint,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Icon size={22} color={color} strokeWidth={1.9} />
+                  </View>
+                  <Text
+                    style={{
+                      marginTop: 12,
+                      fontFamily: designTokens.font.semibold,
+                      fontSize: 15,
+                      color: colors.ink,
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Collections: create · save-to · bulk picker ────────── */}
+      <NewCollectionModal
+        visible={newCollectionOpen}
+        isDark={isDark}
+        onClose={() => setNewCollectionOpen(false)}
+        onCreated={(id) => {
+          // Jump into the new (empty) collection and open the picker so the
+          // next step — filling it — is immediate.
+          setCollection(customSelection(id));
+          setTimeout(() => setPickerCollectionId(id), 300);
+        }}
+      />
+
+      <SaveToCollectionSheet
+        visible={!!saveSheetRecipe}
+        recipeId={saveSheetRecipe?.id ?? null}
+        recipeName={saveSheetRecipe?.name}
+        isDark={isDark}
+        onClose={() => setSaveSheetRecipe(null)}
+      />
+
+      <CollectionRecipePicker
+        visible={!!pickerCollectionId}
+        collectionId={pickerCollectionId}
+        isDark={isDark}
+        onClose={() => setPickerCollectionId(null)}
+      />
+
+      {/* ── Manage collection: rename or delete ────────────────── */}
+      <Modal
+        visible={!!manageCollectionId}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setManageCollectionId(null)}
+      >
+        <Pressable
+          onPress={() => setManageCollectionId(null)}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(21,20,15,0.45)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 28,
+          }}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              borderRadius: 24,
+              backgroundColor: colors.bg,
+              borderWidth: 1,
+              borderColor: colors.hair,
+              padding: 20,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: designTokens.font.semibold,
+                fontSize: 17,
+                color: colors.ink,
+                letterSpacing: -0.3,
+              }}
+            >
+              Edit collection
+            </Text>
+
+            {/* Rename */}
+            <TextInput
+              value={renameDraft}
+              onChangeText={setRenameDraft}
+              placeholder="Collection name"
+              placeholderTextColor={colors.ink3}
+              maxLength={40}
+              returnKeyType="done"
+              onSubmitEditing={handleSaveRename}
+              style={{
+                marginTop: 14,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.hair,
+                backgroundColor: colors.pill,
+                fontFamily: designTokens.font.medium,
+                fontSize: 15,
+                color: colors.ink,
+              }}
+            />
+
+            {/* Add recipes — bulk picker for this collection. */}
+            <Pressable
+              onPress={() => {
+                const id = manageCollectionId;
+                setManageCollectionId(null);
+                if (id) setTimeout(() => handleOpenPicker(id), 250);
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                marginTop: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 13,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.hair,
+              }}
+            >
+              <Plus size={16} color={colors.ink} strokeWidth={2} />
+              <Text
+                style={{
+                  fontFamily: designTokens.font.medium,
+                  fontSize: 14.5,
+                  color: colors.ink,
+                }}
+              >
+                Add or remove recipes
+              </Text>
+            </Pressable>
+
+            <Text
+              style={{
+                marginTop: 14,
+                fontFamily: designTokens.font.regular,
+                fontSize: 12.5,
+                lineHeight: 18,
+                color: colors.ink3,
+              }}
+            >
+              Deleting a collection removes the grouping only — your recipes stay in your
+              library.
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <Pressable
+                onPress={() =>
+                  manageCollectionId && handleDeleteCollection(manageCollectionId)
+                }
+                style={{
+                  flexDirection: 'row',
+                  gap: 7,
+                  paddingHorizontal: 16,
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: designTokens.colors.olive,
+                }}
+              >
+                <Trash2 size={15} color={designTokens.colors.olive} strokeWidth={2} />
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.semibold,
+                    fontSize: 14.5,
+                    color: designTokens.colors.olive,
+                  }}
+                >
+                  Delete
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSaveRename}
+                disabled={!renameDraft.trim()}
+                style={{
+                  flex: 1,
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  alignItems: 'center',
+                  backgroundColor: designTokens.colors.brand,
+                  opacity: renameDraft.trim() ? 1 : 0.45,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.semibold,
+                    fontSize: 14.5,
+                    color: '#fff',
+                  }}
+                >
+                  Save
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
-

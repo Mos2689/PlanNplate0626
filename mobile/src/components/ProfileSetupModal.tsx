@@ -13,7 +13,7 @@ import { pickImage, takePhoto, uploadFile } from '@/lib/upload';
 
 // Default avatars - colorful initials-style avatars
 const DEFAULT_AVATARS = [
-  { id: 'sage', color: '#6a7d56', bgColor: '#e8eee3' },
+  { id: 'sage', color: '#546445', bgColor: '#E8ECDF' },
   { id: 'terracotta', color: '#e46d46', bgColor: '#fceae3' },
   { id: 'charcoal', color: '#404040', bgColor: '#e5e5e5' },
   { id: 'blue', color: '#3b82f6', bgColor: '#dbeafe' },

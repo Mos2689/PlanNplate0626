@@ -2,8 +2,9 @@
 // Main meal plan tab — restores full feature set from the previous screen in the new UI.
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronRight, ChevronLeft, ChevronDown, AlertTriangle, Trash2 } from 'lucide-react-native';
+import { ChevronRight, ChevronLeft, ChevronDown, AlertTriangle, Trash2, ShoppingBasket } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
   FadeInRight,
@@ -40,11 +41,10 @@ import {
 } from '@/lib/date-restrictions';
 import { HomeHeader } from '@/components/HomeHeader';
 import { TodayCookHero } from '@/components/TodayCookHero';
+import { LinearGradient } from 'expo-linear-gradient';
 import { DateCalendarSheet } from '@/components/DateCalendarSheet';
 import { MealCard, type MealCardState } from '@/components/MealCard';
 import { NudgeCard } from '@/components/NudgeCard';
-import { QuickActions } from '@/components/QuickActions';
-import { PnPFavorites, type FavoriteRecipe } from '@/components/PnPFavorites';
 import { MealSlotSheet } from '@/components/MealSlotSheet';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ServingAdjustmentModal } from '@/components/ServingAdjustmentModal';
@@ -228,7 +228,6 @@ export default function HomeScreen() {
 
   // ---- Refs ------------------------------------------------------------
   const mainScrollRef = useRef<ScrollView>(null);
-  const quickActionsYRef = useRef<number>(0);
 
   // Sticky compact header: fades in once the greeting block scrolls past the top.
   const scrollY = useSharedValue(0);
@@ -274,72 +273,6 @@ export default function HomeScreen() {
     for (const r of recipes) map.set(r.id, r);
     return map;
   }, [recipes]);
-
-  // ---- The Favorites — loved + highly-rated recipes ----
-  // Two signals, merged one-entry-per-recipe, newest first, capped at 8:
-  //   1. RECENT BEHAVIOUR (weekly window): explicit recipe ratings (≥4★) +
-  //      Vibe-Cooking end ratings (≥4) from the past 7 days — this is what
-  //      keeps the rail "updating weekly based on user behaviour."
-  //   2. LOVED RECIPES: anything the user hearted (isSaved) in the Recipes
-  //      section — persistent favourites that fill in alongside the week's
-  //      behaviour. Empty on a fresh account.
-  const favoriteRecipes = useMemo<FavoriteRecipe[]>(() => {
-    const weekAgo = Date.now() - 7 * 86400000;
-    const byId = new Map<string, FavoriteRecipe>();
-
-    // 1) Recent behaviour — windowed to the past week.
-    const consider = (recipeId: string | null, stars: number, atISO?: string) => {
-      if (!recipeId || stars < 4 || !atISO) return;
-      const at = new Date(atISO).getTime();
-      if (Number.isNaN(at) || at < weekAgo) return;
-      const recipe = recipeById.get(recipeId);
-      if (!recipe) return;
-      const existing = byId.get(recipeId);
-      if (!existing || at > existing.at) {
-        byId.set(recipeId, {
-          recipe,
-          stars: Math.max(stars, existing?.stars ?? 0),
-          at,
-          kind: 'rated',
-        });
-      } else if (stars > existing.stars) {
-        byId.set(recipeId, { ...existing, stars });
-      }
-    };
-
-    recipeRatings.forEach((r) => consider(r.recipeId, r.stars, r.ratedAt));
-    cookingLogs.forEach((l) => consider(l.recipeId, l.vibeRating ?? 0, l.cookedAt));
-
-    // 1b) Cooked this week — recipes the user actually cooked in the past 7
-    //     days, regardless of rating. Surfaces what they've been making, not
-    //     just what they rated. Doesn't clobber a recipe already captured as a
-    //     recent rating (the higher signal).
-    cookingLogs.forEach((l) => {
-      if (l.status !== 'cooked' || !l.recipeId || byId.has(l.recipeId)) return;
-      const at = new Date(l.cookedAt).getTime();
-      if (Number.isNaN(at) || at < weekAgo) return;
-      const recipe = recipeById.get(l.recipeId);
-      if (!recipe) return;
-      byId.set(l.recipeId, { recipe, stars: 0, at, kind: 'cooked' });
-    });
-
-    // 2) Loved recipes — hearted in the Recipes section. Don't clobber a
-    //    recipe already captured as a recent rating (that's the higher signal).
-    recipes.forEach((r) => {
-      if (!r.isSaved || byId.has(r.id)) return;
-      const at = r.createdAt ? new Date(r.createdAt).getTime() : 0;
-      byId.set(r.id, {
-        recipe: r,
-        stars: 0,
-        at: Number.isNaN(at) ? 0 : at,
-        kind: 'loved',
-      });
-    });
-
-    return Array.from(byId.values())
-      .sort((a, b) => b.at - a.at)
-      .slice(0, 8);
-  }, [recipeRatings, cookingLogs, recipes, recipeById]);
 
   // ---- PnP Picks tile thumbnail stack ---------------------------------
   // Up to 3 most-recent recipe images with REAL hero photos (skipping
@@ -793,28 +726,6 @@ export default function HomeScreen() {
   const isPremiumResolved = useIsPremiumResolved();
   const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
 
-  // AUTH-FIRST: users create an account before reaching the app, so the old
-  // anonymous-guest signup gate on quick actions has been removed. Each action
-  // simply routes to its screen.
-  const handleQuickAction = useCallback(
-    (item: { title: string }) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const t = item.title.toLowerCase();
-      if (t.includes('grocer')) {
-        router.push('/grocery');
-      } else if (t.includes('get inspired') || t.includes('explore')) {
-        router.push('/curated-meal-plan');
-      } else if (t.includes('plan my meals') || t.includes('suggests') || t.includes('pnp')) {
-        // Plan already streaming — no-op rather than queue a second generation.
-        if (isPlanInFlight) return;
-        router.push('/plan-meals');
-      } else if (t.includes('vibe')) {
-        router.push('/generate-recipe');
-      }
-    },
-    [router, isPlanInFlight],
-  );
-
   const cookedRecipeIds = useMemo(
     () =>
       new Set(
@@ -1001,6 +912,7 @@ export default function HomeScreen() {
               isPremium={hasPremiumAccess}
               isDark={isDark}
               greetingWord={greetingWord}
+              subtitleMessage="Your week of meals, planned and ready to cook."
               onAvatarPress={() => {
                 Haptics.selectionAsync();
                 router.push('/(tabs)/preferences' as any);
@@ -1025,6 +937,86 @@ export default function HomeScreen() {
               dishes={heroData.dishes}
               userName={displayName ?? undefined}
             />
+          </Animated.View>
+
+          {/* Plan My Meals — hoisted to the top of the plan (per new design):
+              a warm cream card that leads with our headline behaviour before
+              the day's slots. Routes to the curated plan builder. */}
+          <Animated.View
+            entering={FadeInDown.delay(160).springify()}
+            style={{ paddingHorizontal: 16, marginTop: -6, paddingBottom: 16 }}
+          >
+            <Pressable
+              onPress={() => {
+                if (isPaused) return;
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                // Plan already streaming — no-op rather than queue a second generation.
+                if (isPlanInFlight) return;
+                router.push('/plan-meals');
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 14,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderRadius: 20,
+                backgroundColor: isDark ? '#1f1f1c' : designTokens.colors.cream,
+                borderWidth: 1,
+                borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
+                opacity: isPaused ? 0.55 : 1,
+              }}
+            >
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.semibold,
+                    fontSize: 16,
+                    color: colors.ink,
+                    letterSpacing: -0.2,
+                  }}
+                  numberOfLines={1}
+                >
+                  {isPlanInFlight ? 'Plan in progress…' : 'Plan My Meals'}
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 13,
+                    color: colors.ink2,
+                    marginTop: 3,
+                    letterSpacing: -0.1,
+                  }}
+                  numberOfLines={1}
+                >
+                  Smart suggestions based on your preferences
+                </Text>
+              </View>
+              {recentThumbnails.length > 0 ? (
+                <View
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    overflow: 'hidden',
+                    borderWidth: 2,
+                    borderColor: isDark ? '#3a2e27' : '#FFFFFF',
+                  }}
+                >
+                  <Image
+                    source={
+                      typeof recentThumbnails[0] === 'string'
+                        ? { uri: recentThumbnails[0] }
+                        : recentThumbnails[0]
+                    }
+                    style={{ width: '100%', height: '100%' }}
+                    contentFit="cover"
+                    transition={150}
+                  />
+                </View>
+              ) : null}
+              <ChevronRight size={20} color={colors.ink3} strokeWidth={2} />
+            </Pressable>
           </Animated.View>
 
           {/* Paused banner */}
@@ -1205,50 +1197,81 @@ export default function HomeScreen() {
             </View>
           </Animated.View>
 
-          {/* Quick actions */}
+          {/* Get groceries — full-width green CTA anchored at the bottom
+              of the plan (per new design). */}
           <Animated.View
             entering={FadeInDown.delay(360).springify()}
-            onLayout={(e) => {
-              quickActionsYRef.current = e.nativeEvent.layout.y;
-            }}
+            style={{ paddingHorizontal: 16, paddingBottom: 8 }}
           >
-            <QuickActions
-              items={[
-                // Hero primary tile — PnP Suggests is the headline behaviour
-                // we want users to reach for. Curated plans = our differentiator.
-                // While a plan is streaming in, swap the subtitle so the user
-                // sees the same affordance reflecting the banner state above.
-                {
-                  icon: 'utensils',
-                  title: 'Plan My Meals',
-                  subtitle: isPlanInFlight
-                    ? 'Plan in progress…'
-                    : 'A plan, picked for you',
-                  variant: 'primary',
-                  thumbnails: recentThumbnails,
-                },
-                { icon: 'cart', title: 'Get Groceries', subtitle: 'Ready for this week' },
-                // Sits beside grocery in the secondary 2-col row. Routes to
-                // the curated catalog (PnP Specials / special plan options).
-                { icon: 'lightbulb', title: 'Get Inspired', subtitle: 'PnP curated recipes' },
-              ]}
-              onActionPress={handleQuickAction}
-              isDark={isDark}
-              isRestricted={isPaused}
-            />
-          </Animated.View>
-
-          {/* The Favorites — recipes the user loved / rated highly in the
-              past week. Empty (with a gentle prompt) on a fresh account. */}
-          <Animated.View entering={FadeInDown.delay(420).springify()}>
-            <PnPFavorites
-              favorites={favoriteRecipes}
-              onRecipePress={(recipeId) => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push(`/recipe-detail?id=${recipeId}` as any);
+            <Pressable
+              onPress={() => {
+                if (isPaused) return;
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                router.push('/grocery');
               }}
-              isDark={isDark}
-            />
+              style={{
+                borderRadius: 20,
+                overflow: 'hidden',
+                opacity: isPaused ? 0.55 : 1,
+                shadowColor: '#15140F',
+                shadowOpacity: 0.22,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 6 },
+                elevation: 3,
+              }}
+            >
+              {/* Greenish charcoal gradient — matches the grocery "saved
+                  shopping list" card. */}
+              <LinearGradient
+                colors={['#181612', '#1e2b17']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  paddingHorizontal: 18,
+                  paddingVertical: 16,
+                }}
+              >
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 14,
+                    backgroundColor: 'rgba(255,255,255,0.10)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <ShoppingBasket size={20} color="#F6F2E9" strokeWidth={1.9} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.semibold,
+                      fontSize: 16,
+                      color: '#fff',
+                      letterSpacing: -0.2,
+                    }}
+                  >
+                    Get groceries
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.regular,
+                      fontSize: 13,
+                      color: 'rgba(246,242,233,0.8)',
+                      marginTop: 3,
+                      letterSpacing: -0.1,
+                    }}
+                  >
+                    View list & shop
+                  </Text>
+                </View>
+                <ChevronRight size={20} color="rgba(246,242,233,0.8)" strokeWidth={1.9} />
+              </LinearGradient>
+            </Pressable>
           </Animated.View>
         </Animated.ScrollView>
       </SafeAreaView>
@@ -1324,8 +1347,7 @@ export default function HomeScreen() {
                 letterSpacing: -0.3,
               }}
             >
-              Good {greetingWord}
-              {displayName ? `, ${displayName.split(' ')[0]}` : ''}
+              Your Plate
             </Text>
 
             {/* Symmetry spacer */}

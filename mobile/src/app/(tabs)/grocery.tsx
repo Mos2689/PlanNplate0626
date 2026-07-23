@@ -30,6 +30,7 @@ import {
   Home,
   Mic,
   Keyboard,
+  CookingPot,
 } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
@@ -53,7 +54,7 @@ import { cn } from '@/lib/cn';
 import { designTokens, getThemeColors, getCategoryTint, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
 import { t } from '@/lib/platform-tokens';
 import { transcribeAudioToText, parseGroceryItemsFromTranscript, type ParsedGroceryItem } from '@/lib/voice-grocery';
-import { formatFromBaseUnit, resolveMeasurementSystem, isConvertibleUnit, type MeasurementSystem } from '@/lib/unit-conversion';
+import { convertToBaseUnit, formatFromBaseUnit, resolveMeasurementSystem, isConvertibleUnit, type MeasurementSystem } from '@/lib/unit-conversion';
 import { ShoppingListCompletionModal } from '@/components/ShoppingListCompletionModal';
 import { DuplicateIngredientBanner, DuplicateIngredientModal } from '@/components/DuplicateIngredientModal';
 import { findDuplicateIngredientGroups, type DuplicateIngredientGroup } from '@/lib/duplicate-ingredient-finder';
@@ -257,6 +258,9 @@ function GroceryItemRow({ item, onToggle, onDelete, isDark, index, checkColor }:
   // value so weights show oz/lb and volumes show cups/tbsp/tsp. Items without a
   // base value (or in metric) fall back to their stored display string.
   const quantityLabel = groceryQuantityLabel(item, measurementSystem);
+  // Distinct recipes this item is bought for — the "used in N recipes" proof
+  // that shared-ingredient planning is working. (recipeIds is deduped upstream.)
+  const sharedCount = item.recipeIds?.length ?? 0;
 
   const handleToggle = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -319,17 +323,52 @@ function GroceryItemRow({ item, onToggle, onDelete, isDark, index, checkColor }:
           >
             {item.name}
           </Text>
-          <Text
-            style={{
-              fontFamily: designTokens.font.regular,
-              fontSize: 12.5,
-              color: done ? designTokens.colors.ink3 : designTokens.colors.ink2,
-              marginTop: 2,
-            }}
-            numberOfLines={1}
-          >
-            {quantityLabel}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+            <Text
+              style={{
+                fontFamily: designTokens.font.regular,
+                fontSize: 12.5,
+                color: done ? designTokens.colors.ink3 : designTokens.colors.ink2,
+              }}
+              numberOfLines={1}
+            >
+              {quantityLabel}
+            </Text>
+            {/* Shared-ingredient proof — the concrete payoff of grocery
+                optimisation. Only shown when an item spans 2+ recipes. */}
+            {sharedCount >= 2 && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 3,
+                  paddingHorizontal: 7,
+                  paddingVertical: 1.5,
+                  borderRadius: 999,
+                  backgroundColor: done
+                    ? 'transparent'
+                    : isDark
+                      ? 'rgba(84,100,69,0.20)'
+                      : 'rgba(84,100,69,0.10)',
+                }}
+              >
+                <CookingPot
+                  size={10}
+                  color={done ? designTokens.colors.ink3 : designTokens.colors.brand}
+                  strokeWidth={2}
+                />
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 11,
+                    color: done ? designTokens.colors.ink3 : designTokens.colors.brand,
+                  }}
+                >
+                  Used in {sharedCount} recipes
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* Delete (small, ink3) */}
@@ -1717,6 +1756,9 @@ export default function GroceryScreen() {
   const mergeIntoCurrentSavedListItem = useMealPlanStore((s) => s.mergeIntoCurrentSavedListItem);
   const removeGroceryItem = useMealPlanStore((s) => s.removeGroceryItem);
   const removeCustomGroceryItem = useMealPlanStore((s) => s.removeCustomGroceryItem);
+  const updateGroceryItem = useMealPlanStore((s) => s.updateGroceryItem);
+  const updateCustomGroceryItem = useMealPlanStore((s) => s.updateCustomGroceryItem);
+  const updateCurrentSavedListItem = useMealPlanStore((s) => s.updateCurrentSavedListItem);
   const clearCheckedItems = useMealPlanStore((s) => s.clearCheckedItems);
   const generateGroceryList = useMealPlanStore((s) => s.generateGroceryList);
   const setGroceryDateRange = useMealPlanStore((s) => s.setGroceryDateRange);
@@ -1911,35 +1953,43 @@ export default function GroceryScreen() {
   }, [generateGroceryList, setGroceryDateRange, isSavedListMode, unloadSavedGroceryList]);
 
   const handleCombineDuplicates = useCallback(
-    (groupKey: string, selectedIndices: number[]) => {
+    (groupKey: string, selectedIndices: number[], userQuantity: string, userUnit: string) => {
       const group = duplicateGroups.find((g) => g.key === groupKey);
       if (!group || selectedIndices.length < 2) return;
 
-      // Keep the first selected item as the base; merge the rest INTO it.
+      // Keep the first selected item as the base; the rest are removed after.
       const baseIndex = selectedIndices[0];
       const baseId = group.ingredientIds[baseIndex];
+      const baseName = group.names[baseIndex];
 
-      // Everything except the base is merged in and then removed.
       const mergeIndices = selectedIndices.slice(1);
       const idsToRemove = mergeIndices.map((idx) => group.ingredientIds[idx]);
 
-      // Add each duplicate's OWN quantity+unit into the base. mergeInto* adds
-      // the passed amount onto the base's existing quantity, so we pass only
-      // the deltas (never the base's own quantity) — otherwise the base is
-      // counted twice (e.g. 4g + 4g would have shown 12g instead of 8g).
-      // Merging per-item also lets each item's own unit be converted correctly.
-      mergeIndices.forEach((idx) => {
-        const addQty = group.quantities[idx];
-        const addUnit = group.units[idx];
-        if (isSavedListMode) {
-          mergeIntoCurrentSavedListItem(baseId, addQty, addUnit);
-        } else {
-          // mergeIntoGroceryItem resolves the base in groceryItems OR
-          // customGroceryItems, so it works whether the base is generated
-          // or a custom item.
-          mergeIntoGroceryItem(baseId, addQty, addUnit);
-        }
-      });
+      // Honor the quantity + unit the user confirmed on the Combine screen as
+      // the FINAL combined value — the user's manual override must win over the
+      // base ingredient's unit. Recompute the base fields from that input so
+      // storage stays consistent and (in imperial mode) converts correctly;
+      // if the unit isn't convertible (e.g. a custom "bag"), clear the base so
+      // the display shows exactly what the user typed.
+      const qty = (userQuantity ?? '').trim() || '0';
+      const unit = (userUnit ?? '').trim();
+      const updates: Partial<GroceryItem> = { quantity: qty, unit };
+      try {
+        const base = convertToBaseUnit(qty, unit, baseName);
+        updates.quantity_base = base.quantity;
+        updates.base_unit = base.unit;
+      } catch {
+        updates.quantity_base = undefined;
+        updates.base_unit = undefined;
+      }
+
+      if (isSavedListMode) {
+        updateCurrentSavedListItem(baseId, updates);
+      } else if (customGroceryItems.some((item) => item.id === baseId)) {
+        updateCustomGroceryItem(baseId, updates);
+      } else {
+        updateGroceryItem(baseId, updates);
+      }
 
       // Remove the now-merged duplicates.
       idsToRemove.forEach((id) => {
@@ -1965,8 +2015,9 @@ export default function GroceryScreen() {
       removeGroceryItem,
       removeCustomGroceryItem,
       removeCurrentSavedListItem,
-      mergeIntoGroceryItem,
-      mergeIntoCurrentSavedListItem,
+      updateGroceryItem,
+      updateCustomGroceryItem,
+      updateCurrentSavedListItem,
     ]
   );
 
@@ -2091,10 +2142,18 @@ export default function GroceryScreen() {
   if (isSavedListMode) {
     subtitleText = `${stats.total} item${stats.total === 1 ? '' : 's'} saved`;
   } else if (groceryStartDate && groceryEndDate && hasAnyItems) {
-    const s = new Date(groceryStartDate).toLocaleDateString('en-US', { weekday: 'short' });
-    const e = new Date(groceryEndDate).toLocaleDateString('en-US', { weekday: 'short' });
+    // Inclusive number of days the grocery list was built for. Normalise to
+    // midnight so time-of-day / DST never skews the count.
+    const start = new Date(groceryStartDate);
+    const end = new Date(groceryEndDate);
+    const startMid = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endMid = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    const dayCount = Math.max(
+      1,
+      Math.round((endMid.getTime() - startMid.getTime()) / 86400000) + 1,
+    );
     subtitleText = stats.total > 0
-      ? `${stats.total} item${stats.total === 1 ? '' : 's'} for ${s}–${e} meals.`
+      ? `${stats.total} item${stats.total === 1 ? '' : 's'} for ${dayCount} day${dayCount === 1 ? '' : 's'} meal.`
       : '';
   } else if (hasAnyItems) {
     subtitleText = `${stats.total} item${stats.total === 1 ? '' : 's'} in your list.`;
@@ -2299,19 +2358,47 @@ export default function GroceryScreen() {
               }}
             >
               <View style={{ flex: 1, paddingRight: 12, minWidth: 0 }}>
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.serifItalic,
-                    fontStyle: serifItalicFontStyle,
-                    fontSize: t(32, 28),
-                    color: colors.ink,
-                    letterSpacing: t(-0.64, -0.5),
-                    lineHeight: t(36, 32),
-                  }}
-                  numberOfLines={1}
-                >
-                  {isSavedListMode ? currentSavedListName || 'Saved list' : 'Your Groceries'}
-                </Text>
+                {isSavedListMode ? (
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.serifItalic,
+                      fontStyle: serifItalicFontStyle,
+                      fontSize: t(32, 28),
+                      color: colors.ink,
+                      letterSpacing: t(-0.64, -0.5),
+                      lineHeight: t(40, 34),
+                    }}
+                    numberOfLines={1}
+                  >
+                    {currentSavedListName || 'Saved list'}
+                  </Text>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                    <Text
+                      style={{
+                        fontFamily: designTokens.font.medium,
+                        fontSize: t(28, 24),
+                        color: colors.ink,
+                        letterSpacing: t(-0.56, -0.4),
+                        lineHeight: t(40, 34),
+                      }}
+                    >
+                      Your{' '}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: designTokens.font.serifItalic,
+                        fontStyle: serifItalicFontStyle,
+                        fontSize: t(32, 28),
+                        color: colors.ink,
+                        letterSpacing: t(-0.64, -0.5),
+                        lineHeight: t(40, 34),
+                      }}
+                    >
+                      Groceries
+                    </Text>
+                  </View>
+                )}
                 {subtitleText ? (
                   <Text
                     style={{
@@ -2392,22 +2479,22 @@ export default function GroceryScreen() {
                 >
                   <Share2 size={18} color={colors.ink} strokeWidth={1.7} />
                 </Pressable>
-                {/* Plus — solid ink, cream icon, opens AddItemModal */}
+                {/* Plus — warm charcoal→brown gradient, cream icon, opens AddItemModal */}
                 <Pressable
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setShowAddModal(true);
                   }}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 999,
-                    backgroundColor: designTokens.colors.ink,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  style={{ width: 40, height: 40, borderRadius: 999, overflow: 'hidden' }}
                 >
-                  <Plus size={20} color={designTokens.colors.cream} strokeWidth={1.8} />
+                  <LinearGradient
+                    colors={['#181612', '#2d1811']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Plus size={20} color={designTokens.colors.cream} strokeWidth={1.8} />
+                  </LinearGradient>
                 </Pressable>
               </View>
             </View>

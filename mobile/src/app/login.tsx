@@ -89,7 +89,7 @@ export default function LoginScreen() {
   React.useEffect(() => {
     if (reauth === '1') return;
     if (isAuthenticated && !isAnonymous) {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/recipes');
     }
   }, [isAuthenticated, isAnonymous, router, reauth]);
 
@@ -162,7 +162,7 @@ export default function LoginScreen() {
     if (result.success) {
       track('auth_login', { method: 'email' });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/recipes');
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setError(result.error || 'Login failed');
@@ -202,7 +202,7 @@ export default function LoginScreen() {
 
     track('auth_login', { method: provider });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.replace('/(tabs)');
+    router.replace('/(tabs)/recipes');
   }, [router, signInWithProvider]);
 
   const handleSocialLogin = useCallback((provider: SocialProvider) => {

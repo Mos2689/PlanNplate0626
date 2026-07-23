@@ -14,6 +14,9 @@ const CREAM = designTokens.colors.cream;
 // "Plan My Meals" tile) can share the exact same gradient.
 export const HERO_GRADIENT = ['#5F7150', '#4A5A37', '#544A34'] as const;
 export const HERO_LOCATIONS = [0, 0.55, 1] as const;
+// Warm charcoal→brown — shared with the grocery status card and the profile
+// "Share with friends" CTA. Used for the "cooking today" hero on Your Plate.
+export const HERO_GRADIENT_WARM = ['#181612', '#2d1811'] as const;
 
 const NUM_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
 const countWord = (n: number) => (n >= 1 && n <= 9 ? NUM_WORDS[n] : String(n));
@@ -104,10 +107,9 @@ export function TodayCookHero({
   return (
     <View style={{ paddingHorizontal: 16, marginBottom: 14 }}>
       <LinearGradient
-        colors={HERO_GRADIENT}
+        colors={HERO_GRADIENT_WARM}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        locations={HERO_LOCATIONS}
         style={{
           overflow: 'hidden',
           borderRadius: 18,
@@ -163,7 +165,7 @@ export function TodayCookHero({
               <Text style={{ ...headlineStyle, marginTop: 8 }}>Nothing planned yet</Text>
               <Text style={dishLineStyle}>
                 {isToday
-                  ? 'Plan your meals for today, right below.'
+                  ? 'Try Plan My Meals or add recipes manually.'
                   : `No meals planned for ${weekdayLabel}.`}
               </Text>
             </>
