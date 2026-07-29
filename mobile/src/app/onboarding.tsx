@@ -92,7 +92,11 @@ import { profileAndSuggest } from '@/lib/frequent-cook-profiling';
 import { inspiredToRecipe } from '@/lib/inspired-adapters';
 import { apiFormCall } from '@/lib/api-router';
 import { parseDishNamesFromTranscript } from '@/lib/voice-dishes';
-import { generateRecipe, generateRecipeImage } from '@/lib/openai';
+import { generateRecipe, generateRecipeImage, type MealType } from '@/lib/openai';
+import {
+  classifyMealTypeFromName,
+  classifyRecipeByContent,
+} from '@/lib/meal-type-validator';
 import type { Recipe } from '@/lib/store';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -716,6 +720,8 @@ export default function OnboardingScreen() {
 
   // ── Step 1 — Frequent cooks: dishes the user names (Speak or Type). ──
   const addRecipe = useMealPlanStore((s) => s.addRecipe);
+  const beginRecipePrep = useMealPlanStore((s) => s.beginRecipePrep);
+  const markRecipePrepProgress = useMealPlanStore((s) => s.markRecipePrepProgress);
   const [frequentCooks, setFrequentCooks] = useState<string[]>([]);
   const [typeDraft, setTypeDraft] = useState('');
   const [typing, setTyping] = useState(false);
@@ -813,17 +819,39 @@ export default function OnboardingScreen() {
         setVoiceError('Microphone permission is required');
         return;
       }
+      // expo-av allows only ONE active Recording. A recorder left behind by a
+      // previous (possibly failed) run makes the next prepare fail with
+      // "recorder not prepared" — so unload any lingering one first.
+      if (recordingRef.current) {
+        try {
+          await recordingRef.current.stopAndUnloadAsync();
+        } catch {
+          /* already unloaded / never prepared */
+        }
+        recordingRef.current = null;
+      }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
+      // createAsync prepares AND starts atomically — avoids the prepare/start
+      // race that intermittently throws "recorder not prepared".
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+      );
       recordingRef.current = recording;
       setIsRecording(true);
     } catch (e) {
       console.error('[Onboarding] startVoice failed', e);
       setVoiceError('Failed to start recording');
       setIsRecording(false);
+      // Never leave a half-initialised recorder around for the next attempt.
+      if (recordingRef.current) {
+        try {
+          await recordingRef.current.stopAndUnloadAsync();
+        } catch {
+          /* ignore */
+        }
+        recordingRef.current = null;
+      }
     }
   }, []);
   const stopVoice = useCallback(async () => {
@@ -839,6 +867,13 @@ export default function OnboardingScreen() {
     } catch (e) {
       console.error('[Onboarding] stopVoice failed', e);
       setVoiceError('Could not process recording.');
+    } finally {
+      // Release the iOS record session so the next prepare starts clean.
+      try {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      } catch {
+        /* ignore */
+      }
     }
   }, [transcribeToChip]);
 
@@ -847,13 +882,29 @@ export default function OnboardingScreen() {
   // the flow — failures are logged and skipped.
   const buildFrequentCookRecipes = useCallback(
     (names: string[], prefs: typeof preferences) => {
+      // Open the progress banner shown on the Recipes tab while these build.
+      beginRecipePrep(names.length);
       names.forEach(async (dishName) => {
         try {
+          // Classify the dish from its name so generation is guided toward the
+          // right meal (e.g. "Avocado smoothie" → breakfast, not dinner) instead
+          // of forcing every frequent-cook dish to dinner.
+          const guessedMealType = classifyMealTypeFromName(dishName);
           const data = await generateRecipe({
-            mealTypes: ['dinner'],
+            mealTypes: [guessedMealType],
             preferences: prefs,
             customCookingInstructions: `The user cooks this dish often and wants it saved in their library. Create the classic, well-known version of "${dishName}". Keep the recipe name as "${dishName}".`,
           });
+          // Decide the tag written to the library. A breakfast/snack signal in
+          // the dish name is specific and high-confidence (these are their own
+          // filter categories), so trust it. Otherwise let the finished recipe's
+          // content decide — lunch vs dinner share one merged category, so the
+          // only thing that really matters is catching a breakfast/snack the
+          // bare name didn't reveal.
+          const finalMealType: MealType =
+            guessedMealType === 'breakfast' || guessedMealType === 'snack'
+              ? guessedMealType
+              : classifyRecipeByContent(data);
           let imageUrl = '';
           try {
             imageUrl = await generateRecipeImage(
@@ -874,7 +925,16 @@ export default function OnboardingScreen() {
             servings: data.servings,
             ingredients: data.ingredients.map((ing, i) => ({ id: `fc-${i}`, ...ing })),
             instructions: data.instructions,
-            tags: [...(data.tags || []), ...(data.mealType ? [data.mealType] : []), 'frequent-cook'],
+            // Drop any meal-type token the generator may have baked into tags,
+            // then add the single correct one so the recipe is filed under the
+            // right category (breakfast/lunch/dinner/snack).
+            tags: [
+              ...(data.tags || []).filter(
+                (t) => !['breakfast', 'lunch', 'dinner', 'snack'].includes(t.toLowerCase()),
+              ),
+              finalMealType,
+              'frequent-cook',
+            ],
             calories: data.calories,
             isAIGenerated: true,
             isSaved: true,
@@ -883,10 +943,15 @@ export default function OnboardingScreen() {
           addRecipe(recipe);
         } catch (e) {
           console.warn('[Onboarding] failed to build frequent cook:', dishName, e);
+        } finally {
+          // Tick the banner forward whether the dish built or failed, so the
+          // "being created" state always resolves to "ready" once every dish
+          // has been attempted.
+          markRecipePrepProgress();
         }
       });
     },
-    [addRecipe]
+    [addRecipe, beginRecipePrep, markRecipePrepProgress]
   );
 
   // ── Step 2 — "You may also like": Inspired suggestions profiled from the

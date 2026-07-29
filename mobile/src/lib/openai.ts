@@ -6,6 +6,7 @@ import { getMealTypePromptGuidance, validateMealType, getClassificationReport } 
 import { findSupabaseImage, extractPrimaryIngredientNames } from './supabase-image-library';
 import { determineIngredientCategory, getCategoryGuidancePrompt } from './ingredient-category-mapper';
 import { apiCall } from './api-router';
+import { vetKitchenIngredients, judgeRecipeCoherence } from './recipe-fit';
 import { isSupabaseConfigured } from './supabase';
 
 export type PlanDuration = 'single' | 'week1' | 'week2' | 'week3' | 'week4' | 'monthly';
@@ -15,8 +16,11 @@ async function callOpenAIDirect(messages: Array<{ role: string; content: string 
 
   const result = await apiCall<{ choices: Array<{ message: { content: string } }> }>('ai-chat', {
     messages,
+    // Coherence over novelty. Variety is already enforced structurally via the
+    // protein/format/technique exclusion lists, so a high temperature bought
+    // nothing but incoherent ingredient mash-ups.
     model: 'gpt-4o-mini',
-    temperature: 0.95,
+    temperature: 0.7,
     max_tokens: 2048,
   });
 
@@ -462,6 +466,9 @@ export interface GeneratedRecipeResponse {
   tags: string[];
   calories: number;
   violations?: string[]; // Allergen and preference violations for display
+  // Kitchen ingredients the model deliberately left out because they didn't
+  // genuinely fit a palatable dish. Kitchen items are never mandatory.
+  omittedIngredients?: Array<{ name: string; reason: string }>;
   // Set only for recipes sourced from the curated "Get Inspired" bank — carries
   // the curated hero image (and its blurhash) so the meal card shows the real
   // photo instead of a fetched stock/AI image. Undefined for AI-generated recipes.
@@ -948,7 +955,8 @@ function buildSingleRecipePrompt(
   assignedFridgeIngredient?: string, // NEW: specific ingredient this recipe MUST use
   mealCount?: number, // NEW: actual total meal count (different from uniqueRecipes when repeats allowed)
   customCookingInstructions?: string, // NEW: free-text user instructions that override preferences
-  breakfastStyle?: 'no-cook' | 'cooked' // NEW: breakfast only — weekday no-cook vs weekend cooked
+  breakfastStyle?: 'no-cook' | 'cooked', // NEW: breakfast only — weekday no-cook vs weekend cooked
+  supportingIngredients: string[] = [] // NEW: vetted kitchen items that fit alongside the anchor
 ): string {
   // ============================================================
   // RULE PRIORITY (strictly enforced top to bottom):
@@ -1018,13 +1026,19 @@ Any recipe that ignores these instructions will be REJECTED.`;
 
 ═══ RULE #2 — AVAILABLE INGREDIENTS / SPECIAL REQUEST (overrides preferences below, NEVER allergies) ═══`;
 
-    // If we have an assigned ingredient, make it mandatory for this recipe
+    // Preferred anchor ingredient. Deliberately NOT mandatory — forcing it was
+    // producing incoherent dishes (e.g. banana with grilled prawns). The model
+    // is given an explicit, blameless escape hatch and must report any omission.
     if (assignedFridgeIngredient) {
       prompt += `
-⭐ MANDATORY INGREDIENT FOR THIS RECIPE: "${assignedFridgeIngredient.toUpperCase()}"
-This recipe MUST feature "${assignedFridgeIngredient}" as a primary ingredient. Build the recipe around this ingredient.
-This is NOT optional — the user specifically wants to use up this ingredient from their fridge.
-Prepare it in a way that is genuinely delicious: pick a dish and flavour pairing where "${assignedFridgeIngredient}" naturally shines. Do NOT force it into a clashing or unappetizing combination just to include it.`;
+⭐ PREFERRED ANCHOR INGREDIENT: "${assignedFridgeIngredient.toUpperCase()}"
+Build the recipe around "${assignedFridgeIngredient}" IF it genuinely fits a delicious ${mealType} dish.
+It is NOT mandatory. If "${assignedFridgeIngredient}" cannot be used in a genuinely palatable dish here, LEAVE IT OUT and instead create the best dish for this meal type and mood — then list it in "omittedIngredients" with a short reason. Omitting is an accepted, correct outcome; never force a clashing combination just to include it.`;
+    }
+
+    if (supportingIngredients && supportingIngredients.length > 0) {
+      prompt += `
+ALSO AVAILABLE (use only those that naturally fit — ignore the rest, they are not required): ${supportingIngredients.join(', ')}.`;
     }
 
     if (additionalInstructions) {
@@ -1359,16 +1373,23 @@ Pick a COMPLETELY DIFFERENT protein source for this recipe.`;
   prompt += `
 
 ═══ PALATABILITY (ALWAYS ENFORCED) ═══
-The recipe MUST be a genuinely delicious, palatable dish that a real person would
-happily eat — a coherent meal, not a gimmick.
-- Use classic, well-established flavour pairings and a sensible cooking method.
-- Every ingredient must earn its place and work together; do NOT combine clashing
-  or incompatible ingredients just to satisfy a mood, theme, or "must-use" item.
-- If a required/available ingredient doesn't naturally fit, choose a dish style
-  or preparation where it genuinely shines (or use it in a supporting role) —
-  never force a jarring mash-up.
-- No experimental, novelty, or bizarre combinations. If you would not confidently
-  serve this dish to a guest, redesign it.
+The recipe MUST be a genuinely delicious, coherent dish — not a gimmick.
+
+An ingredient "genuinely fits" only if ALL of these hold:
+1. NAMEABLE — the result maps to a recognisable dish or established dish-family.
+   If you cannot name what it is, it is a gimmick.
+2. ROLE — the ingredient has a coherent role (anchor, supporting, garnish or
+   seasoning), not bolted on.
+3. PRECEDENT — the pairing is supported by a real culinary tradition. Legitimate
+   cross-cultural pairings ARE allowed (mango with prawns, pineapple with pork,
+   banana in a Keralan fish curry) — do not avoid those.
+4. SUBTRACTION TEST (decisive) — the dish would NOT be better with the ingredient
+   removed. If removing it improves the dish, it does not fit: remove it.
+5. GUEST TEST — a competent cook would serve it to a guest without apologising.
+
+- Available/kitchen ingredients are NEVER mandatory. If they cannot form a
+  palatable dish, drop them and cook to the meal type and mood instead.
+- No experimental, novelty, or bizarre combinations.
 - This never overrides the allergy or dietary rules above: if an ingredient can't
   be used safely, leave it out rather than making the dish unpalatable.`;
 
@@ -1395,8 +1416,14 @@ Return a JSON object with this exact structure:
   ],
   "instructions": ["Step 1", "Step 2"],
   "tags": ["tag1", "tag2"],
-  "calories": 400
+  "calories": 400,
+  "omittedIngredients": [{"name": "banana", "reason": "sweet fruit would clash with this savoury dish"}]
 }
+
+"omittedIngredients" lists any AVAILABLE/kitchen ingredient you deliberately left
+out because it did not genuinely fit (see PALATABILITY). Use [] when you used
+everything that fitted. Leaving something out is an accepted, correct outcome —
+never pad the dish to avoid an empty list.
 
 METRIC UNITS ONLY — and use ONE canonical unit family per ingredient so the
 grocery list never gets duplicate lines for the same item:
@@ -1536,14 +1563,37 @@ export async function generateRecipe(
   const mealType = params.mealTypes[0] ?? 'dinner';
   const MAX_PREFERENCE_RETRIES = 3;
 
-  // For single recipe generation with fridge ingredients, extract the primary ingredient to assign
+  // ── LAYER 3 — pre-flight ingredient vetting ──────────────────────────────
+  // Pick the largest MUTUALLY COHERENT subset of the user's kitchen items for
+  // this meal type + mood BEFORE generating. Kitchen ingredients are never
+  // mandatory: if nothing fits, we cook to the mood/meal type instead.
   let assignedFridgeIngredient: string | undefined = undefined;
+  let supportingIngredients: string[] = [];
   if (params.additionalInstructions) {
-    const fridgeIngredientsWithQty = parseFridgeIngredientsWithQuantity(params.additionalInstructions, params.preferences.servingSize);
-    if (fridgeIngredientsWithQty.length > 0) {
-      // For single recipe, prioritize the first ingredient
-      assignedFridgeIngredient = fridgeIngredientsWithQty[0].name;
-      console.log(`[SingleRecipe] Assigning fridge ingredient: ${assignedFridgeIngredient}`);
+    const fridgeIngredientsWithQty = parseFridgeIngredientsWithQuantity(
+      params.additionalInstructions,
+      params.preferences.servingSize,
+    );
+    const names = fridgeIngredientsWithQty.map((f) => f.name).filter(Boolean);
+    if (names.length > 0) {
+      const vetted = await vetKitchenIngredients({
+        ingredients: names,
+        mealType,
+        vibe: params.customCookingInstructions,
+        dietaryRestrictions: params.preferences.dietaryRestrictions,
+        allergies: params.preferences.allergies,
+      });
+      assignedFridgeIngredient = vetted.anchor ?? undefined;
+      supportingIngredients = vetted.supporting;
+      console.log(
+        `[RecipeFit] Vetted kitchen — anchor: ${vetted.anchor ?? 'none'}; supporting: [${vetted.supporting.join(', ')}]` +
+          (vetted.rejected.length
+            ? `; rejected: ${vetted.rejected.map((r) => `${r.name} (${r.reason})`).join(' | ')}`
+            : ''),
+      );
+      if (!vetted.anchor && vetted.supporting.length === 0) {
+        console.log('[RecipeFit] No kitchen ingredient fits — cooking to mood/meal type instead.');
+      }
     }
   }
 
@@ -1561,21 +1611,29 @@ export async function generateRecipe(
       [], // excludeProteins
       [], // previousFormats
       [], // previousTechniques
-      assignedFridgeIngredient, // Pass the assigned fridge ingredient as mandatory
+      assignedFridgeIngredient, // vetted anchor — preferred, NOT mandatory
       undefined, // mealCount - not applicable for single meal generation
-      params.customCookingInstructions // customCookingInstructions from user
+      params.customCookingInstructions, // customCookingInstructions from user
+      undefined, // breakfastStyle
+      supportingIngredients // vetted extras that fit alongside the anchor
     );
 
     console.log(`Generating single recipe (attempt ${attempt}/${MAX_PREFERENCE_RETRIES})...`);
     const recipe = await callOpenAIForRecipeWithValidation(prompt, mealType);
     recipe.mealType = mealType;
 
-    // Validate recipe contains the assigned fridge ingredient
+    // A deliberate, reported omission is a VALID outcome — we no longer re-roll
+    // just because the anchor is absent (that was what forced clashing dishes).
     if (assignedFridgeIngredient) {
       const ingredientText = `${recipe.name} ${recipe.description} ${(recipe.ingredients || []).map(i => i.name).join(' ')}`.toLowerCase();
       if (!ingredientText.includes(assignedFridgeIngredient.toLowerCase())) {
-        console.warn(`⚠️ Recipe "${recipe.name}" doesn't contain required fridge ingredient "${assignedFridgeIngredient}" (attempt ${attempt})`);
-        if (attempt < MAX_PREFERENCE_RETRIES) continue; // Retry
+        const reported = (recipe.omittedIngredients ?? []).find((o) =>
+          o.name?.toLowerCase().includes(assignedFridgeIngredient!.toLowerCase()),
+        );
+        console.log(
+          `[RecipeFit] Anchor "${assignedFridgeIngredient}" not used in "${recipe.name}"` +
+            (reported ? ` — deliberate: ${reported.reason}` : ' — no reason reported (accepted anyway)'),
+        );
       }
     }
 
@@ -1593,7 +1651,31 @@ export async function generateRecipe(
     recipe.violations = validation.violations;
 
     if (validation.isValid) {
-      console.log('Generated recipe:', recipe.name);
+      // ── LAYER 2 — independent coherence judge ────────────────────────────
+      // Fresh context, so it isn't defending the recipe it just wrote.
+      const verdict = await judgeRecipeCoherence({
+        name: recipe.name,
+        description: recipe.description,
+        ingredients: recipe.ingredients ?? [],
+        instructions: recipe.instructions,
+        mealType,
+      });
+      if (verdict.ok) {
+        console.log(`Generated recipe: ${recipe.name} (coherence ${verdict.score}/5)`);
+        return recipe;
+      }
+      console.warn(
+        `⚠️ Recipe "${recipe.name}" failed coherence (${verdict.score}/5): ${verdict.reason}` +
+          (verdict.clashes.length ? ` — clashes: ${verdict.clashes.join(', ')}` : ''),
+      );
+      if (attempt < MAX_PREFERENCE_RETRIES) continue; // regenerate
+      // Out of attempts — surface the clash rather than hiding it.
+      recipe.violations = [
+        ...(recipe.violations ?? []),
+        ...(verdict.clashes.length
+          ? [`May not taste great: ${verdict.clashes.join(', ')}`]
+          : ['May not taste great — unusual ingredient combination']),
+      ];
       return recipe;
     }
 

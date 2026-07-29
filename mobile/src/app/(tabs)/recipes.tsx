@@ -52,6 +52,7 @@ import { t } from '@/lib/platform-tokens';
 import { CURATED_MEAL_PLANS } from '@/lib/curated-meal-plans';
 import { FILTER_CATEGORIES } from '@/lib/recipe-categories';
 import { isDefaultRecipeImage } from '@/lib/recipe-image';
+import { RecipePrepBanner } from '@/components/RecipePrepBanner';
 import { DuplicateRecipeModal, findDuplicateGroups } from '@/components/DuplicateRecipeModal';
 import { NewCollectionModal } from '@/components/NewCollectionModal';
 import { SaveToCollectionSheet } from '@/components/SaveToCollectionSheet';
@@ -537,6 +538,11 @@ export default function RecipesScreen() {
   const mealSlots = useMealPlanStore((s) => s.mealSlots);
   const nudgeDismissals = useMealPlanStore((s) => s.nudgeDismissals);
   const dismissNudge = useMealPlanStore((s) => s.dismissNudge);
+  // First-run recipe prep — set while the dishes named in onboarding build in
+  // the background. Drives the "Creating your recipes" banner; once it clears,
+  // the "Your recipes are ready" intro nudge takes over.
+  const recipePrep = useMealPlanStore((s) => s.recipePrep);
+  const clearRecipePrep = useMealPlanStore((s) => s.clearRecipePrep);
   // ── Custom collections (Premium) ──
   const collections = useMealPlanStore((s) => s.collections);
   const deleteCollectionAction = useMealPlanStore((s) => s.deleteCollection);
@@ -579,9 +585,24 @@ export default function RecipesScreen() {
     () => mealSlots.some((s) => !!s.recipeId),
     [mealSlots],
   );
+  // While first-run recipes are still building (or just finished, before the
+  // banner clears), the prep banner owns this slot — hold the intro nudge back
+  // so the two don't stack.
+  const recipePrepActive = recipePrep != null;
+  const recipePrepDone =
+    recipePrep != null && recipePrep.completed >= recipePrep.total;
+  // Give the completed banner a brief "ready" beat, then clear it so the
+  // "Your recipes are ready · Plan My Meals" nudge takes over.
+  useEffect(() => {
+    if (!recipePrepDone) return;
+    const t = setTimeout(() => clearRecipePrep(), 1600);
+    return () => clearTimeout(t);
+  }, [recipePrepDone, clearRecipePrep]);
+
   const showRecipesIntro =
     uniqueRecipes.length > 0 &&
     !hasPlannedMeal &&
+    !recipePrepActive &&
     !nudgeDismissals['recipes-intro'];
 
   const categoryCount = useMemo(() => {
@@ -1001,6 +1022,12 @@ export default function RecipesScreen() {
               </Animated.View>
 
               {/* Snapshot stats row (recipes · favorites) removed per design. */}
+
+              {/* ── First-run recipe-prep banner ───────────────────
+                  Shows while the dishes named during onboarding build in the
+                  background; self-hides (returns null) once cleared, handing
+                  the slot back to the intro nudge below. */}
+              <RecipePrepBanner isDark={isDark} />
 
               {/* ── First-time intro nudge ─────────────────────── */}
               {showRecipesIntro && (

@@ -511,6 +511,14 @@ export interface PendingGenerationState {
   error?: string;
 }
 
+// One recipe's contribution to the current grocery list. There can be multiple
+// entries for the same recipeId (e.g. the same dish cooked on two days, each
+// with its own serving multiplier).
+export interface GroceryRecipeSource {
+  recipeId: string;
+  servingMultiplier: number;
+}
+
 export interface GroceryItem {
   id: string;
   name: string;
@@ -783,6 +791,13 @@ interface MealPlanStore {
   customGroceryItems: GroceryItem[];
   savedGroceryLists: SavedGroceryList[];
   similarIngredients: SimilarIngredientGroup[];
+  // The recipes (with per-occurrence serving multiplier) that the current
+  // generated grocery list was built from — one entry per meal-plan slot or
+  // per "From Recipes" pick. Drives the recipe strip at the top of the Grocery
+  // tab and lets removeRecipeFromGroceryList recompute the ingredient list
+  // correctly (subtract exactly that recipe's contribution). Ephemeral: rebuilt
+  // on each generate/add, not persisted.
+  groceryRecipeSources: GroceryRecipeSource[];
 
   // Currently Loaded Saved List (separate from grocery list)
   currentSavedListId: string | null;
@@ -790,6 +805,21 @@ interface MealPlanStore {
   currentSavedListItems: GroceryItem[];
 
   generateGroceryList: (startDate: string, endDate: string) => void;
+  // Add one or more library recipes' ingredients straight into the current
+  // grocery list (the "From Recipes" flow). Recipe-attributed (each item keeps
+  // its recipeIds) and merged into any existing rows at the recipe's own
+  // serving size. Preserves checked state and syncs to the DB.
+  addRecipesToGroceryList: (recipeIds: string[]) => void;
+  // Remove a recipe from the current grocery list — drops every source entry
+  // for that recipe and recomputes the ingredient list from the remaining
+  // recipes (checked state preserved). Custom/manually-added items are
+  // untouched. No-op if the recipe isn't in the list.
+  removeRecipeFromGroceryList: (recipeId: string) => void;
+  // Change a recipe's serving size within the current grocery list. The
+  // ingredient quantities for that recipe are rescaled (servings ÷ the recipe's
+  // authored servings) and the whole list recomputed. No-op if the recipe isn't
+  // in the list or servings is invalid.
+  setRecipeServingsInGroceryList: (recipeId: string, servings: number) => void;
   combineSimilarIngredients: (groupId: string, selectedItemIds: string[]) => void;
   clearSimilarIngredients: () => void;
   toggleGroceryItem: (itemId: string) => void;
@@ -810,6 +840,9 @@ interface MealPlanStore {
   loadSavedGroceryList: (listId: string) => void;
   unloadSavedGroceryList: () => void;
   toggleCurrentSavedListItem: (itemId: string) => void;
+  // Untick every item in the loaded saved list (the "Reset" button on the
+  // shopping-list page) — resets shopping progress to 0% / all-to-review.
+  resetCurrentSavedListChecks: () => void;
   addCurrentSavedListItem: (item: Omit<GroceryItem, 'id'>) => void;
   removeCurrentSavedListItem: (itemId: string) => void;
   mergeIntoGroceryItem: (itemId: string, addedQuantity: string, addedUnit: string) => void;
@@ -907,6 +940,24 @@ interface MealPlanStore {
   // cooperatively (no more recipes are placed) and clears the progress banner.
   // Recipes already placed stay in the plan; the user can add more manually.
   cancelGeneration: () => void;
+
+  // ───── First-run recipe preparation (ephemeral) ─────
+  // Tracks the fire-and-forget build of the dishes a user named during
+  // onboarding (see buildFrequentCookRecipes). `total` is how many dishes are
+  // being built; `completed` ticks up as each one resolves (success OR failure).
+  // Drives the "your recipes are being created" banner on the Recipes tab —
+  // once completed >= total the banner gives way to the "recipes are ready"
+  // nudge. NOT persisted: if the app is killed mid-build the in-flight promises
+  // die with it, so a stale "active" state must never survive a restart.
+  recipePrep: { total: number; completed: number; startedAt: string } | null;
+  // Start a prep run for `total` dishes (no-op if total <= 0). Resets any prior
+  // run so a second onboarding pass starts clean.
+  beginRecipePrep: (total: number) => void;
+  // Mark one dish done (call in the build loop's finally, success or fail).
+  markRecipePrepProgress: () => void;
+  // Clear the prep state (banner disappears). Called once the user has seen the
+  // completed state, or to force-dismiss.
+  clearRecipePrep: () => void;
 
   // ───── Vibe Cooking hand-off (ephemeral) ─────
   // Set by generate-recipe.tsx when a vibe-flow generation succeeds.
@@ -1006,6 +1057,7 @@ function leftoverServingAdjustment(
   mealSlots: MealSlot[],
   recipes: Recipe[],
   removed: MealSlot | undefined,
+  servingSize: number | undefined,
 ): { slotId: string; servingOverride: number | undefined } | null {
   const prefix = 'Leftovers · ';
   if (!removed || removed.recipeId || !removed.customMealName) return null;
@@ -1048,17 +1100,266 @@ function leftoverServingAdjustment(
   }
 
   if (!srcSlot || !srcSlot.recipeId) return null;
-  const base = recipes.find((r) => r.id === srcSlot.recipeId)?.servings;
-  if (!base || base <= 0) return null;
+  const recipeServings = recipes.find((r) => r.id === srcSlot.recipeId)?.servings;
+  if (!recipeServings || recipeServings <= 0) return null;
 
-  const current = srcSlot.servingOverride ?? base;
-  const next = current - base;
-  // Back at (or below) a single cook → drop the override entirely.
-  return { slotId: srcSlot.id, servingOverride: next > base ? next : undefined };
+  // Per-meal serving count = the user's chosen serving size (people per meal) —
+  // the same amount the forward leftover-scaling adds. Falls back to the
+  // recipe's authored servings only when no preference is set.
+  const perMeal = servingSize && servingSize > 0 ? servingSize : recipeServings;
+  const current = srcSlot.servingOverride ?? perMeal;
+  const next = current - perMeal;
+  // Floor at a single cook (perMeal) — every cooked slot carries at least the
+  // base serving-size override, so we keep it rather than dropping to undefined.
+  return { slotId: srcSlot.id, servingOverride: next > perMeal ? next : perMeal };
 }
 
 // Generate proper UUID for grocery items (Supabase requires UUID format)
 const generateGroceryItemId = () => uuidv4();
+
+// A single recipe's contribution to a grocery list. `servingMultiplier` scales
+// the authored quantities (1 = the recipe's own serving size).
+interface GroceryBuildEntry {
+  recipe: Recipe;
+  recipeId: string;
+  servingMultiplier: number;
+}
+
+// Reusable ingredient aggregation shared by generateGroceryList (meal-plan
+// slots) and addRecipesToGroceryList (ad-hoc recipe picks). Produces a keyed
+// map of GroceryItems from a set of recipe "entries", optionally seeded with
+// existing items so new entries merge into the rows already present (and keep
+// their checked state). This mirrors, verbatim, the per-recipe logic that used
+// to live inline in generateGroceryList — curated fast path, normal
+// convert-to-base path with its fallback, and the count→weight / count→volume
+// reconciliation passes.
+function buildGroceryItemMap(
+  entries: GroceryBuildEntry[],
+  seedItems: GroceryItem[] = [],
+): Map<string, GroceryItem> {
+  const ingredientMap = new Map<string, GroceryItem>();
+
+  // Seed with existing rows so additions combine into them. Rebuild each row's
+  // key exactly as the two code paths below do (name + base_unit, or the
+  // fallback name + normalized display unit). Clone so we never mutate store
+  // state in place.
+  seedItems.forEach((item) => {
+    const nn = normalizeIngredientName(item.name);
+    const key = item.base_unit
+      ? `${nn}-${item.base_unit}`
+      : `${nn}-${normalizeUnit(item.unit)}`;
+    ingredientMap.set(key, { ...item, recipeIds: [...item.recipeIds] });
+  });
+
+  entries.forEach(({ recipe, recipeId, servingMultiplier }) => {
+    // ── ADDITIVE FAST PATH for Curated Meal Plans ──
+    if (recipe.curatedSourceId && CURATED_GROCERY_CACHE[recipe.curatedSourceId]) {
+      const cachedItems = CURATED_GROCERY_CACHE[recipe.curatedSourceId];
+      cachedItems.forEach((cachedIng) => {
+        const adjustedBaseQty = cachedIng.quantity_base * servingMultiplier;
+        const cachedNormalizedName = normalizeIngredientName(cachedIng.canonicalName);
+        const key = `${cachedNormalizedName}-${cachedIng.base_unit}`;
+        const existing = ingredientMap.get(key);
+        if (existing && existing.quantity_base != null) {
+          const summedBase = existing.quantity_base + adjustedBaseQty;
+          existing.quantity_base = summedBase;
+          existing.quantity = formatFromBaseUnit(summedBase, cachedIng.base_unit, cachedIng.canonicalName);
+          if (!existing.recipeIds.includes(recipeId)) existing.recipeIds.push(recipeId);
+        } else {
+          const displayQuantity = formatFromBaseUnit(adjustedBaseQty, cachedIng.base_unit, cachedIng.canonicalName);
+          ingredientMap.set(key, {
+            id: generateGroceryItemId(),
+            name: getCanonicalIngredientName(cachedIng.canonicalName),
+            quantity: displayQuantity,
+            unit: '',
+            category: cachedIng.category,
+            isChecked: false,
+            recipeIds: [recipeId],
+            quantity_base: adjustedBaseQty,
+            base_unit: cachedIng.base_unit,
+          });
+        }
+      });
+      return; // Skip normal processing for this recipe
+    }
+
+    // ── Normal path — split compounds, convert to base unit, sum by key ──
+    recipe.ingredients.flatMap(splitCompoundIngredient).forEach((ing) => {
+      try {
+        const baseConversion = convertToBaseUnit(ing.quantity, ing.unit, ing.name);
+        const adjustedBaseQty = baseConversion.quantity * servingMultiplier;
+        const normalizedName = normalizeIngredientName(ing.name);
+        const canonicalCategory = getCanonicalCategory(ing.name, ing.category);
+        const key = `${normalizedName}-${baseConversion.unit}`;
+        const canonicalName = getCanonicalIngredientName(ing.name);
+        const existing = ingredientMap.get(key);
+        if (existing && existing.quantity_base != null) {
+          const summedBase = existing.quantity_base + adjustedBaseQty;
+          existing.quantity_base = summedBase;
+          existing.quantity = formatFromBaseUnit(summedBase, baseConversion.unit, ing.name);
+          if (!existing.recipeIds.includes(recipeId)) existing.recipeIds.push(recipeId);
+        } else {
+          const displayQuantity = formatFromBaseUnit(adjustedBaseQty, baseConversion.unit, ing.name);
+          ingredientMap.set(key, {
+            id: generateGroceryItemId(),
+            name: canonicalName,
+            quantity: displayQuantity,
+            unit: '',
+            category: canonicalCategory,
+            isChecked: false,
+            recipeIds: [recipeId],
+            quantity_base: adjustedBaseQty,
+            base_unit: baseConversion.unit,
+          });
+        }
+      } catch (error) {
+        console.warn(
+          `Failed to convert unit for ${ing.name} with quantity ${ing.quantity} ${ing.unit}:`,
+          error,
+        );
+        const normalizedName = normalizeIngredientName(ing.name);
+        const normalizedUnit = normalizeUnit(ing.unit);
+        const key = `${normalizedName}-${normalizedUnit}`;
+        const baseQty = parseFloat(String(ing.quantity)) || 0;
+        const adjustedQty = baseQty * servingMultiplier;
+        const canonicalName = getCanonicalIngredientName(ing.name);
+        const existing = ingredientMap.get(key);
+        if (existing) {
+          const summed = (parseFloat(existing.quantity) || 0) + adjustedQty;
+          existing.quantity = summed.toString();
+          if (!existing.recipeIds.includes(recipeId)) existing.recipeIds.push(recipeId);
+        } else {
+          ingredientMap.set(key, {
+            id: generateGroceryItemId(),
+            name: canonicalName,
+            quantity: adjustedQty.toString(),
+            unit: normalizedUnit,
+            category: ing.category,
+            isChecked: false,
+            recipeIds: [recipeId],
+          });
+        }
+      }
+    });
+  });
+
+  // ── Count→Weight reconciliation ── fold a `piece` row into a `g` row when
+  // the average-weight lookup is confident enough (e.g. garlic clove → 5 g).
+  const keysByName = new Map<string, { gramKey?: string; mlKey?: string; pieceKey?: string }>();
+  ingredientMap.forEach((item, key) => {
+    const nameKey = normalizeIngredientName(item.name);
+    const group = keysByName.get(nameKey) ?? {};
+    if (item.base_unit === 'g') group.gramKey = key;
+    else if (item.base_unit === 'ml') group.mlKey = key;
+    else if (item.base_unit === 'piece') group.pieceKey = key;
+    keysByName.set(nameKey, group);
+  });
+  keysByName.forEach(({ gramKey, pieceKey }, nameKey) => {
+    if (!gramKey || !pieceKey) return;
+    if (!shouldConvertCountToWeight(nameKey)) return;
+    const lookup = getAverageWeightWithConfidence(nameKey);
+    if (!lookup) return;
+    const pieceItem = ingredientMap.get(pieceKey);
+    const gramItem = ingredientMap.get(gramKey);
+    if (!pieceItem || !gramItem || gramItem.quantity_base == null) return;
+    const pieceCount = pieceItem.quantity_base ?? parseFloat(pieceItem.quantity) ?? 0;
+    if (!pieceCount) return;
+    const convertedG = pieceCount * lookup.weightG;
+    const summedG = gramItem.quantity_base + convertedG;
+    gramItem.quantity_base = summedG;
+    gramItem.quantity = formatFromBaseUnit(summedG, 'g', gramItem.name);
+    pieceItem.recipeIds.forEach((rid) => {
+      if (!gramItem.recipeIds.includes(rid)) gramItem.recipeIds.push(rid);
+    });
+    ingredientMap.delete(pieceKey);
+  });
+
+  // ── Count→Volume reconciliation ── fold a `piece` row into an `ml` row for
+  // liquids sold by the container (e.g. 1 can coconut milk = 400 mL).
+  keysByName.forEach(({ mlKey, pieceKey }, nameKey) => {
+    if (!mlKey || !pieceKey) return;
+    if (!ingredientMap.has(pieceKey)) return; // already consumed by the gram pass
+    const perContainerMl = getContainerVolumeML(nameKey);
+    if (!perContainerMl) return;
+    const mlItem = ingredientMap.get(mlKey);
+    const pieceItem = ingredientMap.get(pieceKey);
+    if (!mlItem || !pieceItem || mlItem.quantity_base == null) return;
+    const pieceCount = pieceItem.quantity_base ?? parseFloat(pieceItem.quantity) ?? 0;
+    if (!pieceCount) return;
+    const convertedMl = pieceCount * perContainerMl;
+    const summedMl = mlItem.quantity_base + convertedMl;
+    mlItem.quantity_base = summedMl;
+    mlItem.quantity = formatFromBaseUnit(summedMl, 'ml', mlItem.name);
+    pieceItem.recipeIds.forEach((rid) => {
+      if (!mlItem.recipeIds.includes(rid)) mlItem.recipeIds.push(rid);
+    });
+    ingredientMap.delete(pieceKey);
+  });
+
+  return ingredientMap;
+}
+
+// Detect "similar" grocery rows — same canonical name + category but different
+// base units — so the review modal can offer to combine them. Shared by every
+// path that rebuilds groceryItems (generate / add / remove).
+function computeSimilarIngredientGroups(items: GroceryItem[]): SimilarIngredientGroup[] {
+  const similarMap = new Map<string, GroceryItem[]>();
+  items.forEach((item) => {
+    const key = `${normalizeIngredientName(item.name)}-${item.category}`;
+    if (!similarMap.has(key)) similarMap.set(key, []);
+    similarMap.get(key)!.push(item);
+  });
+  const groups: SimilarIngredientGroup[] = [];
+  similarMap.forEach((its, key) => {
+    const uniqueUnits = new Set(its.map((i) => i.base_unit));
+    if (uniqueUnits.size > 1) {
+      const [canonicalName, category] = key.split('-');
+      groups.push({
+        id: generateGroceryItemId(),
+        canonicalName,
+        category: category as any,
+        variants: its.map((item) => ({
+          itemId: item.id,
+          displayName: item.name,
+          quantity: item.quantity_base || parseFloat(item.quantity) || 0,
+          baseUnit: item.base_unit || item.unit || 'piece',
+          displayQuantity: item.quantity,
+        })),
+      });
+    }
+  });
+  return groups;
+}
+
+// Recompute the whole grocery list from a set of recipe sources (clean rebuild,
+// no seed). Checked state is carried over by matching the builder's row key
+// (normalized name + base/display unit). Used by removeRecipeFromGroceryList
+// and setRecipeServingsInGroceryList.
+function rebuildGroceryItemsFromSources(
+  recipes: Recipe[],
+  sources: GroceryRecipeSource[],
+  prevItems: GroceryItem[],
+): GroceryItem[] {
+  const entries: GroceryBuildEntry[] = [];
+  sources.forEach((s) => {
+    const recipe = recipes.find((r) => r.id === s.recipeId);
+    if (recipe) entries.push({ recipe, recipeId: s.recipeId, servingMultiplier: s.servingMultiplier });
+  });
+  const rebuilt = Array.from(buildGroceryItemMap(entries).values());
+
+  const keyOf = (item: GroceryItem) => {
+    const nn = normalizeIngredientName(item.name);
+    return item.base_unit ? `${nn}-${item.base_unit}` : `${nn}-${normalizeUnit(item.unit)}`;
+  };
+  const checkedByKey = new Map<string, boolean>();
+  prevItems.forEach((item) => {
+    if (item.isChecked) checkedByKey.set(keyOf(item), true);
+  });
+  rebuilt.forEach((item) => {
+    if (checkedByKey.get(keyOf(item))) item.isChecked = true;
+  });
+  return rebuilt;
+}
 
 // Helper to check if a string is a valid UUID
 const isValidUUID = (id: string): boolean => {
@@ -1313,6 +1614,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
       recipes: [],
       mealSlots: [],
       groceryItems: [],
+      groceryRecipeSources: [],
       customGroceryItems: [],
       savedGroceryLists: [],
       similarIngredients: [],
@@ -1340,6 +1642,29 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
       // ───── Background generation state ─────
       pendingGeneration: null,
+
+      // ───── First-run recipe preparation (ephemeral) ─────
+      recipePrep: null,
+      beginRecipePrep: (total) => {
+        if (!Number.isFinite(total) || total <= 0) return;
+        set({
+          recipePrep: {
+            total,
+            completed: 0,
+            startedAt: new Date().toISOString(),
+          },
+        });
+      },
+      markRecipePrepProgress: () =>
+        set((state) => {
+          if (!state.recipePrep) return {};
+          const completed = Math.min(
+            state.recipePrep.completed + 1,
+            state.recipePrep.total,
+          );
+          return { recipePrep: { ...state.recipePrep, completed } };
+        }),
+      clearRecipePrep: () => set({ recipePrep: null }),
 
       // ───── Vibe Cooking hand-off (ephemeral) ─────
       lastVibeCook: null,
@@ -2159,10 +2484,17 @@ export const useMealPlanStore = create<MealPlanStore>()(
                     // Cook day — every distinct dish lands in the lunch slot as a
                     // real recipe, sized to cover its fresh meal + its leftovers.
                     dishes.forEach((dish, di) => {
+                      // Per-meal serving count = the user's chosen serving size
+                      // (people per meal), not the recipe's authored servings — so a
+                      // batch cook feeding `mealsByDish[di]` meals totals
+                      // servingSize × meals. Falls back to the recipe's own servings
+                      // only when no preference is set.
                       const base =
-                        dish.servings && dish.servings > 0
-                          ? dish.servings
-                          : preferences.servingSize || 1;
+                        preferences.servingSize && preferences.servingSize > 0
+                          ? preferences.servingSize
+                          : dish.servings && dish.servings > 0
+                            ? dish.servings
+                            : 1;
                       get().addMealToSlot({
                         id: '', date: dk, mealType: 'lunch', recipeId: dish.recipeId,
                         servingOverride: base * mealsByDish[di],
@@ -2505,8 +2837,13 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   const [srcDate, srcMt] = key.split('|') as [string, 'lunch' | 'dinner'];
                   const slot = cookedSlotOn(srcDate, srcMt);
                   if (!slot || !slot.recipeId) return;
-                  const base = get().recipes.find((r) => r.id === slot.recipeId)?.servings;
-                  const perMeal = base && base > 0 ? base : get().preferences.servingSize || 1;
+                  // Per-meal serving count = the user's chosen serving size (people
+                  // per meal), NOT the recipe's authored servings — so a cook that
+                  // also feeds `count` leftover meals totals servingSize × (1 + count).
+                  // Falls back to the recipe's own servings only if no preference set.
+                  const recipeServings = get().recipes.find((r) => r.id === slot.recipeId)?.servings;
+                  const perMeal =
+                    get().preferences.servingSize || (recipeServings && recipeServings > 0 ? recipeServings : 1);
                   get().updateMealSlot(slot.id, {
                     servingOverride: perMeal * (1 + count),
                   });
@@ -3008,7 +3345,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const cascadeIds = mealRemovalCascadeIds(mealSlots, recipes, removed);
         const idsToRemove = new Set([slotId, ...cascadeIds]);
         // Removing a leftover → shrink the dinner that fed it back down.
-        const servingAdj = leftoverServingAdjustment(mealSlots, recipes, removed);
+        const servingAdj = leftoverServingAdjustment(
+          mealSlots,
+          recipes,
+          removed,
+          get().preferences.servingSize,
+        );
 
         set((state) => ({
           mealSlots: state.mealSlots.filter((s) => !idsToRemove.has(s.id)),
@@ -3038,7 +3380,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const cascadeIds = mealRemovalCascadeIds(mealSlots, recipes, removed);
         const idsToRemove = new Set([slotId, ...cascadeIds]);
         // Removing a leftover → shrink the dinner that fed it back down.
-        const servingAdj = leftoverServingAdjustment(mealSlots, recipes, removed);
+        const servingAdj = leftoverServingAdjustment(
+          mealSlots,
+          recipes,
+          removed,
+          get().preferences.servingSize,
+        );
 
         set((state) => ({
           mealSlots: state.mealSlots.filter((s) => !idsToRemove.has(s.id)),
@@ -3135,241 +3482,33 @@ export const useMealPlanStore = create<MealPlanStore>()(
           return s.date >= startDate && s.date <= endDate && s.recipeId;
         });
 
-        // Use ingredient name + CANONICAL unit as key for intelligent combining
-        // This ensures "4 eggs" + "2 g egg" combine into one egg entry
-        // The canonical unit is the preferred display unit for each ingredient type
-        const ingredientMap = new Map<string, GroceryItem>();
-
+        // Aggregate every meal-plan slot's recipe into grocery items via the
+        // shared builder (curated fast path, unit conversion, and the
+        // count→weight / count→volume reconciliation all live there now).
         console.log(`[GROCERY] ========== GENERATING GROCERY LIST ==========`);
         console.log(`[GROCERY] Date range: ${startDate} to ${endDate}`);
         console.log(`[GROCERY] Total recipes in store: ${recipes.length}`);
         console.log(`[GROCERY] Found ${slotsInRange.length} meal slots with recipes`);
 
-        slotsInRange.forEach((slot, slotIndex) => {
+        const entries: GroceryBuildEntry[] = [];
+        slotsInRange.forEach((slot) => {
           const recipe = recipes.find((r) => r.id === slot.recipeId);
           if (!recipe) {
             console.log(`[GROCERY] WARNING: Recipe not found for slot ${slot.id} with recipeId ${slot.recipeId}`);
             return;
           }
-
-          console.log(`[GROCERY] Slot ${slotIndex + 1}/${slotsInRange.length}: ${slot.date} ${slot.mealType} - ${recipe.name} (${recipe.ingredients.length} ingredients)`);
-
-          // Calculate serving multiplier based on serving override
+          // Scale authored quantities by any per-slot serving override.
           const servingMultiplier = slot.servingOverride ? slot.servingOverride / recipe.servings : 1;
-
-          // ADDITIVE FAST PATH for Curated Meal Plans
-          // Bypasses runtime processing and uses pre-calculated perfectly uniform ingredients
-          // to ensure zero duplication
-          if (recipe.curatedSourceId && CURATED_GROCERY_CACHE[recipe.curatedSourceId]) {
-            console.log(`[GROCERY] FAST PATH: Using pre-calculated static cache for curated recipe ${recipe.curatedSourceId}`);
-            const cachedItems = CURATED_GROCERY_CACHE[recipe.curatedSourceId];
-            
-            cachedItems.forEach(cachedIng => {
-              const adjustedBaseQty = cachedIng.quantity_base * servingMultiplier;
-              // Re-derive the key from name + base unit only (category is
-              // intentionally omitted) so curated rows aggregate cleanly with
-              // rows emitted by the regular path below. The cached
-              // `normalizedKey` historically baked in a category suffix
-              // (e.g. "rolled oat-g-pantry"), which split rows whenever the
-              // AI-generated counterpart was tagged differently.
-              const cachedNormalizedName = normalizeIngredientName(cachedIng.canonicalName);
-              const key = `${cachedNormalizedName}-${cachedIng.base_unit}`;
-              
-              const existing = ingredientMap.get(key);
-              if (existing && existing.quantity_base != null) {
-                const summedBase = existing.quantity_base + adjustedBaseQty;
-                existing.quantity_base = summedBase;
-                existing.quantity = formatFromBaseUnit(summedBase, cachedIng.base_unit, cachedIng.canonicalName);
-                if (slot.recipeId && !existing.recipeIds.includes(slot.recipeId)) {
-                  existing.recipeIds.push(slot.recipeId);
-                }
-              } else {
-                const displayQuantity = formatFromBaseUnit(adjustedBaseQty, cachedIng.base_unit, cachedIng.canonicalName);
-                ingredientMap.set(key, {
-                  id: generateGroceryItemId(),
-                  // Use Title-Case canonical so curated rows display the
-                  // same as regular-path rows ("Rolled Oat", not the raw
-                  // lowercase form stored in the cache).
-                  name: getCanonicalIngredientName(cachedIng.canonicalName),
-                  quantity: displayQuantity,
-                  unit: '',
-                  category: cachedIng.category,
-                  isChecked: false,
-                  recipeIds: [slot.recipeId!],
-                  quantity_base: adjustedBaseQty,
-                  base_unit: cachedIng.base_unit,
-                });
-              }
-            });
-            return; // Skip normal processing for this recipe
-          }
-
-          // Split any compound ingredient names ("Olive Oil + 2 tsp Cumin")
-          // into separate ingredients first, so they land on their own grocery
-          // rows instead of one glued line. Safety net for recipes that were
-          // saved before sanitization split them at generation time.
-          recipe.ingredients.flatMap(splitCompoundIngredient).forEach((ing) => {
-            try {
-              // Convert ingredient quantity to base unit
-              const baseConversion = convertToBaseUnit(ing.quantity, ing.unit, ing.name);
-              const adjustedBaseQty = baseConversion.quantity * servingMultiplier;
-
-              // Key on normalized name + ACTUAL base unit only. Category is
-              // intentionally excluded: it's a display/grouping concern, not
-              // an identity one. Including it caused the same ingredient
-              // tagged differently across recipes (e.g. "rolled oat" as
-              // 'pantry' in one recipe vs 'other' in another) to split into
-              // two grocery rows. The base unit is still part of the key so
-              // genuinely incompatible quantities (e.g. "600 g barramundi"
-              // vs "2 pieces barramundi") stay separate.
-              const normalizedName = normalizeIngredientName(ing.name);
-              const canonicalCategory = getCanonicalCategory(ing.name, ing.category);
-              const key = `${normalizedName}-${baseConversion.unit}`;
-
-              // Log for debugging
-              console.log(`[GROCERY-ING] ${ing.name}: qty=${ing.quantity} unit=${ing.unit} → normalized=${normalizedName} baseUnit=${baseConversion.unit} category=${ing.category}→${canonicalCategory} key=${key}`);
-
-              const canonicalName = getCanonicalIngredientName(ing.name);
-
-              // HIGH-CONFIDENCE AUTO-COMBINE: the key is
-              // normalizedName-baseUnit-canonicalCategory, so only the SAME
-              // canonical ingredient in the SAME base unit & category sums.
-              // Genuinely ambiguous cases (e.g. "600 g barramundi" vs
-              // "2 pieces barramundi" — different base units) get different
-              // keys, stay separate, and fall through to the review modal.
-              const existing = ingredientMap.get(key);
-              if (existing && existing.quantity_base != null) {
-                const summedBase = existing.quantity_base + adjustedBaseQty;
-                existing.quantity_base = summedBase;
-                existing.quantity = formatFromBaseUnit(summedBase, baseConversion.unit, ing.name);
-                if (slot.recipeId && !existing.recipeIds.includes(slot.recipeId)) {
-                  existing.recipeIds.push(slot.recipeId);
-                }
-              } else {
-                // Format using actual base conversion unit (g, ml, piece), not canonical
-                const displayQuantity = formatFromBaseUnit(adjustedBaseQty, baseConversion.unit, ing.name);
-                ingredientMap.set(key, {
-                  id: generateGroceryItemId(),
-                  name: canonicalName,
-                  quantity: displayQuantity,
-                  unit: '', // Leave unit empty since formatFromBaseUnit includes everything
-                  category: canonicalCategory, // Use canonical category instead of original
-                  isChecked: false,
-                  recipeIds: [slot.recipeId!],
-                  quantity_base: adjustedBaseQty,
-                  base_unit: baseConversion.unit, // Store actual base unit
-                });
-              }
-            } catch (error) {
-              // Log error but continue processing other ingredients
-              console.warn(
-                `Failed to convert unit for ${ing.name} with quantity ${ing.quantity} ${ing.unit}:`,
-                error
-              );
-              // Fallback: add without base-unit conversion (backwards compatible).
-              // Still sum same-key entries (same normalized name + unit + category).
-              const normalizedName = normalizeIngredientName(ing.name);
-              const normalizedUnit = normalizeUnit(ing.unit);
-              // Drop category from the key — same reason as the primary
-              // path above. Two recipes tagging the same ingredient with
-              // different categories must still merge.
-              const key = `${normalizedName}-${normalizedUnit}`;
-              const baseQty = parseFloat(String(ing.quantity)) || 0;
-              const adjustedQty = baseQty * servingMultiplier;
-              const canonicalName = getCanonicalIngredientName(ing.name);
-
-              const existing = ingredientMap.get(key);
-              if (existing) {
-                const summed = (parseFloat(existing.quantity) || 0) + adjustedQty;
-                existing.quantity = summed.toString();
-                if (slot.recipeId && !existing.recipeIds.includes(slot.recipeId)) {
-                  existing.recipeIds.push(slot.recipeId);
-                }
-              } else {
-                ingredientMap.set(key, {
-                  id: generateGroceryItemId(),
-                  name: canonicalName,
-                  quantity: adjustedQty.toString(),
-                  unit: normalizedUnit,
-                  category: ing.category,
-                  isChecked: false,
-                  recipeIds: [slot.recipeId!],
-                });
-              }
-            }
-          });
+          entries.push({ recipe, recipeId: slot.recipeId!, servingMultiplier });
         });
 
-        // ── Count→Weight reconciliation pass ────────────────────────────
-        // If the same canonical ingredient appears as BOTH a `piece`-keyed
-        // row and a `g`-keyed row AND the average-weight lookup is high
-        // enough confidence to convert (cinnamon stick → 3g, garlic clove
-        // → 5g, etc.), fold the piece quantity into the gram row and drop
-        // the piece row. This catches the mixed-unit case that the
-        // (name, base_unit) key intentionally splits on for safety.
-        const keysByName = new Map<string, { gramKey?: string; mlKey?: string; pieceKey?: string }>();
-        ingredientMap.forEach((item, key) => {
-          const nameKey = normalizeIngredientName(item.name);
-          const slot = keysByName.get(nameKey) ?? {};
-          if (item.base_unit === 'g') slot.gramKey = key;
-          else if (item.base_unit === 'ml') slot.mlKey = key;
-          else if (item.base_unit === 'piece') slot.pieceKey = key;
-          keysByName.set(nameKey, slot);
-        });
-        keysByName.forEach(({ gramKey, pieceKey }, nameKey) => {
-          if (!gramKey || !pieceKey) return;
-          if (!shouldConvertCountToWeight(nameKey)) return;
-          const lookup = getAverageWeightWithConfidence(nameKey);
-          if (!lookup) return;
-          const pieceItem = ingredientMap.get(pieceKey);
-          const gramItem = ingredientMap.get(gramKey);
-          if (!pieceItem || !gramItem || gramItem.quantity_base == null) return;
-          const pieceCount = pieceItem.quantity_base ?? parseFloat(pieceItem.quantity) ?? 0;
-          if (!pieceCount) return;
-          const convertedG = pieceCount * lookup.weightG;
-          const summedG = gramItem.quantity_base + convertedG;
-          gramItem.quantity_base = summedG;
-          gramItem.quantity = formatFromBaseUnit(summedG, 'g', gramItem.name);
-          // Carry the piece row's recipe attribution onto the merged row.
-          pieceItem.recipeIds.forEach((rid) => {
-            if (!gramItem.recipeIds.includes(rid)) gramItem.recipeIds.push(rid);
-          });
-          ingredientMap.delete(pieceKey);
-          console.log(
-            `[GROCERY] count→weight: merged ${pieceCount} × ${lookup.weightG}g of ${nameKey} into the weight row (${summedG}g total).`,
-          );
-        });
-
-        // ── Count→Volume reconciliation pass ────────────────────────────
-        // Same idea as count→weight, but for LIQUIDS sold by the container.
-        // If a canonical liquid appears as BOTH an `ml`-keyed row and a
-        // `piece`-keyed row AND it's in the curated container-volume lookup
-        // (so a counted "piece" reliably means one can/carton — e.g.
-        // "1 can coconut milk" = 400 mL), fold the count into the mL row and
-        // drop the piece row. Deliberately curated: only liquids where a
-        // counted unit is unambiguously a container, never produce.
-        keysByName.forEach(({ mlKey, pieceKey }, nameKey) => {
-          if (!mlKey || !pieceKey) return;
-          if (!ingredientMap.has(pieceKey)) return; // already consumed by the gram pass
-          const perContainerMl = getContainerVolumeML(nameKey);
-          if (!perContainerMl) return;
-          const mlItem = ingredientMap.get(mlKey);
-          const pieceItem = ingredientMap.get(pieceKey);
-          if (!mlItem || !pieceItem || mlItem.quantity_base == null) return;
-          const pieceCount = pieceItem.quantity_base ?? parseFloat(pieceItem.quantity) ?? 0;
-          if (!pieceCount) return;
-          const convertedMl = pieceCount * perContainerMl;
-          const summedMl = mlItem.quantity_base + convertedMl;
-          mlItem.quantity_base = summedMl;
-          mlItem.quantity = formatFromBaseUnit(summedMl, 'ml', mlItem.name);
-          pieceItem.recipeIds.forEach((rid) => {
-            if (!mlItem.recipeIds.includes(rid)) mlItem.recipeIds.push(rid);
-          });
-          ingredientMap.delete(pieceKey);
-          console.log(
-            `[GROCERY] count→volume: merged ${pieceCount} × ${perContainerMl}mL of ${nameKey} into the volume row (${summedMl}mL total).`,
-          );
-        });
+        const ingredientMap = buildGroceryItemMap(entries);
+        // Remember the source recipes (one per slot, with its multiplier) so the
+        // recipe strip can list them and removeRecipeFromGroceryList can recompute.
+        const groceryRecipeSources: GroceryRecipeSource[] = entries.map((e) => ({
+          recipeId: e.recipeId,
+          servingMultiplier: e.servingMultiplier,
+        }));
 
         const groceryItems = Array.from(ingredientMap.values());
 
@@ -3402,7 +3541,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
         Object.entries(categoryCount).forEach(([cat, count]) => {
           console.log(`[GROCERY]   ${cat}: ${count} items`);
         });
-        set({ groceryItems });
+        set({ groceryItems, groceryRecipeSources });
 
         // Count this grocery build, then ask for a review once the user has
         // both generated ≥3 plans AND used the grocery feature at least once.
@@ -3472,6 +3611,91 @@ export const useMealPlanStore = create<MealPlanStore>()(
           set((state) => ({
             preferences: { ...state.preferences, hasUsedFreeTrial: true },
           }));
+        }
+      },
+
+      addRecipesToGroceryList: (recipeIds) => {
+        const { recipes, groceryItems, groceryRecipeSources } = get();
+        // Build one entry per selected recipe at its authored serving size.
+        const entries: GroceryBuildEntry[] = [];
+        recipeIds.forEach((id) => {
+          const recipe = recipes.find((r) => r.id === id);
+          if (!recipe) {
+            console.log(`[GROCERY] addRecipes: recipe not found for id ${id}`);
+            return;
+          }
+          entries.push({ recipe, recipeId: id, servingMultiplier: 1 });
+        });
+        if (entries.length === 0) return;
+
+        // Seed with the existing list so ingredients merge into current rows
+        // (and keep their checked state); new rows are appended.
+        const merged = Array.from(buildGroceryItemMap(entries, groceryItems).values());
+        const nextSources: GroceryRecipeSource[] = [
+          ...groceryRecipeSources,
+          ...entries.map((e) => ({ recipeId: e.recipeId, servingMultiplier: e.servingMultiplier })),
+        ];
+        set({
+          groceryItems: merged,
+          groceryRecipeSources: nextSources,
+          similarIngredients: computeSimilarIngredientGroups(merged),
+        });
+
+        // Persist. replaceUserGroceryItems wipes + reinserts ALL rows, so send
+        // the union of generated + custom items (same contract as generate).
+        const userId = getCurrentUserId();
+        if (userId) {
+          db.replaceUserGroceryItems(userId, [...merged, ...get().customGroceryItems]);
+        }
+      },
+
+      removeRecipeFromGroceryList: (recipeId) => {
+        const { recipes, groceryItems, groceryRecipeSources } = get();
+        // Drop every source occurrence of this recipe.
+        const nextSources = groceryRecipeSources.filter((s) => s.recipeId !== recipeId);
+        if (nextSources.length === groceryRecipeSources.length) return; // not in list
+
+        const rebuilt = rebuildGroceryItemsFromSources(recipes, nextSources, groceryItems);
+        set({
+          groceryItems: rebuilt,
+          groceryRecipeSources: nextSources,
+          similarIngredients: computeSimilarIngredientGroups(rebuilt),
+        });
+
+        const userId = getCurrentUserId();
+        if (userId) {
+          db.replaceUserGroceryItems(userId, [...rebuilt, ...get().customGroceryItems]);
+        }
+      },
+
+      setRecipeServingsInGroceryList: (recipeId, servings) => {
+        const { recipes, groceryItems, groceryRecipeSources } = get();
+        const recipe = recipes.find((r) => r.id === recipeId);
+        if (!recipe || !recipe.servings || recipe.servings <= 0) return;
+        if (!Number.isFinite(servings) || servings <= 0) return;
+        const occurrences = groceryRecipeSources.filter((s) => s.recipeId === recipeId).length;
+        if (occurrences === 0) return; // not in list
+
+        // `servings` is the COMBINED serving size across every occurrence of this
+        // recipe (e.g. a dinner cook + its next-day lunch leftover, or a batch
+        // cook feeding several meals). Distribute it equally across the
+        // occurrences so the total ingredient scale equals servings ÷ authored
+        // servings.
+        const perOccurrenceMultiplier = servings / occurrences / recipe.servings;
+        const nextSources = groceryRecipeSources.map((s) =>
+          s.recipeId === recipeId ? { ...s, servingMultiplier: perOccurrenceMultiplier } : s,
+        );
+
+        const rebuilt = rebuildGroceryItemsFromSources(recipes, nextSources, groceryItems);
+        set({
+          groceryItems: rebuilt,
+          groceryRecipeSources: nextSources,
+          similarIngredients: computeSimilarIngredientGroups(rebuilt),
+        });
+
+        const userId = getCurrentUserId();
+        if (userId) {
+          db.replaceUserGroceryItems(userId, [...rebuilt, ...get().customGroceryItems]);
         }
       },
 
@@ -3838,7 +4062,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
       },
 
       clearGroceryList: () => {
-        set({ groceryItems: [] });
+        set({ groceryItems: [], groceryRecipeSources: [] });
 
         // Sync to database
         const userId = getCurrentUserId();
@@ -3930,6 +4154,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
         set((state) => ({
           savedGroceryLists: [...state.savedGroceryLists, newList],
           groceryItems: [], // Clear all grocery items
+          groceryRecipeSources: [], // and the recipe strip
           customGroceryItems: [], // Clear all custom items
           groceryStartDate: null, // Reset date range
           groceryEndDate: null,
@@ -4098,6 +4323,34 @@ export const useMealPlanStore = create<MealPlanStore>()(
             ),
           }));
 
+          const userId = getCurrentUserId();
+          if (userId) {
+            db.saveSavedGroceryList(userId, updatedList);
+          }
+        }
+      },
+
+      resetCurrentSavedListChecks: () => {
+        const cleared = get().currentSavedListItems.map((item) => ({ ...item, isChecked: false }));
+        set({ currentSavedListItems: cleared });
+
+        // Mirror the change into savedGroceryLists + the DB (same sync pattern
+        // as toggleCurrentSavedListItem).
+        const state = get();
+        if (state.currentSavedListId && state.currentSavedListName) {
+          const updatedList = {
+            id: state.currentSavedListId,
+            name: state.currentSavedListName,
+            items: cleared,
+            createdAt:
+              state.savedGroceryLists.find((l) => l.id === state.currentSavedListId)?.createdAt ||
+              new Date().toISOString(),
+          };
+          set((s) => ({
+            savedGroceryLists: s.savedGroceryLists.map((list) =>
+              list.id === state.currentSavedListId ? updatedList : list,
+            ),
+          }));
           const userId = getCurrentUserId();
           if (userId) {
             db.saveSavedGroceryList(userId, updatedList);
@@ -4406,11 +4659,30 @@ export const useMealPlanStore = create<MealPlanStore>()(
               }
             : defaultPreferences;
 
+          // Reconstruct the recipe-strip sources from the restored grocery
+          // rows' attribution so the strip survives an app restart / re-login.
+          // The exact per-slot serving multipliers aren't persisted, so we
+          // rebuild at multiplier 1 (each recipe's authored servings) — enough
+          // to list the recipes and let add/remove recompute sensibly.
+          const restoredGroceryItems: GroceryItem[] = data.groceryItems || [];
+          const restoredRecipeIds = new Set(validatedRecipes.map((r: any) => r.id));
+          const seenSource = new Set<string>();
+          const restoredSources: GroceryRecipeSource[] = [];
+          restoredGroceryItems.forEach((it) => {
+            (it.recipeIds || []).forEach((rid) => {
+              if (!seenSource.has(rid) && restoredRecipeIds.has(rid)) {
+                seenSource.add(rid);
+                restoredSources.push({ recipeId: rid, servingMultiplier: 1 });
+              }
+            });
+          });
+
           set({
             preferences: mergedPreferences,
             recipes: validatedRecipes,
             mealSlots: data.mealSlots || [],
             groceryItems: data.groceryItems || [],
+            groceryRecipeSources: restoredSources,
             customGroceryItems: [],
             // Limit to 4 saved lists, sorted by most recent first
             savedGroceryLists: (savedGroceryLists || [])
@@ -4453,6 +4725,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
           recipes: [],
           mealSlots: [],
           groceryItems: [],
+          groceryRecipeSources: [],
           customGroceryItems: [],
           savedGroceryLists: [],
           currentSavedListId: null,

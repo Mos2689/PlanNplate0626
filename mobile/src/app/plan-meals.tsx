@@ -57,6 +57,7 @@ import {
   useMealPlanStore,
   mergePersonaWithUserInstructions,
   mealPrepTimeFromMinutes,
+  type Recipe,
   type UserPreferences,
   type MealHabits,
   type BreakfastHabit,
@@ -512,11 +513,24 @@ export default function PlanMealsScreen() {
   );
 
   const favoriteRecipes = useMemo(() => {
-    // Favourite = saved (hearted) OR rated 5★. Recently-cooked ones float up.
+    // Show two kinds of recipes here:
+    //   • Favourites — saved (hearted) OR rated 5★.
+    //   • Recently added — anything the user added in the last 14 days.
+    // Recently added / recently cooked ones float up (sorted by whichever is
+    // most recent), then we cap the slider at 20.
+    const RECENT_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const addedAt = (r: Recipe) => {
+      const t = new Date(r.createdAt).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    const isRecentlyAdded = (r: Recipe) => now - addedAt(r) <= RECENT_WINDOW_MS;
+    // Recency signal used for sorting = most recent of "added" or "cooked".
+    const recencyOf = (r: Recipe) => Math.max(addedAt(r), cookedAtById.get(r.id) ?? 0);
     return allRecipes
-      .filter((r) => r.isSaved || fiveStarById.has(r.id))
-      .sort((a, b) => (cookedAtById.get(b.id) ?? 0) - (cookedAtById.get(a.id) ?? 0))
-      .slice(0, 12);
+      .filter((r) => r.isSaved || fiveStarById.has(r.id) || isRecentlyAdded(r))
+      .sort((a, b) => recencyOf(b) - recencyOf(a))
+      .slice(0, 20);
   }, [allRecipes, fiveStarById, cookedAtById]);
 
   const toggleFavorite = useCallback((id: string) => {
@@ -1403,7 +1417,7 @@ export default function PlanMealsScreen() {
                 marginBottom: 12,
               }}
             >
-              Recipes you saved or rated 5★ — tap to drop into this plan.
+              Recipes you saved, rated 5★, or added in the last 14 days — tap to drop into this plan.
             </Text>
 
             {favoriteRecipes.length === 0 ? (
@@ -1442,6 +1456,9 @@ export default function PlanMealsScreen() {
                 {favoriteRecipes.map((r) => {
                   const sel = selectedFavoriteIds.includes(r.id);
                   const fiveStar = fiveStarById.has(r.id);
+                  // If it qualified but isn't a 5★ or a saved favourite, it's here
+                  // because it was added in the last 14 days → show a "New" badge.
+                  const recentlyAddedOnly = !fiveStar && !r.isSaved;
                   return (
                     <Pressable key={r.id} onPress={() => toggleFavorite(r.id)}>
                       <View
@@ -1480,6 +1497,8 @@ export default function PlanMealsScreen() {
                           >
                             {fiveStar ? (
                               <Star size={10} color="#F4C76A" fill="#F4C76A" strokeWidth={0} />
+                            ) : recentlyAddedOnly ? (
+                              <SparklesIcon size={10} color="#F6F2E9" fill="#F6F2E9" strokeWidth={0} />
                             ) : (
                               <Heart size={10} color="#F6F2E9" fill="#F6F2E9" strokeWidth={0} />
                             )}
@@ -1490,7 +1509,7 @@ export default function PlanMealsScreen() {
                                 color: '#F6F2E9',
                               }}
                             >
-                              {fiveStar ? '5.0' : 'Loved'}
+                              {fiveStar ? '5.0' : recentlyAddedOnly ? 'New' : 'Loved'}
                             </Text>
                           </View>
                           {/* Selected check */}
