@@ -46,6 +46,8 @@ import {
   CircleMinus,
   Copy,
   ChevronLeft,
+  Info,
+  Bookmark as BookmarkIcon,
   ChevronRight,
   ChefHat,
 } from 'lucide-react-native';
@@ -72,6 +74,10 @@ import { formatIngredientDisplay, resolveMeasurementSystem } from '@/lib/unit-co
 import { useColorScheme } from '@/lib/useColorScheme';
 import { uploadFile } from '@/lib/upload';
 import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
+import { SaveToCollectionSheet } from '@/components/SaveToCollectionSheet';
+import { TagPicker } from '@/components/TagPicker';
+import { isDefaultRecipeImage } from '@/lib/recipe-image';
+import { detectAllergens } from '@/lib/allergy-checker';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
@@ -104,10 +110,14 @@ export default function RecipeDetailScreen() {
   const updateMealSlot = useMealPlanStore((s) => s.updateMealSlot);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  // "Save to collection" — same sheet the Recipes tab uses on long-press.
+  const [saveToCollectionOpen, setSaveToCollectionOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingIngredients, setEditingIngredients] = useState<Ingredient[] | null>(null);
   const [editingInstructions, setEditingInstructions] = useState<string[] | null>(null);
   const [editingImageUrl, setEditingImageUrl] = useState<string | null>(null);
+  // Tags draft, edited via the guided TagPicker in the Edit modal.
+  const [editingTags, setEditingTags] = useState<string[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // ── Additive UX-enhancement state (purely local, no store writes) ───────
@@ -222,6 +232,13 @@ export default function RecipeDetailScreen() {
       quantity: (parseFloat(ing.quantity) * servingMultiplier).toFixed(2).replace(/\.?0+$/, ''),
     }));
   }, [recipe, servingMultiplier]);
+
+  // Neutral allergen DISCLOSURE (food-label, not a personalised warning) —
+  // every common allergen present in the recipe, derived from its ingredients.
+  const detectedAllergens = useMemo(
+    () => (recipe ? detectAllergens(recipe) : []),
+    [recipe],
+  );
 
   const baseServings = mealSlot?.servingOverride ?? recipe?.servings ?? 0;
   const displayServings = viewServings ?? baseServings;
@@ -490,19 +507,25 @@ export default function RecipeDetailScreen() {
     setEditingIngredients([...recipe.ingredients]);
     setEditingInstructions([...recipe.instructions]);
     setEditingImageUrl(recipe.imageUrl);
+    setEditingTags([...new Set(recipe.tags ?? [])]);
     setShowEditModal(true);
   }, [recipe]);
 
   const handleSaveEdits = useCallback(() => {
     if (!recipe || !editingIngredients || !editingInstructions) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // De-duplicate the picked tags (trims any stray whitespace).
+    const parsedTags = Array.from(
+      new Set(editingTags.map((t) => t.trim()).filter(Boolean)),
+    );
     updateRecipe(recipe.id, {
       ingredients: editingIngredients,
       instructions: editingInstructions,
+      tags: parsedTags,
       ...(editingImageUrl && editingImageUrl !== recipe.imageUrl ? { imageUrl: editingImageUrl } : {}),
     });
     setShowEditModal(false);
-  }, [recipe, editingIngredients, editingInstructions, editingImageUrl, updateRecipe]);
+  }, [recipe, editingIngredients, editingInstructions, editingImageUrl, editingTags, updateRecipe]);
 
   const handlePickImage = useCallback(async () => {
     try {
@@ -714,6 +737,19 @@ export default function RecipeDetailScreen() {
                     />
                   </Animated.View>
                 </Pressable>
+                {/* Save to collection — hidden in the read-only library
+                    preview, which has no library row to file. */}
+                {!isLibraryView && (
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      setSaveToCollectionOpen(true);
+                    }}
+                    style={headerButton}
+                  >
+                    <BookmarkIcon size={16} color="#fff" strokeWidth={1.8} />
+                  </Pressable>
+                )}
                 <Pressable onPress={handleShare} style={headerButton}>
                   <Share2 size={16} color="#fff" strokeWidth={1.8} />
                 </Pressable>
@@ -744,6 +780,42 @@ export default function RecipeDetailScreen() {
               </Text>
             </View>
           </View>
+
+          {/* Default-image nudge — shown ONLY on the app's stock placeholder
+              photo (never on a real Pexels/uploaded/curated image), and only
+              for editable recipes. Tapping opens the editor so the user can
+              set a proper photo. */}
+          {!isLibraryView && isDefaultRecipeImage(recipe.imageUrl) && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                handleEditPress();
+              }}
+              hitSlop={8}
+              style={{
+                position: 'absolute',
+                bottom: 16,
+                right: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 999,
+                backgroundColor: designTokens.colors.brand,
+              }}
+            >
+              <Camera size={14} color={designTokens.colors.cream} strokeWidth={1.9} />
+              <Text style={{
+                fontFamily: designTokens.font.medium,
+                fontSize: 12,
+                color: designTokens.colors.cream,
+                letterSpacing: -0.06,
+              }}>
+                Update your recipe image
+              </Text>
+            </Pressable>
+          )}
         </Pressable>
 
         {/* Content */}
@@ -1044,6 +1116,40 @@ export default function RecipeDetailScreen() {
               </View>
             )}
           </Animated.View>
+
+          {/* Allergen disclosure — neutral food-label ("Contains: …"), shown
+              only when allergens are detected. Not a personalised warning. */}
+          {detectedAllergens.length > 0 && (
+            <Animated.View
+              entering={FadeInDown.delay(180).springify()}
+              style={{
+                marginTop: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
+                backgroundColor: isDark ? '#1f1f1f' : designTokens.colors.hair2,
+              }}
+            >
+              <Info size={14} color={isDark ? '#888' : designTokens.colors.ink3} strokeWidth={2} />
+              <Text
+                style={{
+                  flex: 1,
+                  fontFamily: designTokens.font.regular,
+                  fontSize: 12.5,
+                  lineHeight: 17,
+                  color: isDark ? '#bbb' : designTokens.colors.ink2,
+                }}
+              >
+                <Text style={{ fontFamily: designTokens.font.semibold }}>Contains: </Text>
+                {detectedAllergens.join(', ')}
+              </Text>
+            </Animated.View>
+          )}
 
           {/* Ingredients */}
           <Animated.View entering={FadeInDown.delay(200).springify()} style={{ marginTop: 8 }}>
@@ -1516,6 +1622,10 @@ export default function RecipeDetailScreen() {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 100 }}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              // iOS: inset the scroll view for the keyboard and keep the
+              // focused input visible instead of letting it hide behind it.
+              automaticallyAdjustKeyboardInsets
               onContentSizeChange={() => {
                 const target = pendingEditScroll.current;
                 if (!target) return;
@@ -1907,6 +2017,11 @@ export default function RecipeDetailScreen() {
                   </View>
                 ))}
               </View>
+
+              {/* Tags editor — guided meal-type + custom tags */}
+              <View style={{ paddingHorizontal: 20, marginTop: 22, marginBottom: 8 }}>
+                <TagPicker tags={editingTags} onChange={setEditingTags} isDark={isDark} />
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -2239,6 +2354,15 @@ export default function RecipeDetailScreen() {
           </SafeAreaView>
         </View>
       </Modal>
+
+      {/* ── Save to collection ─────────────────────────────────── */}
+      <SaveToCollectionSheet
+        visible={saveToCollectionOpen}
+        recipeId={recipe.id}
+        recipeName={recipe.name}
+        isDark={isDark}
+        onClose={() => setSaveToCollectionOpen(false)}
+      />
     </View>
   );
 }

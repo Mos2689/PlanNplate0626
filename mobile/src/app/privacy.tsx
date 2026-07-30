@@ -52,13 +52,13 @@ export default function PrivacyScreen() {
       icon: <Database size={17} color={designTokens.colors.brand} strokeWidth={1.9} />,
       title: 'What we collect',
       body:
-        'Your account (email and name), your food preferences and allergies — only with your consent — the meal plans, recipes and grocery lists you create, and optional voice input when you speak your list.',
+        'Your account (email and name), your cooking preferences, the meal plans, recipes and grocery lists you create, and optional voice input when you speak your list. We don’t collect allergy or other health information.',
     },
     {
       icon: <Sparkles size={17} color={designTokens.colors.brand} strokeWidth={1.9} />,
       title: 'Why we use it',
       body:
-        'To personalise your meals, keep allergens out of your suggestions, and run the app. We never sell your data, and we don’t use your content to train third-party AI models.',
+        'To personalise your meals and run the app. We never sell your data, and we don’t use your content to train third-party AI models.',
     },
     {
       icon: <SlidersHorizontal size={17} color={designTokens.colors.brand} strokeWidth={1.9} />,

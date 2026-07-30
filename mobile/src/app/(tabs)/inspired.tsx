@@ -1,13 +1,14 @@
-// Get Inspired — Pinterest-style explore feed for the full recipe library.
+// Get Inspired — explore feed for the full recipe library.
 //
-// Backed by INSPIRED_RECIPES (the 667-recipe "Get Inspired" bank, each with a
-// public Supabase Storage photo). The top-right VERTICAL filter picks the
-// active dimension — Meal Type · Cuisine · Dietary · Cooking Time — and the
-// HORIZONTAL chip row below shows that dimension's sub-categories. Selecting a
-// recipe mints a library row (deduped by curatedSourceId `inspired::<id>`),
-// and the floating "Add saved to plan" CTA carries saved ids to /plan-meals.
+// Backed by INSPIRED_RECIPES (each with a public Supabase Storage photo). The
+// page is organised as: Trending now (placeholder top-10, to be curated) →
+// Browse by category (meal-type circles) → Find what you need (quick-filter
+// tiles) → All recipes (the masonry grid, filtered by the active category or
+// quick filter, or by search). Selecting a recipe mints a library row (deduped
+// by curatedSourceId `inspired::<id>`), and the floating "Add saved to plan"
+// CTA carries saved ids to /plan-meals.
 //
-// Design language: editorial header (italic "inspired"), sage primary,
+// Design language: editorial header (italic "Inspired"), sage primary,
 // terracotta accent, hairline borders, Geist + Instrument Serif.
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Keyboard, Dimensions, KeyboardAvoidingView, Platform, Modal } from 'react-native';
@@ -16,80 +17,93 @@ import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withSpring, inter
 import { useRouter } from 'expo-router';
 import {
   Bookmark,
-  ChevronLeft,
   Clock,
   Flame,
   Plus,
-  Utensils,
-  Globe,
   Leaf,
   Search,
   X,
-  ChevronDown,
-  ChevronUp,
-  Check,
+  Wallet,
+  Dumbbell,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   StickyScreenHeader,
   useStickyHeaderScroll,
 } from '@/components/StickyScreenHeader';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
+import { t } from '@/lib/platform-tokens';
 import { INSPIRED_RECIPES, type InspiredRecipe } from '@/lib/inspired-recipe-library';
 import { useMealPlanStore } from '@/lib/store';
 import { inspiredToRecipe } from '@/lib/inspired-adapters';
+import { buildTrendingRecipes } from '@/lib/inspired-trending';
 
 // ───────────────────────────────────────────────────────────────────────────────
-// FILTER DIMENSIONS (vertical) + their sub-categories (horizontal)
+// BROWSE-BY-CATEGORY (meal type) + QUICK FILTERS + TRENDING placeholders
 // ───────────────────────────────────────────────────────────────────────────────
 
-type Dimension = 'meal' | 'cuisine' | 'dietary' | 'time';
+// The library stores lunch & dinner in a single "Lunch/Dinner" bucket (they
+// share the same recipes), so it's shown as one category.
+const CATEGORY_LABELS = [
+  'All', 'Breakfast', 'Lunch/Dinner', 'Snack', 'Appetiser', 'Side Dish', 'Dessert', 'Drink',
+] as const;
+type CategoryLabel = (typeof CATEGORY_LABELS)[number];
 
-const DIMENSIONS: { id: Dimension; label: string; Icon: React.ComponentType<any> }[] = [
-  { id: 'meal', label: 'Meal', Icon: Utensils },
-  { id: 'cuisine', label: 'Cuisine', Icon: Globe },
-  { id: 'dietary', label: 'Diet', Icon: Leaf },
-  { id: 'time', label: 'Time', Icon: Clock },
-];
+function categoryMealType(label: CategoryLabel): string | null {
+  if (label === 'All') return null;
+  return label;
+}
 
-const MEAL_ORDER = ['Breakfast', 'Lunch/Dinner', 'Snack', 'Appetiser', 'Side Dish', 'Dessert', 'Drink'];
-const CUISINE_ORDER = ['Italian', 'Mexican', 'Asian', 'Japanese', 'Chinese', 'Indian', 'Thai', 'Mediterranean', 'American', 'Korean', 'French', 'Greek'];
-const DIETARY_ORDER = ['Vegetarian', 'Vegan', 'Pescatarian', 'Pesca', 'Gluten-Free', 'Dairy-Free', 'Keto', 'Low-Carb', 'Paleo', 'Halal', 'Kosher', 'Low-Sodium'];
-
-// Cumulative cooking-time buckets — "≤30 min" includes everything at or under
-// 30 minutes, and so on.
-const TIME_BUCKETS: { label: string; max: number }[] = [
-  { label: '≤15 min', max: 15 },
-  { label: '≤30 min', max: 30 },
-  { label: '≤60 min', max: 60 },
-  { label: '≤90 min', max: 90 },
-  { label: '≤120 min', max: 120 },
-];
-
-// Sub-category lists derived once from the (static) library. Each is prefixed
-// with "All" and contains only values that actually appear in the data.
-const SUBCATS: Record<Dimension, string[]> = (() => {
-  const meals = new Set<string>();
-  const cuisines = new Set<string>();
-  const diets = new Set<string>();
-  for (const r of INSPIRED_RECIPES) {
-    meals.add(r.mealType);
-    cuisines.add(r.cuisine);
-    for (const d of r.dietary) if (d && d !== 'None') diets.add(d);
-  }
-  const ordered = (present: Set<string>, order: string[]) => [
-    ...order.filter((v) => present.has(v)),
-    ...[...present].filter((v) => !order.includes(v)).sort(),
-  ];
-  return {
-    meal: ['All', ...ordered(meals, MEAL_ORDER)],
-    cuisine: ['All', ...ordered(cuisines, CUISINE_ORDER)],
-    dietary: ['All', ...ordered(diets, DIETARY_ORDER)],
-    time: ['All', ...TIME_BUCKETS.map((b) => b.label)],
-  };
+// Representative thumbnail for each category circle — first library recipe of
+// that meal type (falls back to the very first recipe).
+const CATEGORY_IMAGE: Record<CategoryLabel, string> = (() => {
+  const pick = (mt: string | null) =>
+    (mt ? INSPIRED_RECIPES.find((r) => r.mealType === mt) : INSPIRED_RECIPES[0])?.imageUrl ??
+    INSPIRED_RECIPES[0]?.imageUrl ??
+    '';
+  const out = {} as Record<CategoryLabel, string>;
+  for (const l of CATEGORY_LABELS) out[l] = pick(categoryMealType(l));
+  return out;
 })();
+
+// ── "Find what you need" quick filters ──
+type QuickId = 'under30' | 'budget' | 'vegetarian' | 'highprotein';
+
+const HIGH_PROTEIN_RE =
+  /chicken|beef|steak|egg|tofu|lentil|bean|chickpea|salmon|tuna|turkey|paneer|prawn|shrimp|pork|lamb|greek yogurt|cottage cheese|protein|edamame|quinoa/i;
+
+function matchesQuick(r: InspiredRecipe, id: QuickId): boolean {
+  switch (id) {
+    case 'under30':
+      return r.totalMinutes > 0 && r.totalMinutes <= 30;
+    case 'budget':
+      // Placeholder heuristic until a real "budget" signal exists: quick,
+      // everyday recipes (≤45 min). Refine when tagged.
+      return r.totalMinutes > 0 && r.totalMinutes <= 45;
+    case 'vegetarian':
+      return r.dietary.includes('Vegetarian');
+    case 'highprotein':
+      // Placeholder heuristic — matches protein-forward names until tagged.
+      return HIGH_PROTEIN_RE.test(r.name);
+  }
+}
+
+const QUICK_TILES: {
+  id: QuickId;
+  title: string;
+  Icon: React.ComponentType<any>;
+  bg: string;
+  bgDark: string;
+  fg: string;
+}[] = [
+  { id: 'under30', title: 'Under 30 mins', Icon: Clock, bg: '#F7E7E4', bgDark: '#33211d', fg: '#C2543A' },
+  { id: 'budget', title: 'Budget friendly', Icon: Wallet, bg: '#FAF0D8', bgDark: '#332b1a', fg: '#C08A2E' },
+  { id: 'vegetarian', title: 'Vegetarian', Icon: Leaf, bg: '#E9F0DE', bgDark: '#20291b', fg: '#5C7A3F' },
+  { id: 'highprotein', title: 'High protein', Icon: Dumbbell, bg: '#EAE6F3', bgDark: '#26232f', fg: '#6E5FA6' },
+];
 
 // ───────────────────────────────────────────────────────────────────────────────
 // MASONRY HEIGHT HASH — deterministic so a given recipe always renders at the
@@ -217,6 +231,34 @@ function PinCard({ recipe, saved, index, onPress, onToggleSave, onQuickAdd, colo
               </Text>
             </View>
           )}
+
+          {/* Quick add to meal plan — sage button, matches Your Recipes grid. */}
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onQuickAdd();
+            }}
+            hitSlop={8}
+            style={{
+              position: 'absolute',
+              right: 8,
+              bottom: 8,
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              backgroundColor: designTokens.colors.brand,
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: '#000',
+              shadowOpacity: 0.25,
+              shadowRadius: 5,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 3,
+            }}
+          >
+            <Plus size={17} color="#FFFFFF" strokeWidth={2.4} />
+          </Pressable>
         </View>
 
         {/* Title + footer */}
@@ -233,48 +275,213 @@ function PinCard({ recipe, saved, index, onPress, onToggleSave, onQuickAdd, colo
           >
             {recipe.name}
           </Text>
-          <View
-            style={{
-              marginTop: 4,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            {calories > 0 ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Flame size={11} color={colors.ink3} strokeWidth={1.7} />
-                <Text
-                  style={{ fontFamily: designTokens.font.regular, fontSize: 11.5, color: colors.ink3 }}
-                >
-                  {calories} cal
-                </Text>
-              </View>
-            ) : (
-              <View />
-            )}
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                onQuickAdd();
-              }}
-              hitSlop={6}
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 999,
-                backgroundColor: colors.hair2,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Plus size={13} color={colors.ink2} strokeWidth={2} />
-            </Pressable>
-          </View>
+          {calories > 0 && (
+            <View style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Flame size={11} color={colors.ink3} strokeWidth={1.7} />
+              <Text
+                style={{ fontFamily: designTokens.font.regular, fontSize: 11.5, color: colors.ink3 }}
+              >
+                {calories} cal
+              </Text>
+            </View>
+          )}
         </View>
       </Pressable>
     </Animated.View>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// SECTION PIECES — Trending card · Category circle · Quick tile · Section header
+// ───────────────────────────────────────────────────────────────────────────────
+
+function SectionHeader({
+  title,
+  action,
+  onAction,
+  colors,
+}: {
+  title: string;
+  action?: string;
+  onAction?: () => void;
+  colors: ReturnType<typeof getThemeColors>;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        marginBottom: 12,
+      }}
+    >
+      <Text
+        style={{
+          fontFamily: designTokens.font.semibold,
+          fontSize: 17,
+          letterSpacing: -0.3,
+          color: colors.ink,
+        }}
+      >
+        {title}
+      </Text>
+      {action ? (
+        <Pressable onPress={onAction} hitSlop={8}>
+          <Text style={{ fontFamily: designTokens.font.medium, fontSize: 13, color: designTokens.colors.olive }}>
+            {action}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function TrendingCard({ recipe, onPress }: { recipe: InspiredRecipe; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={{ width: 150, marginRight: 12 }}>
+      <View
+        style={{
+          width: 150,
+          height: 190,
+          borderRadius: 16,
+          overflow: 'hidden',
+          backgroundColor: '#F4F0E8',
+        }}
+      >
+        <Image
+          source={{ uri: recipe.imageUrl }}
+          style={{ width: '100%', height: '100%' }}
+          contentFit="cover"
+          transition={150}
+        />
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.75)']}
+          locations={[0.42, 1]}
+          style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+          pointerEvents="none"
+        />
+        <View style={{ position: 'absolute', left: 10, right: 10, bottom: 10 }}>
+          <Text
+            numberOfLines={2}
+            style={{ fontFamily: designTokens.font.semibold, fontSize: 14, color: '#fff', letterSpacing: -0.2 }}
+          >
+            {recipe.name}
+          </Text>
+          {recipe.totalMinutes > 0 && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 }}>
+              <Clock size={11} color="rgba(255,255,255,0.9)" strokeWidth={2} />
+              <Text style={{ fontFamily: designTokens.font.medium, fontSize: 11, color: 'rgba(255,255,255,0.9)' }}>
+                {recipe.totalMinutes} min
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+function CategoryCircle({
+  label,
+  image,
+  active,
+  onPress,
+  colors,
+}: {
+  label: string;
+  image: string;
+  active: boolean;
+  onPress: () => void;
+  colors: ReturnType<typeof getThemeColors>;
+}) {
+  return (
+    <Pressable onPress={onPress} style={{ alignItems: 'center', width: 72, marginRight: 4 }}>
+      <View
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: 32,
+          overflow: 'hidden',
+          borderWidth: 2,
+          borderColor: active ? designTokens.colors.brand : 'transparent',
+          backgroundColor: '#F4F0E8',
+        }}
+      >
+        <Image source={{ uri: image }} style={{ width: '100%', height: '100%' }} contentFit="cover" transition={150} />
+      </View>
+      <Text
+        numberOfLines={1}
+        style={{
+          marginTop: 6,
+          fontFamily: active ? designTokens.font.semibold : designTokens.font.medium,
+          fontSize: 12,
+          color: active ? colors.ink : colors.ink2,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function QuickTile({
+  tile,
+  count,
+  active,
+  onPress,
+  isDark,
+  colors,
+}: {
+  tile: (typeof QUICK_TILES)[number];
+  count: number;
+  active: boolean;
+  onPress: () => void;
+  isDark: boolean;
+  colors: ReturnType<typeof getThemeColors>;
+}) {
+  const { Icon } = tile;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 16,
+        borderRadius: 16,
+        backgroundColor: isDark ? tile.bgDark : tile.bg,
+        borderWidth: active ? 1.5 : 0,
+        borderColor: tile.fg,
+      }}
+    >
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          numberOfLines={1}
+          style={{ fontFamily: designTokens.font.semibold, fontSize: 14.5, letterSpacing: -0.2, color: colors.ink }}
+        >
+          {tile.title}
+        </Text>
+        <Text style={{ marginTop: 3, fontFamily: designTokens.font.regular, fontSize: 12, color: colors.ink2 }}>
+          {count} recipes
+        </Text>
+      </View>
+      <View
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 9,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.6)',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Icon size={16} color={tile.fg} strokeWidth={2} />
+      </View>
+    </Pressable>
   );
 }
 
@@ -292,29 +499,34 @@ export default function CuratedMealPlanScreen() {
   const mealSlots = useMealPlanStore((s) => s.mealSlots);
   const addRecipe = useMealPlanStore((s) => s.addRecipe);
   const deleteRecipe = useMealPlanStore((s) => s.deleteRecipe);
+  const preferences = useMealPlanStore((s) => s.preferences);
 
-  const [dimension, setDimension] = useState<Dimension>('meal');
-  const [subFilter, setSubFilter] = useState<string>('All');
+  // Multi-select filters. `categories` empty = "All" meal types; recipes match
+  // ANY selected category (OR). `quickFilters` narrow further — a recipe must
+  // match ALL selected quick filters (AND). The two groups combine (AND).
+  const [categories, setCategories] = useState<CategoryLabel[]>([]);
+  const [quickFilters, setQuickFilters] = useState<QuickId[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const isSearchOpen = useSharedValue(0);
   const searchInputRef = useRef<TextInput>(null);
 
-  // Filter dropdown (Meal · Cuisine · Dietary · Time)
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState({ top: 120, right: 20 });
-  const dropdownRef = useRef<View>(null);
-  const activeDim = DIMENSIONS.find((d) => d.id === dimension) ?? DIMENSIONS[0];
-
   // Reset paging whenever the effective filter changes.
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [dimension, subFilter, searchQuery]);
+  }, [categories, quickFilters, searchQuery]);
 
-  const olive = designTokens.colors.olive;
-  const brand = designTokens.colors.brand;
-  const subCats = SUBCATS[dimension];
+  // Live counts for the "Find what you need" tiles.
+  const quickCounts = useMemo(
+    () => ({
+      under30: INSPIRED_RECIPES.filter((r) => matchesQuick(r, 'under30')).length,
+      budget: INSPIRED_RECIPES.filter((r) => matchesQuick(r, 'budget')).length,
+      vegetarian: INSPIRED_RECIPES.filter((r) => matchesQuick(r, 'vegetarian')).length,
+      highprotein: INSPIRED_RECIPES.filter((r) => matchesQuick(r, 'highprotein')).length,
+    }),
+    [],
+  );
 
   // curatedSourceId (`inspired::<id>`) -> stored recipe id. Presence means the
   // recipe is saved to the user's library; the bookmark reflects this (NOT the
@@ -338,29 +550,61 @@ export default function CuratedMealPlanScreen() {
     [recipes],
   );
 
-  // Filtered pool — search spans the whole library; otherwise apply the
-  // active dimension + sub-category.
+  // "Trending now" — personalised, day-rotating pick from the inspired bank
+  // (allergen/diet-safe, preference- and time-of-day-weighted). Recomputed once
+  // per day/hour bucket, not on every render, via `trendingClock`.
+  const savedInspiredIds = useMemo(
+    () =>
+      new Set(
+        savedInspired
+          .map((r) => r.curatedSourceId?.slice('inspired::'.length))
+          .filter((id): id is string => !!id),
+      ),
+    [savedInspired],
+  );
+  const trendingClock = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
+  }, []);
+  const trending = useMemo(
+    () =>
+      buildTrendingRecipes({
+        recipes: INSPIRED_RECIPES,
+        preferences,
+        savedInspiredIds,
+        now: new Date(),
+        limit: 10,
+      }),
+    // trendingClock keeps the pick stable within an hour bucket; preferences and
+    // saved set changes refresh it immediately.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [preferences, savedInspiredIds, trendingClock],
+  );
+
+  // Filtered pool — search wins outright. Otherwise combine the two filter
+  // groups: match ANY selected category (OR) AND ALL selected quick filters (AND).
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (q) return INSPIRED_RECIPES.filter((r) => r.name.toLowerCase().includes(q));
-    if (subFilter === 'All') return INSPIRED_RECIPES;
+    const mealTypes = new Set(
+      categories.map(categoryMealType).filter((mt): mt is string => !!mt),
+    );
+    if (mealTypes.size === 0 && quickFilters.length === 0) return INSPIRED_RECIPES;
     return INSPIRED_RECIPES.filter((r) => {
-      switch (dimension) {
-        case 'meal':
-          return r.mealType === subFilter;
-        case 'cuisine':
-          return r.cuisine === subFilter;
-        case 'dietary':
-          return r.dietary.includes(subFilter);
-        case 'time': {
-          const b = TIME_BUCKETS.find((x) => x.label === subFilter);
-          return b ? r.totalMinutes <= b.max : true;
-        }
-        default:
-          return true;
-      }
+      if (mealTypes.size > 0 && !mealTypes.has(r.mealType)) return false;
+      for (const qf of quickFilters) if (!matchesQuick(r, qf)) return false;
+      return true;
     });
-  }, [dimension, subFilter, searchQuery]);
+  }, [categories, quickFilters, searchQuery]);
+
+  // Human label describing the current pool (for the "All recipes" heading).
+  const poolLabel = useMemo(() => {
+    const parts = [
+      ...categories,
+      ...quickFilters.map((id) => QUICK_TILES.find((t) => t.id === id)?.title ?? ''),
+    ].filter(Boolean);
+    return parts.length ? parts.join(' · ') : 'All recipes';
+  }, [categories, quickFilters]);
 
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
@@ -392,33 +636,22 @@ export default function CuratedMealPlanScreen() {
     width: interpolate(isSearchOpen.value, [0, 1], [50, maxWidth], Extrapolation.CLAMP),
   }));
 
-  const handleBack = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.back();
-  }, [router]);
-
-  const handleSelectDimension = useCallback((d: Dimension) => {
+  // Tapping "All" clears the category selection (shows every meal type);
+  // tapping a specific category toggles it in/out of the multi-select.
+  const handleSelectCategory = useCallback((label: CategoryLabel) => {
     Haptics.selectionAsync();
-    setDimension(d);
-    setSubFilter('All');
+    if (label === 'All') {
+      setCategories([]);
+      return;
+    }
+    setCategories((prev) =>
+      prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label],
+    );
   }, []);
 
-  const openMenu = useCallback(() => {
+  const handleSelectQuick = useCallback((id: QuickId) => {
     Haptics.selectionAsync();
-    const node = dropdownRef.current as unknown as { measureInWindow?: Function } | null;
-    if (node?.measureInWindow) {
-      node.measureInWindow((x: number, y: number, w: number, h: number) => {
-        setMenuPos({ top: y + h + 6, right: Math.max(12, screenWidth - (x + w)) });
-        setMenuOpen(true);
-      });
-    } else {
-      setMenuOpen(true);
-    }
-  }, [screenWidth]);
-
-  const handleSelectSub = useCallback((s: string) => {
-    Haptics.selectionAsync();
-    setSubFilter(s);
+    setQuickFilters((prev) => (prev.includes(id) ? prev.filter((q) => q !== id) : [...prev, id]));
   }, []);
 
   const handleOpenRecipe = useCallback(
@@ -495,170 +728,161 @@ export default function CuratedMealPlanScreen() {
             contentContainerStyle={{ paddingTop: 8, paddingBottom: 120 }}
             showsVerticalScrollIndicator={false}
           >
-            {/* Back button */}
-            <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}>
-              <Pressable onPress={handleBack} hitSlop={10} style={{ width: 40, height: 40 }}>
-                {({ pressed }) => (
-                  <View
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: colors.hair,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: pressed ? colors.hair2 : 'transparent',
-                    }}
-                  >
-                    <ChevronLeft size={22} color={colors.ink} strokeWidth={1.8} />
-                  </View>
-                )}
-              </Pressable>
-            </View>
+            {/* Get Inspired is a top-level tab — no back button. */}
 
             {/* ── Header: title block (left) + vertical filter (right) ── */}
-            <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' }}>
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.medium,
-                        fontSize: 36,
-                        letterSpacing: -0.9,
-                        color: colors.ink,
-                        lineHeight: 38,
-                      }}
-                    >
-                      Get{' '}
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.serifItalic,
-                        fontStyle: serifItalicFontStyle,
-                        fontSize: 42,
-                        letterSpacing: -1.05,
-                        color: colors.ink,
-                        lineHeight: 44,
-                      }}
-                    >
-                      inspired
-                    </Text>
-                  </View>
-                  <Text
-                    style={{
-                      marginTop: 8,
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 14.5,
-                      lineHeight: 20.3,
-                      color: colors.ink2,
-                      maxWidth: 320,
-                    }}
-                  >
-                    Save what you love. Add it to your plan when you&apos;re ready.
-                  </Text>
-                </View>
-
-                {/* Filter dropdown (Meal · Cuisine · Dietary · Time) */}
-                <Pressable
-                  ref={dropdownRef}
-                  onPress={openMenu}
+            {/* paddingTop 16 + scroll paddingTop 8 = 24 from top, matching the other tabs. */}
+            <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                <Text
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    paddingLeft: 14,
-                    paddingRight: 10,
-                    paddingVertical: 9,
-                    borderRadius: 999,
-                    backgroundColor: olive,
-                    borderWidth: 1,
-                    borderColor: olive,
+                    fontFamily: designTokens.font.medium,
+                    fontSize: t(28, 24),
+                    letterSpacing: t(-0.56, -0.4),
+                    color: colors.ink,
+                    lineHeight: t(40, 34),
                   }}
                 >
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.semibold,
-                      fontSize: 13,
-                      letterSpacing: -0.05,
-                      color: '#fff',
-                    }}
-                  >
-                    {activeDim.label}
-                  </Text>
-                  {menuOpen ? (
-                    <ChevronUp size={15} color="rgba(255,255,255,0.9)" strokeWidth={2.2} />
-                  ) : (
-                    <ChevronDown size={15} color="rgba(255,255,255,0.9)" strokeWidth={2.2} />
-                  )}
-                </Pressable>
+                  Get{' '}
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.serifItalic,
+                    fontStyle: serifItalicFontStyle,
+                    fontSize: t(32, 28),
+                    letterSpacing: t(-0.64, -0.5),
+                    color: colors.ink,
+                    lineHeight: t(40, 34),
+                  }}
+                >
+                  Inspired
+                </Text>
+              </View>
+              <Text
+                style={{
+                  marginTop: 8,
+                  fontFamily: designTokens.font.regular,
+                  fontSize: 14.5,
+                  lineHeight: 20.3,
+                  color: colors.ink2,
+                  maxWidth: 320,
+                }}
+              >
+                Save what you love. Add it to your plan when you&apos;re ready.
+              </Text>
+            </View>
+
+            {/* ── Trending now (personalised, day-rotating top-10) ── */}
+            <View style={{ marginTop: 22 }}>
+              <SectionHeader title="Trending now" colors={colors} />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
+                style={{ flexGrow: 0 }}
+              >
+                {trending.map((r) => (
+                  <TrendingCard key={r.id} recipe={r} onPress={() => handleOpenRecipe(r)} />
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* ── Find what you need (quick filters) ── */}
+            <View style={{ marginTop: 26 }}>
+              <SectionHeader title="Find what you need" colors={colors} />
+              <View style={{ paddingHorizontal: 20, gap: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <QuickTile
+                    tile={QUICK_TILES[0]}
+                    count={quickCounts.under30}
+                    active={quickFilters.includes('under30')}
+                    onPress={() => handleSelectQuick('under30')}
+                    isDark={isDark}
+                    colors={colors}
+                  />
+                  <QuickTile
+                    tile={QUICK_TILES[1]}
+                    count={quickCounts.budget}
+                    active={quickFilters.includes('budget')}
+                    onPress={() => handleSelectQuick('budget')}
+                    isDark={isDark}
+                    colors={colors}
+                  />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <QuickTile
+                    tile={QUICK_TILES[2]}
+                    count={quickCounts.vegetarian}
+                    active={quickFilters.includes('vegetarian')}
+                    onPress={() => handleSelectQuick('vegetarian')}
+                    isDark={isDark}
+                    colors={colors}
+                  />
+                  <QuickTile
+                    tile={QUICK_TILES[3]}
+                    count={quickCounts.highprotein}
+                    active={quickFilters.includes('highprotein')}
+                    onPress={() => handleSelectQuick('highprotein')}
+                    isDark={isDark}
+                    colors={colors}
+                  />
+                </View>
               </View>
             </View>
 
-            {/* ── Horizontal sub-category chips (for active dimension) ── */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingTop: 18, paddingBottom: 16, alignItems: 'center' }}
-              style={{ flexGrow: 0 }}
-            >
-              {subCats.map((sc) => {
-                const on = sc === subFilter;
-                return (
-                  <Pressable
-                    key={sc}
-                    onPress={() => handleSelectSub(sc)}
-                    style={{
-                      paddingHorizontal: 14,
-                      paddingVertical: 9,
-                      borderRadius: 999,
-                      backgroundColor: on ? brand : isDark ? colors.surface : '#FFFFFF',
-                      borderWidth: 1,
-                      borderColor: on ? brand : isDark ? colors.hair : '#DCD8CC',
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: on ? designTokens.font.semibold : designTokens.font.medium,
-                        fontSize: 13,
-                        letterSpacing: -0.05,
-                        color: on ? '#FFFFFF' : colors.ink,
-                      }}
-                    >
-                      {sc}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            {/* ── Browse by category (meal type) ── */}
+            <View style={{ marginTop: 26 }}>
+              <SectionHeader
+                title="Browse by category"
+                action="View all"
+                onAction={() => handleSelectCategory('All')}
+                colors={colors}
+              />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
+                style={{ flexGrow: 0 }}
+              >
+                {CATEGORY_LABELS.map((label) => (
+                  <CategoryCircle
+                    key={label}
+                    label={label}
+                    image={CATEGORY_IMAGE[label]}
+                    active={label === 'All' ? categories.length === 0 : categories.includes(label)}
+                    onPress={() => handleSelectCategory(label)}
+                    colors={colors}
+                  />
+                ))}
+              </ScrollView>
+            </View>
 
-            {/* ── Summary line ── */}
+            {/* ── All recipes (full library, filtered by the selections above) ── */}
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'baseline',
                 justifyContent: 'space-between',
                 paddingHorizontal: 20,
+                marginTop: 30,
                 marginBottom: 14,
               }}
             >
-              <Text style={{ fontFamily: designTokens.font.regular, fontSize: 13, color: colors.ink2 }}>
-                <Text style={{ fontFamily: designTokens.font.semibold, color: colors.ink }}>
-                  {filtered.length}
-                </Text>{' '}
-                recipes
-                {subFilter !== 'All' && !searchQuery && <Text style={{ color: colors.ink3 }}> · {subFilter}</Text>}
-              </Text>
               <Text
+                numberOfLines={1}
                 style={{
-                  fontFamily: designTokens.font.serifItalic,
-                  fontStyle: serifItalicFontStyle,
-                  fontSize: 14,
-                  color: colors.ink2,
+                  flex: 1,
+                  marginRight: 10,
+                  fontFamily: designTokens.font.semibold,
+                  fontSize: 17,
+                  letterSpacing: -0.3,
+                  color: colors.ink,
                 }}
               >
-                Most loved
+                {searchQuery ? 'Results' : poolLabel}
+              </Text>
+              <Text style={{ fontFamily: designTokens.font.regular, fontSize: 13, color: colors.ink2 }}>
+                <Text style={{ fontFamily: designTokens.font.semibold, color: colors.ink }}>{filtered.length}</Text> recipes
               </Text>
             </View>
 
@@ -839,137 +1063,8 @@ export default function CuratedMealPlanScreen() {
         </SafeAreaView>
       </KeyboardAvoidingView>
 
-      <StickyScreenHeader scrollY={scrollY} title="Get Inspired" onBack={handleBack} />
+      <StickyScreenHeader scrollY={scrollY} title="Get Inspired" />
 
-      {/* Filter dropdown menu */}
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(21,20,15,0.14)' }}
-          onPress={() => setMenuOpen(false)}
-        >
-          {/* Shadow layer — no overflow:hidden so the drop shadow renders on
-              iOS. */}
-          <View
-            style={{
-              position: 'absolute',
-              top: menuPos.top,
-              right: menuPos.right,
-              width: 232,
-              backgroundColor: isDark ? colors.surface : '#FFFFFF',
-              borderRadius: 18,
-              shadowColor: '#15140F',
-              shadowOpacity: 0.22,
-              shadowRadius: 24,
-              shadowOffset: { width: 0, height: 12 },
-              elevation: 16,
-            }}
-          >
-            {/* Clip layer — rounds the row highlights to the card corners. */}
-            <View
-              style={{
-                borderRadius: 18,
-                overflow: 'hidden',
-                borderWidth: 1,
-                borderColor: isDark ? colors.hair : '#ECE8DE',
-                backgroundColor: isDark ? colors.surface : '#FFFFFF',
-                paddingVertical: 6,
-              }}
-            >
-              {/* Menu header — anchors the list and signals what the options do. */}
-              <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8 }}>
-                <Text
-                  allowFontScaling={false}
-                  style={{
-                    fontFamily: designTokens.font.semibold,
-                    fontSize: 11,
-                    letterSpacing: 0.8,
-                    textTransform: 'uppercase',
-                    color: colors.ink3,
-                  }}
-                >
-                  Filter by
-                </Text>
-              </View>
-
-              {/* Divider between header and options */}
-              <View style={{ height: 1, backgroundColor: isDark ? colors.hair : '#F1EEE6' }} />
-
-              {DIMENSIONS.map((d, idx) => {
-                const on = d.id === dimension;
-                const RowIcon = d.Icon;
-                return (
-                  <Pressable
-                    key={d.id}
-                    onPress={() => {
-                      setMenuOpen(false);
-                      handleSelectDimension(d.id);
-                    }}
-                    style={({ pressed }) => ({
-                      marginHorizontal: 6,
-                      marginTop: idx === 0 ? 4 : 2,
-                      borderRadius: 12,
-                      backgroundColor: pressed
-                        ? isDark
-                          ? colors.hair2
-                          : '#F1EDE4'
-                        : on
-                        ? isDark
-                          ? 'rgba(228,109,70,0.14)'
-                          : 'rgba(228,109,70,0.08)'
-                        : 'transparent',
-                    })}
-                  >
-                    {/* Row layout lives on a plain View with an OBJECT style —
-                        function styles on Pressable weren't applying flexDirection
-                        here, which stacked icon/label/check vertically. */}
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        minHeight: 48,
-                        paddingHorizontal: 12,
-                      }}
-                    >
-                      {/* Leading icon — fixed-width rail so every label starts on
-                          the same vertical line. */}
-                      <View style={{ width: 26, alignItems: 'center', justifyContent: 'center' }}>
-                        <RowIcon
-                          size={18}
-                          color={on ? olive : colors.ink3}
-                          strokeWidth={on ? 2.4 : 2}
-                        />
-                      </View>
-
-                      {/* Label — flex:1 fills the middle and pushes the trailing
-                          check hard against the right rail (never wraps). */}
-                      <Text
-                        allowFontScaling={false}
-                        numberOfLines={1}
-                        style={{
-                          flex: 1,
-                          marginLeft: 12,
-                          fontFamily: on ? designTokens.font.semibold : designTokens.font.medium,
-                          fontSize: 15.5,
-                          letterSpacing: -0.2,
-                          color: on ? colors.ink : colors.ink2,
-                        }}
-                      >
-                        {d.label}
-                      </Text>
-
-                      {/* Trailing check — fixed-width slot keeps every row's right
-                          edge aligned whether or not the check is shown. */}
-                      <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
-                        {on ? <Check size={17} color={olive} strokeWidth={2.8} /> : null}
-                      </View>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }

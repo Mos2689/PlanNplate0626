@@ -100,7 +100,12 @@ interface DuplicateIngredientModalProps {
   visible: boolean;
   onClose: () => void;
   groups: DuplicateIngredientGroup[];
-  onCombine: (groupKey: string, selectedIndices: number[]) => void;
+  onCombine: (
+    groupKey: string,
+    selectedIndices: number[],
+    userQuantity: string,
+    userUnit: string,
+  ) => void;
   isDark: boolean;
 }
 
@@ -172,6 +177,18 @@ function calculateIntelligentConversion(
   }
 }
 
+/**
+ * Split a friendly display string (e.g. "1.5 kg", "250 g", "2 cloves", "3")
+ * into a matching quantity + unit pair so the Confirm screen's two fields
+ * describe the SAME value. Handles decimals and simple fractions ("1 1/2").
+ */
+function splitQuantityUnit(display: string): { quantity: string; unit: string } {
+  const trimmed = display.trim();
+  const m = trimmed.match(/^(\d+(?:\s+\d+\/\d+)?(?:\.\d+)?|\d+\/\d+)\s*(.*)$/);
+  if (!m) return { quantity: trimmed, unit: '' };
+  return { quantity: m[1].trim(), unit: m[2].trim() };
+}
+
 export function DuplicateIngredientModal({
   visible,
   onClose,
@@ -215,14 +232,22 @@ export function DuplicateIngredientModal({
       const selectedIndices = Array.from(selectedIndicesSet).sort((a, b) => a - b);
       const baseIndex = selectedIndices[0];
       const baseUnit = group.units[baseIndex];
+      const ingredientName = group.names[baseIndex];
 
-      // Calculate intelligent conversion using the first selected item's unit
-      const conversion = calculateIntelligentConversion(group, baseIndex, group.names[baseIndex], baseUnit);
+      // Calculate intelligent conversion using the first selected item's unit.
+      // `conversion.quantity`/`conversion.unit` are in the ingredient's BASE
+      // unit (e.g. grams). Format that total into a friendly display and split
+      // it so the prefilled Quantity and Unit fields describe the SAME value
+      // (e.g. "1.5" + "kg", not "1500" + "Kg").
+      const conversion = calculateIntelligentConversion(group, baseIndex, ingredientName, baseUnit);
+      const friendly = formatFromBaseUnit(conversion.quantity, conversion.unit, ingredientName);
+      const { quantity: displayQuantity, unit: displayUnit } = splitQuantityUnit(friendly);
 
       console.log('[DuplicateIngredient] Debug:', {
-        selectedUnit: baseUnit,
+        baseUnit,
         conversionUnit: conversion.unit,
-        quantity: conversion.quantity,
+        baseQuantity: conversion.quantity,
+        friendly,
         selectedIndices: selectedIndices.join(','),
       });
 
@@ -230,11 +255,11 @@ export function DuplicateIngredientModal({
       setConfirmationState({
         groupKey,
         selectedIndices,
-        ingredientName: group.names[baseIndex],
+        ingredientName,
         calculatedQuantity: conversion.quantity,
-        selectedUnit: baseUnit,
-        userQuantity: (Math.round(conversion.quantity * 10) / 10).toString(),
-        userUnit: baseUnit,
+        selectedUnit: conversion.unit,
+        userQuantity: displayQuantity,
+        userUnit: displayUnit,
         conversionNote: conversion.note,
       });
     },
@@ -246,8 +271,15 @@ export function DuplicateIngredientModal({
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    // Call onCombine with user's selected indices
-    onCombine(confirmationState.groupKey, confirmationState.selectedIndices);
+    // Pass the user's confirmed (possibly overridden) quantity + unit through
+    // so the combined item honors their manual edit instead of silently
+    // falling back to the base ingredient's unit.
+    onCombine(
+      confirmationState.groupKey,
+      confirmationState.selectedIndices,
+      confirmationState.userQuantity,
+      confirmationState.userUnit,
+    );
 
     // Reset confirmation state and clear selection for this group
     setConfirmationState(null);

@@ -45,7 +45,7 @@ export function HomeHeader({
   const subtitle = subtitleMessage?.trim();
 
   return (
-    <View style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 10 }}>
+    <View style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 14 }}>
       {/* Greeting row — salutation + subtitle on the left, optional
           trailingSlot (e.g. compact MonthYearPicker) top-aligned on the
           right. */}
@@ -64,12 +64,13 @@ export function HomeHeader({
               fontSize: t(28, 24),
               color: colors.ink,
               letterSpacing: t(-0.56, -0.4),
-              lineHeight: t(31, 28),
+              lineHeight: t(40, 34),
             }}
             numberOfLines={2}
             adjustsFontSizeToFit={Platform.OS === 'android'}
             minimumFontScale={0.85}
           >
+            Your{' '}
             <Text
               style={{
                 fontFamily: designTokens.font.serifItalic,
@@ -77,10 +78,8 @@ export function HomeHeader({
                 fontStyle: serifItalicFontStyle,
               }}
             >
-              Good {word}
+              Plate
             </Text>
-            {', '}
-            {firstName}
           </Text>
           {/* Optional subline beneath the salutation — omitted when no
               subtitleMessage is provided. */}

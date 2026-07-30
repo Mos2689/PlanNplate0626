@@ -30,6 +30,9 @@ import {
   Home,
   Mic,
   Keyboard,
+  CookingPot,
+  BookOpen,
+  Pencil,
 } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
@@ -53,8 +56,10 @@ import { cn } from '@/lib/cn';
 import { designTokens, getThemeColors, getCategoryTint, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
 import { t } from '@/lib/platform-tokens';
 import { transcribeAudioToText, parseGroceryItemsFromTranscript, type ParsedGroceryItem } from '@/lib/voice-grocery';
-import { formatFromBaseUnit, resolveMeasurementSystem, isConvertibleUnit, type MeasurementSystem } from '@/lib/unit-conversion';
+import { convertToBaseUnit, formatFromBaseUnit, resolveMeasurementSystem, isConvertibleUnit, type MeasurementSystem } from '@/lib/unit-conversion';
 import { ShoppingListCompletionModal } from '@/components/ShoppingListCompletionModal';
+import { GroceryRecipePicker } from '@/components/GroceryRecipePicker';
+import { GroceryRecipeStrip } from '@/components/GroceryRecipeStrip';
 import { DuplicateIngredientBanner, DuplicateIngredientModal } from '@/components/DuplicateIngredientModal';
 import { findDuplicateIngredientGroups, type DuplicateIngredientGroup } from '@/lib/duplicate-ingredient-finder';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -257,6 +262,9 @@ function GroceryItemRow({ item, onToggle, onDelete, isDark, index, checkColor }:
   // value so weights show oz/lb and volumes show cups/tbsp/tsp. Items without a
   // base value (or in metric) fall back to their stored display string.
   const quantityLabel = groceryQuantityLabel(item, measurementSystem);
+  // Distinct recipes this item is bought for — the "used in N recipes" proof
+  // that shared-ingredient planning is working. (recipeIds is deduped upstream.)
+  const sharedCount = item.recipeIds?.length ?? 0;
 
   const handleToggle = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -319,17 +327,52 @@ function GroceryItemRow({ item, onToggle, onDelete, isDark, index, checkColor }:
           >
             {item.name}
           </Text>
-          <Text
-            style={{
-              fontFamily: designTokens.font.regular,
-              fontSize: 12.5,
-              color: done ? designTokens.colors.ink3 : designTokens.colors.ink2,
-              marginTop: 2,
-            }}
-            numberOfLines={1}
-          >
-            {quantityLabel}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+            <Text
+              style={{
+                fontFamily: designTokens.font.regular,
+                fontSize: 12.5,
+                color: done ? designTokens.colors.ink3 : designTokens.colors.ink2,
+              }}
+              numberOfLines={1}
+            >
+              {quantityLabel}
+            </Text>
+            {/* Shared-ingredient proof — the concrete payoff of grocery
+                optimisation. Only shown when an item spans 2+ recipes. */}
+            {sharedCount >= 2 && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 3,
+                  paddingHorizontal: 7,
+                  paddingVertical: 1.5,
+                  borderRadius: 999,
+                  backgroundColor: done
+                    ? 'transparent'
+                    : isDark
+                      ? 'rgba(84,100,69,0.20)'
+                      : 'rgba(84,100,69,0.10)',
+                }}
+              >
+                <CookingPot
+                  size={10}
+                  color={done ? designTokens.colors.ink3 : designTokens.colors.brand}
+                  strokeWidth={2}
+                />
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 11,
+                    color: done ? designTokens.colors.ink3 : designTokens.colors.brand,
+                  }}
+                >
+                  Used in {sharedCount} recipes
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* Delete (small, ink3) */}
@@ -395,11 +438,24 @@ function VoiceGroceryCapture({
         setError('Microphone permission is required.');
         return;
       }
+      // expo-av allows only ONE active Recording. Unload any recorder left by a
+      // previous (possibly failed) run, otherwise the next prepare fails with
+      // "recorder not prepared".
+      if (recordingRef.current) {
+        try {
+          await recordingRef.current.stopAndUnloadAsync();
+        } catch {
+          /* already unloaded / never prepared */
+        }
+        recordingRef.current = null;
+      }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
+      // createAsync prepares AND starts atomically — avoids the prepare/start
+      // race that intermittently throws "recorder not prepared".
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+      );
       recordingRef.current = recording;
       setPhase('recording');
       pulse.value = withRepeat(
@@ -411,6 +467,14 @@ function VoiceGroceryCapture({
       console.error('[VoiceGrocery] start failed', e);
       setError('Could not start recording.');
       setPhase('idle');
+      if (recordingRef.current) {
+        try {
+          await recordingRef.current.stopAndUnloadAsync();
+        } catch {
+          /* ignore */
+        }
+        recordingRef.current = null;
+      }
     }
   }, [pulse, hasPremiumAccess, onClose, openPaywallSheet]);
 
@@ -446,6 +510,13 @@ function VoiceGroceryCapture({
       console.error('[VoiceGrocery] stop/parse failed', e);
       setError(e?.message ? `Couldn't process audio: ${e.message}` : "Couldn't process audio. Please try again.");
       setPhase('idle');
+    } finally {
+      // Release the iOS record session so the next prepare starts clean.
+      try {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      } catch {
+        /* ignore */
+      }
     }
   }, [pulse, hasPremiumAccess]);
 
@@ -830,6 +901,36 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
 
           {mode === 'type' && (
           <>
+          {/* 1. Choose a category */}
+          <Text className={cn("text-base font-semibold mb-3", isDark ? "text-white" : "text-charcoal-900")}>
+            1. Choose a category
+          </Text>
+          <View className="mb-5">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+              {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+                <Pressable
+                  key={key}
+                  onPress={() => setCategory(key as Ingredient['category'])}
+                  className={cn(
+                    "px-4 py-2 rounded-full mr-2",
+                    category === key ? "bg-sage-500" : isDark ? "bg-charcoal-700" : "bg-cream-100"
+                  )}
+                >
+                  <Text className={cn(
+                    "text-sm font-medium",
+                    category === key ? "text-white" : isDark ? "text-charcoal-300" : "text-charcoal-600"
+                  )}>
+                    {config.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* 2. Add item details */}
+          <Text className={cn("text-base font-semibold mb-3", isDark ? "text-white" : "text-charcoal-900")}>
+            2. Add item details
+          </Text>
           {/* Item Name */}
           <View className="mb-3">
             <Text className={cn("text-sm font-medium mb-2", labelText)}>Item Name</Text>
@@ -997,30 +1098,6 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
               </Text>
             </View>
           )}
-
-          {/* Category */}
-          <View className="mb-6">
-            <Text className={cn("text-sm font-medium mb-2", labelText)}>Category</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
-              {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
-                <Pressable
-                  key={key}
-                  onPress={() => setCategory(key as Ingredient['category'])}
-                  className={cn(
-                    "px-4 py-2 rounded-full mr-2",
-                    category === key ? "bg-sage-500" : isDark ? "bg-charcoal-700" : "bg-cream-100"
-                  )}
-                >
-                  <Text className={cn(
-                    "text-sm font-medium",
-                    category === key ? "text-white" : isDark ? "text-charcoal-300" : "text-charcoal-600"
-                  )}>
-                    {config.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
 
           {/* Add Button */}
           <Pressable
@@ -1717,6 +1794,9 @@ export default function GroceryScreen() {
   const mergeIntoCurrentSavedListItem = useMealPlanStore((s) => s.mergeIntoCurrentSavedListItem);
   const removeGroceryItem = useMealPlanStore((s) => s.removeGroceryItem);
   const removeCustomGroceryItem = useMealPlanStore((s) => s.removeCustomGroceryItem);
+  const updateGroceryItem = useMealPlanStore((s) => s.updateGroceryItem);
+  const updateCustomGroceryItem = useMealPlanStore((s) => s.updateCustomGroceryItem);
+  const updateCurrentSavedListItem = useMealPlanStore((s) => s.updateCurrentSavedListItem);
   const clearCheckedItems = useMealPlanStore((s) => s.clearCheckedItems);
   const generateGroceryList = useMealPlanStore((s) => s.generateGroceryList);
   const setGroceryDateRange = useMealPlanStore((s) => s.setGroceryDateRange);
@@ -1730,6 +1810,7 @@ export default function GroceryScreen() {
   const loadSavedGroceryList = useMealPlanStore((s) => s.loadSavedGroceryList);
   const unloadSavedGroceryList = useMealPlanStore((s) => s.unloadSavedGroceryList);
   const toggleCurrentSavedListItem = useMealPlanStore((s) => s.toggleCurrentSavedListItem);
+  const resetCurrentSavedListChecks = useMealPlanStore((s) => s.resetCurrentSavedListChecks);
   const removeCurrentSavedListItem = useMealPlanStore((s) => s.removeCurrentSavedListItem);
   const addCurrentSavedListItem = useMealPlanStore((s) => s.addCurrentSavedListItem);
   const currentSavedListId = useMealPlanStore((s) => s.currentSavedListId);
@@ -1744,6 +1825,10 @@ export default function GroceryScreen() {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  // "From Recipes" picker + the "+" source chooser sheet (Meal Plan / Recipes /
+  // Manual). The chooser is the persistent entry point once a list exists.
+  const [showRecipePicker, setShowRecipePicker] = useState(false);
+  const [showSourceChooser, setShowSourceChooser] = useState(false);
   const [showSavedListsModal, setShowSavedListsModal] = useState(false);
   const [showSaveListModal, setShowSaveListModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -1769,6 +1854,100 @@ export default function GroceryScreen() {
   }, []);
 
   const colors = getThemeColors(isDark);
+
+  // Shared "source card" used by both the empty-state and the "+" chooser sheet:
+  // an icon disc, title + subtitle, and a chevron. `disabled` greys it and
+  // shows an optional note (e.g. "Generation paused") in place of the chevron.
+  const renderSourceCard = ({
+    icon,
+    iconBg,
+    cardBg,
+    cardBorderColor,
+    title,
+    subtitle,
+    onPress,
+    disabled = false,
+    disabledNote,
+  }: {
+    icon: React.ReactNode;
+    iconBg: string;
+    cardBg: string;
+    cardBorderColor: string;
+    title: string;
+    subtitle: string;
+    onPress: () => void;
+    disabled?: boolean;
+    disabledNote?: string;
+  }) => (
+    <Pressable
+      key={title}
+      onPress={onPress}
+      disabled={disabled}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+        padding: 14,
+        borderRadius: 18,
+        backgroundColor: cardBg,
+        borderWidth: 1,
+        borderColor: cardBorderColor,
+        opacity: disabled ? 0.55 : 1,
+      }}
+    >
+      <View
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 14,
+          backgroundColor: iconBg,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {icon}
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          style={{
+            fontFamily: designTokens.font.semibold,
+            fontSize: 16,
+            color: colors.ink,
+            letterSpacing: -0.2,
+          }}
+        >
+          {title}
+        </Text>
+        <Text
+          style={{
+            marginTop: 3,
+            fontFamily: designTokens.font.regular,
+            fontSize: 13,
+            lineHeight: 18,
+            color: colors.ink2,
+          }}
+        >
+          {subtitle}
+        </Text>
+      </View>
+      {disabled && disabledNote ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Lock size={13} color={colors.ink3} strokeWidth={1.8} />
+          <Text
+            style={{
+              fontFamily: designTokens.font.medium,
+              fontSize: 11.5,
+              color: colors.ink3,
+            }}
+          >
+            {disabledNote}
+          </Text>
+        </View>
+      ) : (
+        <ChevronRight size={20} color={colors.ink3} strokeWidth={1.8} />
+      )}
+    </Pressable>
+  );
 
   // Check if we're in saved list mode based on store state
   const isSavedListMode = currentSavedListId !== null;
@@ -1911,35 +2090,43 @@ export default function GroceryScreen() {
   }, [generateGroceryList, setGroceryDateRange, isSavedListMode, unloadSavedGroceryList]);
 
   const handleCombineDuplicates = useCallback(
-    (groupKey: string, selectedIndices: number[]) => {
+    (groupKey: string, selectedIndices: number[], userQuantity: string, userUnit: string) => {
       const group = duplicateGroups.find((g) => g.key === groupKey);
       if (!group || selectedIndices.length < 2) return;
 
-      // Keep the first selected item as the base; merge the rest INTO it.
+      // Keep the first selected item as the base; the rest are removed after.
       const baseIndex = selectedIndices[0];
       const baseId = group.ingredientIds[baseIndex];
+      const baseName = group.names[baseIndex];
 
-      // Everything except the base is merged in and then removed.
       const mergeIndices = selectedIndices.slice(1);
       const idsToRemove = mergeIndices.map((idx) => group.ingredientIds[idx]);
 
-      // Add each duplicate's OWN quantity+unit into the base. mergeInto* adds
-      // the passed amount onto the base's existing quantity, so we pass only
-      // the deltas (never the base's own quantity) — otherwise the base is
-      // counted twice (e.g. 4g + 4g would have shown 12g instead of 8g).
-      // Merging per-item also lets each item's own unit be converted correctly.
-      mergeIndices.forEach((idx) => {
-        const addQty = group.quantities[idx];
-        const addUnit = group.units[idx];
-        if (isSavedListMode) {
-          mergeIntoCurrentSavedListItem(baseId, addQty, addUnit);
-        } else {
-          // mergeIntoGroceryItem resolves the base in groceryItems OR
-          // customGroceryItems, so it works whether the base is generated
-          // or a custom item.
-          mergeIntoGroceryItem(baseId, addQty, addUnit);
-        }
-      });
+      // Honor the quantity + unit the user confirmed on the Combine screen as
+      // the FINAL combined value — the user's manual override must win over the
+      // base ingredient's unit. Recompute the base fields from that input so
+      // storage stays consistent and (in imperial mode) converts correctly;
+      // if the unit isn't convertible (e.g. a custom "bag"), clear the base so
+      // the display shows exactly what the user typed.
+      const qty = (userQuantity ?? '').trim() || '0';
+      const unit = (userUnit ?? '').trim();
+      const updates: Partial<GroceryItem> = { quantity: qty, unit };
+      try {
+        const base = convertToBaseUnit(qty, unit, baseName);
+        updates.quantity_base = base.quantity;
+        updates.base_unit = base.unit;
+      } catch {
+        updates.quantity_base = undefined;
+        updates.base_unit = undefined;
+      }
+
+      if (isSavedListMode) {
+        updateCurrentSavedListItem(baseId, updates);
+      } else if (customGroceryItems.some((item) => item.id === baseId)) {
+        updateCustomGroceryItem(baseId, updates);
+      } else {
+        updateGroceryItem(baseId, updates);
+      }
 
       // Remove the now-merged duplicates.
       idsToRemove.forEach((id) => {
@@ -1965,8 +2152,9 @@ export default function GroceryScreen() {
       removeGroceryItem,
       removeCustomGroceryItem,
       removeCurrentSavedListItem,
-      mergeIntoGroceryItem,
-      mergeIntoCurrentSavedListItem,
+      updateGroceryItem,
+      updateCustomGroceryItem,
+      updateCurrentSavedListItem,
     ]
   );
 
@@ -2084,6 +2272,10 @@ export default function GroceryScreen() {
   const hasAnyItems = isSavedListMode
     ? currentSavedListItems.length > 0
     : groceryItems.length > 0 || customGroceryItems.length > 0;
+  // The three top-right header buttons (saved lists, share, add) are greyed out
+  // until the first grocery list exists — the empty-state cards are how the user
+  // makes that first add.
+  const controlsDisabled = !isSavedListMode && !hasAnyItems;
   const pct = stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0;
 
   // ── Subtitle text under the title ───────────────────────────────
@@ -2091,10 +2283,18 @@ export default function GroceryScreen() {
   if (isSavedListMode) {
     subtitleText = `${stats.total} item${stats.total === 1 ? '' : 's'} saved`;
   } else if (groceryStartDate && groceryEndDate && hasAnyItems) {
-    const s = new Date(groceryStartDate).toLocaleDateString('en-US', { weekday: 'short' });
-    const e = new Date(groceryEndDate).toLocaleDateString('en-US', { weekday: 'short' });
+    // Inclusive number of days the grocery list was built for. Normalise to
+    // midnight so time-of-day / DST never skews the count.
+    const start = new Date(groceryStartDate);
+    const end = new Date(groceryEndDate);
+    const startMid = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endMid = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    const dayCount = Math.max(
+      1,
+      Math.round((endMid.getTime() - startMid.getTime()) / 86400000) + 1,
+    );
     subtitleText = stats.total > 0
-      ? `${stats.total} item${stats.total === 1 ? '' : 's'} for ${s}–${e} meals.`
+      ? `${stats.total} item${stats.total === 1 ? '' : 's'} for ${dayCount} day${dayCount === 1 ? '' : 's'} meal.`
       : '';
   } else if (hasAnyItems) {
     subtitleText = `${stats.total} item${stats.total === 1 ? '' : 's'} in your list.`;
@@ -2299,19 +2499,47 @@ export default function GroceryScreen() {
               }}
             >
               <View style={{ flex: 1, paddingRight: 12, minWidth: 0 }}>
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.serifItalic,
-                    fontStyle: serifItalicFontStyle,
-                    fontSize: t(32, 28),
-                    color: colors.ink,
-                    letterSpacing: t(-0.64, -0.5),
-                    lineHeight: t(36, 32),
-                  }}
-                  numberOfLines={1}
-                >
-                  {isSavedListMode ? currentSavedListName || 'Saved list' : 'Your Groceries'}
-                </Text>
+                {isSavedListMode ? (
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.serifItalic,
+                      fontStyle: serifItalicFontStyle,
+                      fontSize: t(32, 28),
+                      color: colors.ink,
+                      letterSpacing: t(-0.64, -0.5),
+                      lineHeight: t(40, 34),
+                    }}
+                    numberOfLines={1}
+                  >
+                    {currentSavedListName || 'Saved list'}
+                  </Text>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                    <Text
+                      style={{
+                        fontFamily: designTokens.font.medium,
+                        fontSize: t(28, 24),
+                        color: colors.ink,
+                        letterSpacing: t(-0.56, -0.4),
+                        lineHeight: t(40, 34),
+                      }}
+                    >
+                      Your{' '}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: designTokens.font.serifItalic,
+                        fontStyle: serifItalicFontStyle,
+                        fontSize: t(32, 28),
+                        color: colors.ink,
+                        letterSpacing: t(-0.64, -0.5),
+                        lineHeight: t(40, 34),
+                      }}
+                    >
+                      Groceries
+                    </Text>
+                  </View>
+                )}
                 {subtitleText ? (
                   <Text
                     style={{
@@ -2357,6 +2585,7 @@ export default function GroceryScreen() {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       setShowSavedListsModal(true);
                     }}
+                    disabled={controlsDisabled}
                     style={{
                       width: 40,
                       height: 40,
@@ -2366,6 +2595,7 @@ export default function GroceryScreen() {
                       backgroundColor: colors.bg,
                       alignItems: 'center',
                       justifyContent: 'center',
+                      opacity: controlsDisabled ? 0.4 : 1,
                     }}
                   >
                     <BookmarkCheck size={18} color={colors.ink} strokeWidth={1.7} />
@@ -2392,22 +2622,27 @@ export default function GroceryScreen() {
                 >
                   <Share2 size={18} color={colors.ink} strokeWidth={1.7} />
                 </Pressable>
-                {/* Plus — solid ink, cream icon, opens AddItemModal */}
+                {/* Plus — warm charcoal→brown gradient, cream icon. On the live
+                    grocery list it opens the source chooser (Meal Plan / Recipes
+                    / Manual); on a saved shopping list it opens Add manual
+                    directly. Greyed until the first list exists. */}
                 <Pressable
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    setShowAddModal(true);
+                    if (isSavedListMode) setShowAddModal(true);
+                    else setShowSourceChooser(true);
                   }}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 999,
-                    backgroundColor: designTokens.colors.ink,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  disabled={controlsDisabled}
+                  style={{ width: 40, height: 40, borderRadius: 999, overflow: 'hidden', opacity: controlsDisabled ? 0.4 : 1 }}
                 >
-                  <Plus size={20} color={designTokens.colors.cream} strokeWidth={1.8} />
+                  <LinearGradient
+                    colors={['#181612', '#2d1811']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Plus size={20} color={designTokens.colors.cream} strokeWidth={1.8} />
+                  </LinearGradient>
                 </Pressable>
               </View>
             </View>
@@ -2607,74 +2842,85 @@ export default function GroceryScreen() {
                   />
                 </View>
 
-                {/* CTAs inside the card */}
+                {/* CTA inside the card. Saved-list mode shows "Reset" (untick
+                    every item); the live grocery list shows a single full-width
+                    "Save to shopping list" button (same cream pill styling). */}
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-                  <Pressable
-                    onPress={() => {
-                      if (isPaused) return;
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      setShowDatePicker(true);
-                    }}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 11,
-                      borderRadius: 999,
-                      backgroundColor: '#F6F2E9',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <RotateCcw size={15} color={designTokens.colors.charcoal} strokeWidth={1.8} />
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.medium,
-                        fontSize: 14,
-                        color: designTokens.colors.charcoal,
-                        letterSpacing: -0.14,
-                      }}
-                    >
-                      Refresh
-                    </Text>
-                  </Pressable>
-                  {!isSavedListMode && stats.total > 0 && (
+                  {isSavedListMode ? (
                     <Pressable
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        setShowSaveListModal(true);
+                        resetCurrentSavedListChecks();
                       }}
                       style={{
-                        paddingHorizontal: 14,
+                        flex: 1,
                         paddingVertical: 11,
                         borderRadius: 999,
-                        backgroundColor: 'transparent',
-                        borderWidth: 1,
-                        borderColor: 'rgba(246,242,233,0.2)',
+                        backgroundColor: '#F6F2E9',
                         flexDirection: 'row',
                         alignItems: 'center',
+                        justifyContent: 'center',
                         gap: 6,
                       }}
                     >
-                      <Save size={15} color="#F6F2E9" strokeWidth={1.8} />
+                      <RotateCcw size={15} color={designTokens.colors.charcoal} strokeWidth={1.8} />
                       <Text
                         style={{
                           fontFamily: designTokens.font.medium,
                           fontSize: 14,
-                          color: '#F6F2E9',
+                          color: designTokens.colors.charcoal,
                           letterSpacing: -0.14,
                         }}
                       >
-                        Save as shopping list
+                        Reset
                       </Text>
                     </Pressable>
+                  ) : (
+                    stats.total > 0 && (
+                      <Pressable
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          setShowSaveListModal(true);
+                        }}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 11,
+                          borderRadius: 999,
+                          backgroundColor: '#F6F2E9',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <Save size={15} color={designTokens.colors.charcoal} strokeWidth={1.8} />
+                        <Text
+                          style={{
+                            fontFamily: designTokens.font.medium,
+                            fontSize: 14,
+                            color: designTokens.colors.charcoal,
+                            letterSpacing: -0.14,
+                          }}
+                        >
+                          Save to shopping list
+                        </Text>
+                      </Pressable>
+                    )
                   )}
                 </View>
               </LinearGradient>
             </Animated.View>
           )}
 
-
+          {/* ── Recipe slider — the recipes this list was built from, under the
+              Pantry Check card. Self-hides when there are no source recipes.
+              Live add/delete recomputes the ingredient list. */}
+          {!isSavedListMode && (
+            <GroceryRecipeStrip
+              isDark={isDark}
+              onAddRecipes={() => setShowRecipePicker(true)}
+            />
+          )}
 
           {/* ── Duplicate ingredients banner (existing component, in section padding) ── */}
           {duplicateGroups.length > 0 && (
@@ -2788,101 +3034,90 @@ export default function GroceryScreen() {
           ) : (
             <Animated.View
               entering={FadeInDown.delay(220).springify()}
-              style={{ alignItems: 'center', paddingVertical: 60, paddingHorizontal: 20 }}
+              style={{ paddingTop: 40, paddingBottom: 40, paddingHorizontal: 20 }}
             >
-              <View
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: colors.hair,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: 14,
-                }}
-              >
-                <ShoppingCart size={22} color={designTokens.colors.ink3} strokeWidth={1.6} />
-              </View>
-              <Text
-                style={{
-                  fontFamily: designTokens.font.medium,
-                  fontSize: 15,
-                  color: colors.ink,
-                  letterSpacing: -0.15,
-                }}
-              >
-                Your list is empty
-              </Text>
-              <Text
-                style={{
-                  fontFamily: designTokens.font.regular,
-                  fontSize: 13,
-                  color: colors.ink3,
-                  marginTop: 4,
-                  textAlign: 'center',
-                }}
-              >
-                Add items manually{isPaused ? '' : '\nor generate from your meal plan'}
-              </Text>
-              {!isPaused && (
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    setShowDatePicker(true);
-                  }}
-                  style={{
-                    marginTop: 18,
-                    paddingHorizontal: 22,
-                    paddingVertical: 13,
-                    borderRadius: 14,
-                    backgroundColor: designTokens.colors.brand,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <Calendar size={16} color="#fff" strokeWidth={1.8} />
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.semibold,
-                      fontSize: 14.5,
-                      color: '#fff',
-                      letterSpacing: -0.145,
-                    }}
-                  >
-                    From meal plan
-                  </Text>
-                </Pressable>
-              )}
-              {isPaused && (
+              {/* Cart + heading */}
+              <View style={{ alignItems: 'center', marginBottom: 26 }}>
                 <View
                   style={{
-                    marginTop: 18,
-                    paddingHorizontal: 18,
-                    paddingVertical: 11,
-                    borderRadius: 14,
+                    width: 64,
+                    height: 64,
+                    borderRadius: 999,
                     borderWidth: 1,
                     borderColor: colors.hair,
-                    backgroundColor: colors.pill,
-                    flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 6,
+                    justifyContent: 'center',
+                    marginBottom: 16,
                   }}
                 >
-                  <Lock size={15} color={designTokens.colors.ink3} strokeWidth={1.8} />
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.medium,
-                      fontSize: 13.5,
-                      color: colors.ink2,
-                      letterSpacing: -0.135,
-                    }}
-                  >
-                    Generation paused
-                  </Text>
+                  <ShoppingCart size={26} color={designTokens.colors.ink3} strokeWidth={1.6} />
                 </View>
-              )}
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.semibold,
+                    fontSize: 19,
+                    color: colors.ink,
+                    letterSpacing: -0.3,
+                  }}
+                >
+                  Your list is empty
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 14,
+                    lineHeight: 20,
+                    color: colors.ink3,
+                    marginTop: 6,
+                    textAlign: 'center',
+                    maxWidth: 260,
+                  }}
+                >
+                  Let's build your grocery list in a way that works for you.
+                </Text>
+              </View>
+
+              {/* Three source cards */}
+              <View style={{ gap: 12 }}>
+                {renderSourceCard({
+                  icon: <Calendar size={22} color={designTokens.colors.cream} strokeWidth={1.9} />,
+                  iconBg: designTokens.colors.brand,
+                  cardBg: isDark ? 'rgba(84,100,69,0.14)' : 'rgba(84,100,69,0.06)',
+                  cardBorderColor: isDark ? 'rgba(139,155,120,0.22)' : 'rgba(84,100,69,0.14)',
+                  title: 'From Meal Plan',
+                  subtitle: 'Add all ingredients from your planned meals',
+                  disabled: isPaused,
+                  disabledNote: isPaused ? 'Generation paused' : undefined,
+                  onPress: () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setShowDatePicker(true);
+                  },
+                })}
+                {renderSourceCard({
+                  icon: <BookOpen size={22} color={designTokens.colors.cream} strokeWidth={1.9} />,
+                  iconBg: designTokens.colors.olive,
+                  cardBg: isDark ? 'rgba(228,109,70,0.12)' : '#FFF5F0',
+                  cardBorderColor: isDark ? 'rgba(228,109,70,0.22)' : '#FCDDD0',
+                  title: 'From Recipes',
+                  subtitle: 'Pick recipes and add the ingredients you need',
+                  onPress: () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setShowRecipePicker(true);
+                  },
+                })}
+                {renderSourceCard({
+                  icon: <Pencil size={20} color={designTokens.colors.cream} strokeWidth={1.9} />,
+                  iconBg: '#201C17',
+                  cardBg: colors.hair2,
+                  cardBorderColor: colors.hair,
+                  title: 'Add Manually',
+                  subtitle: 'Add any item to your list manually',
+                  onPress: () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setShowAddModal(true);
+                  },
+                })}
+              </View>
             </Animated.View>
           )}
         </ScrollView>
@@ -2913,6 +3148,115 @@ export default function GroceryScreen() {
         isDark={isDark}
         mealSlots={mealSlots}
       />
+
+      {/* From Recipes — multi-select library picker → addRecipesToGroceryList */}
+      <GroceryRecipePicker
+        visible={showRecipePicker}
+        isDark={isDark}
+        onClose={() => setShowRecipePicker(false)}
+      />
+
+      {/* "+" source chooser sheet — the persistent entry point once a list
+          exists. Same three sources as the empty state. */}
+      {showSourceChooser && (
+        <View className="absolute inset-0 z-50">
+          <Pressable
+            onPress={() => setShowSourceChooser(false)}
+            className="absolute inset-0 bg-black/50"
+          />
+          <Animated.View
+            entering={FadeInDown.springify()}
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: colors.bg,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              paddingHorizontal: 20,
+              paddingTop: 10,
+              paddingBottom: 34,
+            }}
+          >
+            <View
+              style={{
+                alignSelf: 'center',
+                width: 40,
+                height: 4,
+                borderRadius: 999,
+                backgroundColor: colors.hair,
+                marginBottom: 16,
+              }}
+            />
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 16,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: designTokens.font.semibold,
+                  fontSize: 18,
+                  color: colors.ink,
+                  letterSpacing: -0.3,
+                }}
+              >
+                Add to list
+              </Text>
+              <Pressable onPress={() => setShowSourceChooser(false)} hitSlop={8}>
+                <X size={20} color={colors.ink3} strokeWidth={1.8} />
+              </Pressable>
+            </View>
+            <View style={{ gap: 12 }}>
+              {renderSourceCard({
+                icon: <Calendar size={22} color={designTokens.colors.cream} strokeWidth={1.9} />,
+                iconBg: designTokens.colors.brand,
+                cardBg: isDark ? 'rgba(84,100,69,0.14)' : 'rgba(84,100,69,0.06)',
+                cardBorderColor: isDark ? 'rgba(139,155,120,0.22)' : 'rgba(84,100,69,0.14)',
+                title: 'From Meal Plan',
+                subtitle: 'Add all ingredients from your planned meals',
+                disabled: isPaused,
+                disabledNote: isPaused ? 'Generation paused' : undefined,
+                onPress: () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setShowSourceChooser(false);
+                  setShowDatePicker(true);
+                },
+              })}
+              {renderSourceCard({
+                icon: <BookOpen size={22} color={designTokens.colors.cream} strokeWidth={1.9} />,
+                iconBg: designTokens.colors.olive,
+                cardBg: isDark ? 'rgba(228,109,70,0.12)' : '#FFF5F0',
+                cardBorderColor: isDark ? 'rgba(228,109,70,0.22)' : '#FCDDD0',
+                title: 'From Recipes',
+                subtitle: 'Pick recipes and add the ingredients you need',
+                onPress: () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setShowSourceChooser(false);
+                  setShowRecipePicker(true);
+                },
+              })}
+              {renderSourceCard({
+                icon: <Pencil size={20} color={designTokens.colors.cream} strokeWidth={1.9} />,
+                iconBg: '#201C17',
+                cardBg: colors.hair2,
+                cardBorderColor: colors.hair,
+                title: 'Add Manually',
+                subtitle: 'Add any item to your list manually',
+                onPress: () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setShowSourceChooser(false);
+                  setShowAddModal(true);
+                },
+              })}
+            </View>
+          </Animated.View>
+        </View>
+      )}
 
       {/* Save Shopping List Name Modal */}
       <SaveListNameModal

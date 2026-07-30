@@ -135,6 +135,13 @@ function prepStyleItalic(mealPrepTime?: string): string {
   }
 }
 
+// ── Profile UI visibility flags ───────────────────────────────────────
+// Temporarily hidden from the user-facing Profile screen (code retained —
+// flip any of these to `true` to bring the section back).
+const SHOW_EDIT_BUTTON = false;      // header pencil (Edit profile)
+const SHOW_COOKS_FOR_CARD = false;   // "PlannPlate cooks for" card
+const SHOW_YOUR_RHYTHM = false;      // "Patterns we've noticed" / Your rhythm
+
 // ── Stat card (design-language ThisWeek tile) ─────────────────────────
 interface StatTileProps {
   icon: React.ReactNode;
@@ -656,7 +663,7 @@ export default function ProfileScreen() {
           {/* ── Profile header ──────────────────────────────────── */}
           <Animated.View
             entering={FadeInDown.delay(50).springify()}
-            style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 22 }}
+            style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 22 }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
@@ -784,6 +791,7 @@ export default function ProfileScreen() {
               {/* Edit profile + Do more with PnP — top-right circular icon
                   buttons, styled like the grocery header's action buttons. */}
               <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                {SHOW_EDIT_BUTTON && (
                 <Pressable
                   onPress={openEditProfile}
                   hitSlop={6}
@@ -800,6 +808,7 @@ export default function ProfileScreen() {
                 >
                   <Pencil size={17} color={colors.ink} strokeWidth={1.7} />
                 </Pressable>
+                )}
                 {!isPremium && (
                   <Pressable
                     onPress={() => {
@@ -823,37 +832,42 @@ export default function ProfileScreen() {
                 )}
               </View>
             </View>
-            {/* Share with friends — primary CTA (native share sheet). */}
+            {/* Share with friends — primary CTA (native share sheet). Uses the
+                warm charcoal→brown gradient from the grocery status card. */}
             <Pressable
               onPress={handleShareApp}
-              style={{
-                marginTop: 16,
-                width: '100%',
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                paddingHorizontal: 16,
-                paddingVertical: 13,
-                borderRadius: 14,
-                backgroundColor: designTokens.colors.ink,
-              }}
+              style={{ marginTop: 16, width: '100%', borderRadius: 14, overflow: 'hidden' }}
             >
-              <Share2 size={15} color={designTokens.colors.cream} strokeWidth={1.8} />
-              <Text
+              <LinearGradient
+                colors={['#181612', '#2d1811']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
                 style={{
-                  fontFamily: designTokens.font.medium,
-                  fontSize: 14.5,
-                  color: designTokens.colors.cream,
-                  letterSpacing: -0.145,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  paddingHorizontal: 16,
+                  paddingVertical: 13,
                 }}
               >
-                Share with friends
-              </Text>
+                <Share2 size={15} color={designTokens.colors.cream} strokeWidth={1.8} />
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 14.5,
+                    color: designTokens.colors.cream,
+                    letterSpacing: -0.145,
+                  }}
+                >
+                  Share with friends
+                </Text>
+              </LinearGradient>
             </Pressable>
           </Animated.View>
 
           {/* ── Cooking profile card ────────────────────────────── */}
+          {SHOW_COOKS_FOR_CARD && (
           <Animated.View
             entering={FadeInDown.delay(100).springify()}
             style={{ paddingHorizontal: 16, paddingBottom: 22 }}
@@ -948,6 +962,7 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           </Animated.View>
+          )}
 
           {/* ── This week ──────────────────────────────────────── */}
           <Animated.View
@@ -987,9 +1002,9 @@ export default function ProfileScreen() {
               <StatTile
                 icon={<Flame size={14} color={designTokens.colors.olive} strokeWidth={1.8} />}
                 tint="#F2E0D9"
-                value={stats.weeklyStreak}
-                unit={stats.weeklyStreak === 1 ? 'wk streak' : 'wk streak'}
-                hint="planning"
+                value={`${insights.cooking.cookedThisWeek}/${insights.cooking.plannedThisWeek}`}
+                unit="cooked"
+                hint="momentum"
                 isDark={isDark}
                 index={1}
               />
@@ -1015,6 +1030,7 @@ export default function ProfileScreen() {
             cuisine list + speed). All press feedback / haptics / sizing
             tuned to read as "patterns we've noticed", not generic stats.
           */}
+          {SHOW_YOUR_RHYTHM && (
           <Animated.View
             entering={FadeInDown.delay(180).springify()}
             style={{ paddingHorizontal: 16, paddingBottom: 24 }}
@@ -1539,6 +1555,7 @@ export default function ProfileScreen() {
               </View>
             </View>
           </Animated.View>
+          )}
 
           {/* ── Shopping shortcut ──────────────────────────────── */}
           <Animated.View

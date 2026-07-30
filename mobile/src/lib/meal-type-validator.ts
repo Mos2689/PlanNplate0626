@@ -139,6 +139,53 @@ export function classifyRecipeByContent(recipe: GeneratedRecipeResponse): MealTy
   return classified[0] as MealType;
 }
 
+// Name-only signals for classifying a dish before any recipe exists (e.g. the
+// frequent-cook dishes a user types during onboarding — we only have the name).
+// Kept deliberately distinctive to avoid the false positives the broad
+// content-indicator lists would trigger on a bare name (e.g. "cheese" →
+// breakfast). Order of the checks below encodes precedence.
+const NAME_MEAL_KEYWORDS: Record<Exclude<MealType, 'lunch'>, string[]> & {
+  lunch: string[];
+} = {
+  breakfast: [
+    'smoothie', 'oatmeal', 'oats', 'porridge', 'pancake', 'waffle',
+    'french toast', 'omelet', 'omelette', 'scramble', 'scrambled', 'frittata',
+    'granola', 'muesli', 'cereal', 'bagel', 'muffin', 'parfait', 'yogurt',
+    'chia pudding', 'overnight oats', 'acai', 'hash brown', 'croissant',
+    'crepe', 'crêpe', 'breakfast', 'brunch', 'shakshuka', 'poha', 'upma',
+    'idli', 'dosa', 'paratha', 'toast',
+  ],
+  snack: [
+    'dip', 'hummus', 'guacamole', 'salsa', 'chips', 'nachos', 'popcorn',
+    'trail mix', 'energy bar', 'granola bar', 'protein bar', 'cookie',
+    'brownie', 'cracker', 'pretzel', 'wings', 'chicken wings', 'appetizer',
+    'bites', 'snack', 'fries', 'spring roll', 'samosa', 'pakora',
+  ],
+  lunch: [
+    'sandwich', 'wrap', 'salad', 'sub', 'panini', 'quesadilla', 'burger',
+    'roll', 'bowl', 'toastie', 'bruschetta', 'pita',
+  ],
+  // dinner is the fallback — no keyword list needed.
+  dinner: [],
+};
+
+/**
+ * Classify a dish by NAME alone (no recipe content yet).
+ *
+ * Precedence: a strong breakfast signal wins first, then snack, then lunch;
+ * anything else (hearty mains, or an unrecognised name) defaults to dinner —
+ * the historically safe default. Used for onboarding frequent-cook dishes so
+ * e.g. "Avocado smoothie" is tagged breakfast, not dinner.
+ */
+export function classifyMealTypeFromName(name: string): MealType {
+  const text = ` ${name.toLowerCase().trim()} `;
+  const hits = (kws: string[]) => kws.some((kw) => text.includes(kw));
+  if (hits(NAME_MEAL_KEYWORDS.breakfast)) return 'breakfast';
+  if (hits(NAME_MEAL_KEYWORDS.snack)) return 'snack';
+  if (hits(NAME_MEAL_KEYWORDS.lunch)) return 'lunch';
+  return 'dinner';
+}
+
 /**
  * Validate if recipe matches its assigned meal type
  */

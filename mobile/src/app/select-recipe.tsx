@@ -11,8 +11,6 @@ import {
   Clock,
   Check,
   Flame,
-  Plus,
-  Download,
   CheckSquare,
   Square,
 } from 'lucide-react-native';
@@ -661,64 +659,6 @@ export default function SelectRecipeScreen() {
               )}
             </Animated.View>
           )}
-
-          {/* Quick-add navigation buttons */}
-          <Animated.View
-            entering={FadeInDown.delay(200).springify()}
-            style={{ paddingHorizontal: 16, paddingBottom: 18 }}
-          >
-            <Text style={[eyebrow, { paddingHorizontal: 4, marginBottom: 8 }]}>
-              Add a recipe
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {[
-                {
-                  label: 'New',
-                  icon: <Plus size={16} color={designTokens.colors.brand} strokeWidth={1.8} />,
-                  onPress: () => router.push('/add-recipe'),
-                },
-                {
-                  label: 'Import',
-                  icon: (
-                    <Download size={16} color={designTokens.colors.brand} strokeWidth={1.8} />
-                  ),
-                  onPress: () => router.push('/import-recipe'),
-                },
-              ].map((btn) => (
-                <Pressable
-                  key={btn.label}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    btn.onPress();
-                  }}
-                  style={{
-                    flex: 1,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    paddingVertical: 12,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: colors.hair,
-                    backgroundColor: colors.bg,
-                  }}
-                >
-                  {btn.icon}
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.medium,
-                      fontSize: 13.5,
-                      color: colors.ink,
-                      letterSpacing: -0.135,
-                    }}
-                  >
-                    {btn.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </Animated.View>
 
           {/* Search bar */}
           {!isAddToSlotMode && (

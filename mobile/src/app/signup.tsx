@@ -120,7 +120,7 @@ export default function SignupScreen() {
   // If a real account is already signed in, redirect to home.
   React.useEffect(() => {
     if (isAuthenticated && !isAnonymous) {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/recipes');
     }
   }, [isAuthenticated, isAnonymous, router]);
 
@@ -380,7 +380,7 @@ export default function SignupScreen() {
       // session. Drop the user straight into the app and let
       // <PostSignupWelcome> handle the celebratory beat + paywall open.
       const firstName = trimmedName.split(' ')[0] || trimmedName;
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/recipes');
       showPostSignupWelcome(firstName);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -416,7 +416,7 @@ export default function SignupScreen() {
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.replace('/(tabs)');
+    router.replace('/(tabs)/recipes');
     if (result.isNewUser && result.user) {
       const firstName = result.user.name.split(' ')[0] || result.user.name;
       showPostSignupWelcome(firstName);

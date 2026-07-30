@@ -137,9 +137,6 @@ export default function VibeCookingScreen() {
 
   // ── Local cook-mode state ────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'ingredients' | 'steps'>('ingredients');
-  const [ingredientChecks, setIngredientChecks] = useState<boolean[]>(() =>
-    (recipe?.ingredients ?? []).map(() => false),
-  );
   const [stepDone, setStepDone] = useState<boolean[]>(() =>
     (recipe?.instructions ?? []).map(() => false),
   );
@@ -294,7 +291,6 @@ export default function VibeCookingScreen() {
   const activeMinutes = recipe?.prepTime ?? 0;
   const waitingMinutes = recipe?.cookTime ?? 0;
   const ingredientCount = recipe?.ingredients.length ?? 0;
-  const remainingIngredients = ingredientChecks.filter((c) => !c).length;
   const stepCount = recipe?.instructions.length ?? 0;
   const completedSteps = stepDone.filter(Boolean).length;
   const violations = recipe?.violations ?? [];
@@ -414,9 +410,9 @@ export default function VibeCookingScreen() {
     const recipeId = ensureRecipeSaved();
     updateRecipe(recipeId, { isSaved: true });
     setSavedToRecipes(true);
-    // Open the saved recipe so the tap clearly lands on its page — otherwise the
-    // action just flips a label in place and feels unfinished.
-    router.push(`/recipe-detail?id=${recipeId}` as any);
+    // Land on Your Recipes (where it's now saved) rather than the recipe's own
+    // page — the tap confirms the save by showing it in the library.
+    router.push('/(tabs)/recipes' as any);
   }, [ensureRecipeSaved, updateRecipe, router]);
 
   // ── Start cooking — jump to the Steps tab and scroll it up ───
@@ -485,14 +481,6 @@ export default function VibeCookingScreen() {
   }, [router, clearLastVibeCook]);
 
   // Toggle handlers — memoized so the rows don't churn re-renders.
-  const toggleIngredient = useCallback((idx: number) => {
-    setIngredientChecks((prev) => {
-      const next = [...prev];
-      next[idx] = !next[idx];
-      return next;
-    });
-  }, []);
-
   const toggleStep = useCallback((idx: number) => {
     setStepDone((prev) => {
       const next = [...prev];
@@ -1026,72 +1014,6 @@ export default function VibeCookingScreen() {
           {/* ── Tab body ────────────────────────────────────── */}
           {activeTab === 'ingredients' ? (
             <View style={{ marginBottom: 16 }}>
-              {/* Signature progress header */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'flex-end',
-                  justifyContent: 'space-between',
-                  marginBottom: 10,
-                  paddingHorizontal: 2,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontFamily: designTokens.font.semibold,
-                      fontSize: 10,
-                      letterSpacing: 1.4,
-                      textTransform: 'uppercase',
-                      color: theme.accent,
-                    }}
-                  >
-                    Mise en place
-                  </Text>
-                  <Text
-                    style={{
-                      marginTop: 4,
-                      fontFamily: designTokens.font.regular,
-                      fontSize: 13,
-                      color: isDark ? '#888' : designTokens.colors.ink3,
-                      letterSpacing: -0.05,
-                    }}
-                  >
-                    Tap to check items off as you gather them
-                  </Text>
-                </View>
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.semibold,
-                    fontSize: 13,
-                    color: isDark ? '#fff' : designTokens.colors.ink,
-                    letterSpacing: -0.2,
-                  }}
-                >
-                  {ingredientCount - remainingIngredients}/{ingredientCount}
-                </Text>
-              </View>
-
-              {/* Thin accent progress bar */}
-              <View
-                style={{
-                  height: 3,
-                  borderRadius: 999,
-                  backgroundColor: isDark ? '#1a1a1a' : designTokens.colors.hair2,
-                  marginBottom: 14,
-                  overflow: 'hidden',
-                }}
-              >
-                <View
-                  style={{
-                    height: '100%',
-                    width: `${ingredientCount > 0 ? ((ingredientCount - remainingIngredients) / ingredientCount) * 100 : 0}%`,
-                    backgroundColor: theme.accent,
-                    borderRadius: 999,
-                  }}
-                />
-              </View>
-
               {/* Ingredient card */}
               <View
                 style={{
@@ -1108,10 +1030,6 @@ export default function VibeCookingScreen() {
                     key={i}
                     name={ing.name}
                     quantity={`${ing.quantity} ${ing.unit}`.trim()}
-                    checked={ingredientChecks[i] ?? false}
-                    accent={theme.accent}
-                    accentSoft={theme.accentSoft}
-                    onToggle={() => toggleIngredient(i)}
                     showDivider={i < recipe.ingredients.length - 1}
                     isDark={isDark}
                   />

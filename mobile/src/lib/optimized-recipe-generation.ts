@@ -76,6 +76,17 @@ interface BatchGenerationOptions {
   avoidRecipeNames?: string[];
   preferQuick?: boolean;
   /**
+   * "Optimise groceries" — when set, the curated matcher drops cuisine and
+   * selects for shared fresh produce/dairy (waste-minimising), seeded from the
+   * user's chosen favourites. See grocery-optimization.ts.
+   */
+  optimizeGroceryOverlap?: boolean;
+  optimizeSeedRecipes?: import('./grocery-optimization').IngredientBearer[];
+  /** Parsed Special Instructions — hard excludes/diets, soft includes. */
+  excludeIngredients?: string[];
+  includeIngredients?: string[];
+  dietFilters?: string[];
+  /**
    * Cooperative cancel — checked between slots (and before each OpenAI call).
    * When it returns true the engine stops generating and returns what it has,
    * so a user "Cancel" takes effect promptly instead of running to completion.
@@ -320,6 +331,19 @@ export async function generateRecipesOptimized(
     avoidCuisines: options.avoidCuisines,
     avoidRecipeNames: options.avoidRecipeNames,
     preferQuick: options.preferQuick,
+    // Optimise groceries + Special Instructions
+    optimizeGrocery: options.optimizeGroceryOverlap,
+    optimizeSeedRecipes: options.optimizeSeedRecipes,
+    plannedMains: Math.max(
+      1,
+      Math.round(
+        (requestedTotal / Math.max(1, requestedMealTypes.length)) *
+          requestedMealTypes.filter((m) => m === 'lunch' || m === 'dinner').length,
+      ),
+    ),
+    excludeIngredients: options.excludeIngredients,
+    includeIngredients: options.includeIngredients,
+    dietFilters: options.dietFilters,
   });
   let curatedCount = 0;
   console.log(

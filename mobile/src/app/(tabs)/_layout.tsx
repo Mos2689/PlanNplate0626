@@ -5,6 +5,7 @@ import { Tabs } from 'expo-router';
 import {
   CalendarHeart,
   BookOpen,
+  Sparkles,
   ShoppingBasket,
   UserRound,
 } from 'lucide-react-native';
@@ -12,6 +13,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { designTokens } from '@/lib/design-tokens';
 import { androidTokens, t } from '@/lib/platform-tokens';
+
+// Recipes is the app's home. `index` (Meal Plan) stays the route behind the
+// `/(tabs)` path — plenty of flows navigate there to show a freshly-built plan
+// — but the navigator boots on Recipes, and every auth/onboarding handoff
+// routes to `/(tabs)/recipes` explicitly.
+export const unstable_settings = {
+  initialRouteName: 'recipes',
+};
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -55,11 +64,11 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="recipes"
         options={{
-          title: 'Meal Plan',
+          title: 'Recipes',
           tabBarIcon: ({ color, focused }) => (
-            <CalendarHeart
+            <BookOpen
               size={22}
               color={color}
               strokeWidth={focused ? 2 : 1.6}
@@ -68,11 +77,24 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="recipes"
+        name="inspired"
         options={{
-          title: 'Recipes',
+          title: 'Explore',
           tabBarIcon: ({ color, focused }) => (
-            <BookOpen
+            <Sparkles
+              size={22}
+              color={color}
+              strokeWidth={focused ? 2 : 1.6}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Meal Plan',
+          tabBarIcon: ({ color, focused }) => (
+            <CalendarHeart
               size={22}
               color={color}
               strokeWidth={focused ? 2 : 1.6}

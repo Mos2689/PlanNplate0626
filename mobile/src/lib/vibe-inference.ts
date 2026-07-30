@@ -200,6 +200,10 @@ export interface InferLikelyFridgeIngredientsInput {
  * most-recent grocery list + currently-tracked grocery items. Used to
  * auto-populate the "What's in your fridge" chip row on the Vibe
  * Cooking screen. Pure, deterministic, no React.
+ *
+ * First-time users with no cooking history and no grocery list yet get
+ * a fallback seed instead of an empty row: the produce + pantry
+ * ingredients from the dishes they named in onboarding Step 1.
  */
 export function inferLikelyFridgeIngredients(
   input: InferLikelyFridgeIngredientsInput,
@@ -262,6 +266,21 @@ export function inferLikelyFridgeIngredients(
     const mostRecent = savedGroceryLists[0];
     for (const item of mostRecent.items ?? []) {
       bump(item.name, 1.0);
+    }
+  }
+
+  // Source 4 — brand-new user fallback. If nothing above produced a
+  // signal (no cooking history, no active or saved grocery list yet —
+  // the "No fridge ingredients yet" case), seed from the produce +
+  // pantry ingredients of the dishes the user named during onboarding
+  // Step 1 ("frequent cooks"), tagged 'frequent-cook' when built.
+  if (scores.size === 0) {
+    for (const recipe of recipes) {
+      if (!recipe.tags?.includes('frequent-cook')) continue;
+      for (const ing of recipe.ingredients ?? []) {
+        if (ing.category !== 'produce' && ing.category !== 'pantry') continue;
+        bump(ing.name, 1);
+      }
     }
   }
 

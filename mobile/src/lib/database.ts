@@ -1585,3 +1585,170 @@ export async function fetchPlanningEvents(
     mealTypes: row.meal_types ?? [],
   }));
 }
+
+// ============ RECIPE COLLECTIONS (Premium) ============
+//
+// User-created collections of saved recipes. Premium-only feature — the gate
+// lives in the UI; these helpers are agnostic.
+//
+// Requires the following Supabase tables (run once via SQL editor):
+//
+//   create table collections (
+//     id uuid primary key,
+//     user_id uuid not null references auth.users(id) on delete cascade,
+//     name text not null,
+//     color text not null default '#E7F0DE',
+//     cover_recipe_id text,
+//     sort_order int not null default 0,
+//     created_at timestamptz default now()
+//   );
+//   alter table collections enable row level security;
+//   create policy "collections_owner" on collections
+//     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+//
+//   create table collection_recipes (
+//     collection_id uuid not null references collections(id) on delete cascade,
+//     recipe_id text not null,
+//     user_id uuid not null references auth.users(id) on delete cascade,
+//     added_at timestamptz default now(),
+//     primary key (collection_id, recipe_id)
+//   );
+//   alter table collection_recipes enable row level security;
+//   create policy "collection_recipes_owner" on collection_recipes
+//     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+//
+//   create index collection_recipes_collection_idx
+//     on collection_recipes(collection_id);
+
+/** Shape returned to the store — membership is flattened into `recipeIds`. */
+export interface RecipeCollectionRow {
+  id: string;
+  name: string;
+  color: string;
+  coverRecipeId?: string | null;
+  sortOrder: number;
+  createdAt: string;
+  recipeIds: string[];
+}
+
+export async function fetchCollections(
+  userId: string,
+): Promise<RecipeCollectionRow[]> {
+  if (!isSupabaseConfigured()) return [];
+  const [{ data: cols, error: colErr }, { data: items, error: itemErr }] =
+    await Promise.all([
+      supabase
+        .from('collections')
+        .select('*')
+        .eq('user_id', userId)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('collection_recipes')
+        .select('collection_id, recipe_id, added_at')
+        .eq('user_id', userId)
+        .order('added_at', { ascending: true }),
+    ]);
+  if (colErr) {
+    console.error('[DB] fetchCollections failed:', colErr);
+    return [];
+  }
+  if (itemErr) console.error('[DB] fetchCollections (items) failed:', itemErr);
+
+  const byCollection = new Map<string, string[]>();
+  for (const row of (items ?? []) as any[]) {
+    const list = byCollection.get(row.collection_id);
+    if (list) list.push(row.recipe_id);
+    else byCollection.set(row.collection_id, [row.recipe_id]);
+  }
+
+  return ((cols ?? []) as any[]).map((row) => ({
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    coverRecipeId: row.cover_recipe_id,
+    sortOrder: row.sort_order ?? 0,
+    createdAt: row.created_at,
+    recipeIds: byCollection.get(row.id) ?? [],
+  }));
+}
+
+/** Insert-or-update the collection row itself (never its membership). */
+export async function upsertCollection(
+  userId: string,
+  collection: Omit<RecipeCollectionRow, 'recipeIds'>,
+): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  const { error } = await supabase.from('collections').upsert({
+    id: collection.id,
+    user_id: userId,
+    name: collection.name,
+    color: collection.color,
+    cover_recipe_id: collection.coverRecipeId ?? null,
+    sort_order: collection.sortOrder,
+    created_at: collection.createdAt,
+  });
+  if (error) {
+    console.error('[DB] upsertCollection failed:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function deleteCollection(
+  userId: string,
+  collectionId: string,
+): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  // collection_recipes rows cascade via the FK.
+  const { error } = await supabase
+    .from('collections')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', collectionId);
+  if (error) {
+    console.error('[DB] deleteCollection failed:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function addRecipesToCollection(
+  userId: string,
+  collectionId: string,
+  recipeIds: string[],
+): Promise<boolean> {
+  if (!isSupabaseConfigured() || recipeIds.length === 0) return false;
+  const { error } = await supabase.from('collection_recipes').upsert(
+    recipeIds.map((recipeId) => ({
+      collection_id: collectionId,
+      recipe_id: recipeId,
+      user_id: userId,
+    })),
+    { onConflict: 'collection_id,recipe_id' },
+  );
+  if (error) {
+    console.error('[DB] addRecipesToCollection failed:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function removeRecipeFromCollection(
+  userId: string,
+  collectionId: string,
+  recipeId: string,
+): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  const { error } = await supabase
+    .from('collection_recipes')
+    .delete()
+    .eq('user_id', userId)
+    .eq('collection_id', collectionId)
+    .eq('recipe_id', recipeId);
+  if (error) {
+    console.error('[DB] removeRecipeFromCollection failed:', error);
+    return false;
+  }
+  return true;
+}

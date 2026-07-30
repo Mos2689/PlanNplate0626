@@ -115,7 +115,7 @@ function VibeCard({ vibe, isSelected, onPress, isDark }: VibeCardProps) {
         <View
           style={{
             width: CARD_WIDTH,
-            borderRadius: 18,
+            borderRadius: 4,
             borderWidth: isSelected ? 2 : 1,
             borderColor: isSelected
               ? designTokens.colors.olive
@@ -127,7 +127,7 @@ function VibeCard({ vibe, isSelected, onPress, isDark }: VibeCardProps) {
           }}
         >
           {/* Top part: Hero image with Ken Burns on selected */}
-          <View style={{ width: '100%', aspectRatio: 0.8, overflow: 'hidden' }}>
+          <View style={{ width: '100%', aspectRatio: 1.1, overflow: 'hidden' }}>
             <RNAnimated.View
               style={{
                 width: '100%',
