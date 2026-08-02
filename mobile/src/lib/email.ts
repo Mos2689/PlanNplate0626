@@ -61,9 +61,9 @@ export async function sendWelcomeEmail(
       },
     });
 
-    if (result.error) {
-      console.error('[Email] Failed to send welcome email:', result.error);
-      return { success: false, error: result.error };
+    if (result.failure) {
+      console.error('[Email] Failed to send welcome email:', result.failure.category);
+      return { success: false, error: result.failure.category };
     }
 
     // Mark as sent so we don't send again
@@ -92,8 +92,8 @@ export async function sendEmail(options: {
 }): Promise<{ success: boolean; error?: string }> {
   try {
     const result = await apiCall<{ id: string }>('email-send', options);
-    if (result.error) {
-      return { success: false, error: result.error };
+    if (result.failure) {
+      return { success: false, error: result.failure.category };
     }
     return { success: true };
   } catch (error) {
@@ -137,9 +137,9 @@ export async function sendVerificationEmail(
       },
     });
 
-    if (result.error) {
-      console.error('[Email] Failed to send verification email:', result.error);
-      return { success: false, error: result.error };
+    if (result.failure) {
+      console.error('[Email] Failed to send verification email:', result.failure.category);
+      return { success: false, error: result.failure.category };
     }
 
     console.log('[Email] Verification email sent successfully to:', email);

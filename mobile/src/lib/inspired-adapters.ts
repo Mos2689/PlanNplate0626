@@ -46,3 +46,27 @@ export function findInspiredById(sourceId?: string | null): InspiredRecipe | und
   const rawId = sourceId.startsWith('inspired::') ? sourceId.slice('inspired::'.length) : sourceId;
   return INSPIRED_RECIPES.find((r) => r.id === rawId);
 }
+
+// id → blurhash, built on first lookup. A saved library recipe stores only its
+// `curatedSourceId`, not the hash — the hash deliberately does NOT live on the
+// persisted Recipe (that would mean a schema change and a column of derived
+// data). Looking it back up here gives the Recipes grid the same instant
+// placeholder the Explore tab gets, for free.
+//
+// Lazy + memoized: a linear .find() per card would be 736 comparisons on every
+// render, and building the map eagerly would force the 740 KB library to
+// evaluate at import time.
+let blurhashById: Map<string, string> | null = null;
+
+/** Blurhash for a saved library recipe, resolved from its curatedSourceId. */
+export function inspiredBlurhashFor(sourceId?: string | null): string | undefined {
+  if (!sourceId) return undefined;
+  if (!blurhashById) {
+    blurhashById = new Map();
+    for (const r of INSPIRED_RECIPES) {
+      if (r.blurhash) blurhashById.set(r.id, r.blurhash);
+    }
+  }
+  const rawId = sourceId.startsWith('inspired::') ? sourceId.slice('inspired::'.length) : sourceId;
+  return blurhashById.get(rawId);
+}

@@ -20,6 +20,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useAuthStore } from '@/lib/auth-store';
+import { makeFailure, validationFailure, type Failure } from '@/lib/failure';
+import { InlineFailure } from '@/components/failure';
 
 export default function VerifyOTPScreen() {
   const router = useRouter();
@@ -29,7 +31,7 @@ export default function VerifyOTPScreen() {
   const clearOTPState = useAuthStore((s) => s.clearOTPState);
 
   const [otp, setOtp] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Failure | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const otpInputRef = useRef<TextInput>(null);
 
@@ -60,12 +62,12 @@ export default function VerifyOTPScreen() {
 
   const handleVerifyOTP = useCallback(async () => {
     if (!otp || otp.length !== 6) {
-      setError('Please enter a 6-digit OTP');
+      setError(validationFailure('That code doesn’t look right', 'Please enter the 6-digit code we sent you.', 'auth'));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
-    setError('');
+    setError(null);
     setIsLoading(true);
 
     const result = await verifyOTP(otp);
@@ -76,7 +78,7 @@ export default function VerifyOTPScreen() {
       router.replace('/reset-password');
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(result.error || 'Invalid OTP');
+      setError(result.failure ?? makeFailure('unknown', { feature: 'auth' }));
       setOtp('');
       otpInputRef.current?.focus();
     }
@@ -125,11 +127,8 @@ export default function VerifyOTPScreen() {
 
               {/* Error Message */}
               {error ? (
-                  <Animated.View
-                    entering={FadeInDown.duration(300)}
-                    className="bg-red-50 border border-red-200 rounded-xl p-3 mb-6"
-                  >
-                    <Text className="text-red-600 text-center text-sm">{error}</Text>
+                  <Animated.View entering={FadeInDown.duration(300)} className="mb-6">
+                    <InlineFailure failure={error} />
                   </Animated.View>
                 ) : null}
 

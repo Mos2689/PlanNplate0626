@@ -40,6 +40,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useAuthStore } from '@/lib/auth-store';
+import { makeFailure, validationFailure, type Failure } from '@/lib/failure';
+import { InlineFailure } from '@/components/failure';
 import { useSubscriptionStore } from '@/lib/subscription-store';
 import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -140,7 +142,7 @@ export default function SignupScreen() {
     hasNumber: false,
     noCommonPassword: false,
   });
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Failure | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [socialLoadingProvider, setSocialLoadingProvider] = useState<SocialProvider | null>(null);
   const [emailExists, setEmailExists] = useState(false);
@@ -334,7 +336,7 @@ export default function SignupScreen() {
   }, [router, email]);
 
   const handleSignup = useCallback(async () => {
-    setError('');
+    setError(null);
     setNameError('');
     setPasswordError('');
 
@@ -364,7 +366,7 @@ export default function SignupScreen() {
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError(validationFailure('Those passwords don’t match', 'Please re-enter them and try again.', 'auth'));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
@@ -384,11 +386,14 @@ export default function SignupScreen() {
       showPostSignupWelcome(firstName);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const errorMsg = result.error || 'Sign up failed';
-      if (errorMsg.toLowerCase().includes('already registered') || errorMsg.toLowerCase().includes('already exists')) {
+      // auth-store now reports the duplicate-account case as a validation
+      // failure under the 'auth-existing-account' feature, so this branches on
+      // the classification instead of sniffing message text.
+      const failure = result.failure ?? makeFailure('unknown', { feature: 'auth' });
+      if (failure.feature === 'auth-existing-account') {
         setEmailExists(true);
       } else {
-        setError(errorMsg);
+        setError(failure);
       }
     }
 
@@ -396,7 +401,7 @@ export default function SignupScreen() {
   }, [email, password, confirmPassword, name, signUp, router, emailExists, validateName, validatePassword, showPostSignupWelcome]);
 
   const handleSocialSignup = useCallback(async (provider: SocialProvider) => {
-    setError('');
+    setError(null);
     setSocialLoadingProvider(provider);
     const result = await signInWithProvider(provider);
     setSocialLoadingProvider(null);
@@ -404,7 +409,7 @@ export default function SignupScreen() {
     if (result.cancelled) return;
     if (!result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(result.error || 'Sign up failed. Please try again.');
+      setError(result.failure ?? makeFailure('unknown', { feature: 'auth' }));
       return;
     }
 
@@ -707,33 +712,12 @@ export default function SignupScreen() {
               }}
             />
 
-            {/* Generic error banner */}
+            {/* Failure banner — wording comes from the failure catalogue, so a
+                raw provider message can no longer reach this screen. */}
             {error ? (
-              <Animated.View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: 11,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: cardBorder,
-                  backgroundColor: isDark ? '#181818' : designTokens.colors.cream,
-                  marginBottom: 14,
-                }}
-              >
-                <AlertTriangle size={14} color={designTokens.colors.olive} strokeWidth={1.8} />
-                <Text
-                  style={{
-                    flex: 1,
-                    fontFamily: designTokens.font.medium,
-                    fontSize: 12.5,
-                    color: inkPrimary,
-                  }}
-                >
-                  {error}
-                </Text>
-              </Animated.View>
+              <View style={{ marginBottom: 14 }}>
+                <InlineFailure failure={error} />
+              </View>
             ) : null}
 
             <SocialAuthButtons

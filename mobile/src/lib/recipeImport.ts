@@ -12,8 +12,11 @@ async function callOpenAIDirect(messages: Array<{ role: string; content: string 
     max_tokens: 2048,
   });
 
-  if (result.error) {
-    throw new Error(result.error);
+  if (result.failure) {
+    // Throw the classified failure rather than re-wrapping its text. Wrapping
+    // in `new Error(string)` used to erase the category, so everything upstream
+    // re-classified as 'unknown'.
+    throw result.failure;
   }
 
   const content = result.data?.choices?.[0]?.message?.content;
@@ -519,36 +522,8 @@ Only return valid JSON, no markdown or explanation.`;
   return parseRecipeJson(responseText);
 }
 
-/**
- * Check if a string looks like a URL
- */
-export function isUrl(text: string): boolean {
-  try {
-    const url = new URL(text.trim());
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Detect the source type from a URL
- */
-export function detectSourceType(url: string): 'instagram' | 'tiktok' | 'youtube' | 'pinterest' | 'website' {
-  const lowerUrl = url.toLowerCase();
-
-  if (lowerUrl.includes('instagram.com') || lowerUrl.includes('instagr.am')) {
-    return 'instagram';
-  }
-  if (lowerUrl.includes('tiktok.com') || lowerUrl.includes('vm.tiktok.com')) {
-    return 'tiktok';
-  }
-  if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
-    return 'youtube';
-  }
-  if (lowerUrl.includes('pinterest.com') || lowerUrl.includes('pin.it')) {
-    return 'pinterest';
-  }
-
-  return 'website';
-}
+// `isUrl` and `detectSourceType` moved to ./recipe-source so the shared
+// ingestion layer can use them without dragging the Supabase client and the
+// edge-function router into a plain-node test process. Re-exported here so every
+// existing import site keeps working unchanged.
+export { detectSourceType, isUrl } from './recipe-source';

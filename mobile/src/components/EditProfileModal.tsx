@@ -2,7 +2,7 @@
 // Visual-only redesign: every store call, mutation, ImagePicker call, supabase
 // upload, Alert, and haptic from the previous version is preserved verbatim.
 // No Sparkles. One italic word per screen ("profile" in the header).
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -37,6 +37,7 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useMealPlanStore, mealPrepTimeFromMinutes } from '@/lib/store';
+import { makeFailure, presentFailure } from '@/lib/failure';
 import { useSubscriptionStore, useUserAvatar, useUserName } from '@/lib/subscription-store';
 import { useAuthStore } from '@/lib/auth-store';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -45,6 +46,8 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 // Option vocabularies are shared with PlanTuneSheet via a single
 // module so the two surfaces never drift on a new diet or cuisine.
+import { trackPersonaUpdated } from '@/lib/onboarding-analytics';
+import { diffPersona, type PersonaSnapshot } from '@/lib/onboarding-analytics-policy';
 import {
   DIETARY_OPTIONS,
   CUISINE_OPTIONS,
@@ -278,12 +281,50 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // ── Persona analytics ─────────────────────────────────────────────────────
+  // This modal is now the ONLY surface that collects diet, allergies, cuisine,
+  // skill, household, adventure level and budget — the old onboarding steps
+  // that used to gather them were removed with the 5-step flow, and nothing
+  // replaced their analytics. Every toggle below writes straight to the store
+  // with no draft state, so a per-toggle event would be noise (picking five
+  // cuisines is one decision, not five). Instead: snapshot on open, diff on
+  // close, emit at most one `persona_updated` per editing session.
+  const personaSnapshotRef = useRef<PersonaSnapshot | null>(null);
+  const snapshotPersona = useCallback(
+    (): PersonaSnapshot => ({
+      dietaryRestrictions: [...preferences.dietaryRestrictions],
+      allergies: [...preferences.allergies],
+      cuisinePreferences: [...preferences.cuisinePreferences],
+      cookingSkillLevel: preferences.cookingSkillLevel,
+      household: preferences.household,
+      weeknightMinutes: preferences.weeknightMinutes,
+      servingSize: preferences.servingSize,
+      adventureLevel: preferences.adventureLevel,
+      weeklyBudget: preferences.weeklyBudget,
+      monthlyBudget: preferences.monthlyBudget,
+    }),
+    [preferences],
+  );
+
+  // `snapshotPersona` is intentionally omitted from the deps: it changes on
+  // every preference write, and re-running would overwrite the opening
+  // snapshot with the edited state, making every diff come back empty.
+  const reportPersonaChanges = useCallback(() => {
+    const before = personaSnapshotRef.current;
+    if (!before) return;
+    personaSnapshotRef.current = null; // save-then-close must not report twice
+    const after = snapshotPersona();
+    trackPersonaUpdated(after, diffPersona(before, after));
+  }, [snapshotPersona]);
+
   // Initialize local state when modal opens
   useEffect(() => {
     if (visible) {
       setEditName(userName || currentUser?.name || '');
       setLocalAvatarUri(null);
+      if (!personaSnapshotRef.current) personaSnapshotRef.current = snapshotPersona();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, userName, currentUser?.name]);
 
   const toggleDietaryRestriction = useCallback((restriction: string) => {
@@ -341,7 +382,7 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
+      presentFailure(makeFailure('image-processing', { feature: 'photo' }));
     }
   }, []);
 
@@ -350,7 +391,7 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your camera to take a profile photo.');
+        presentFailure(makeFailure('permission-denied', { feature: 'photo' }));
         return;
       }
 
@@ -366,7 +407,7 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
       }
     } catch (error) {
       console.error('Error taking photo:', error);
-      Alert.alert('Error', 'Failed to take photo. Please try again.');
+      presentFailure(makeFailure('image-processing', { feature: 'photo' }));
     }
   }, []);
 
@@ -461,22 +502,26 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
 
       if (success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        reportPersonaChanges();
         onClose();
       } else {
-        Alert.alert('Error', 'Failed to update profile. Please try again.');
+        presentFailure(makeFailure('unknown', { feature: 'profile' }));
       }
     } catch (error) {
       console.error('Error saving profile:', error);
-      Alert.alert('Error', 'Failed to update profile. Please try again.');
+      presentFailure(makeFailure('unknown', { feature: 'profile' }));
     } finally {
       setIsSaving(false);
     }
-  }, [currentUser, editName, localAvatarUri, userAvatar, updateProfile, onClose]);
+  }, [currentUser, editName, localAvatarUri, userAvatar, updateProfile, onClose, reportPersonaChanges]);
 
   const handleClose = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Dismissing still counts: the preference toggles have already been written
+    // to the store by this point, so closing without "Save" is a real edit.
+    reportPersonaChanges();
     onClose();
-  }, [onClose]);
+  }, [onClose, reportPersonaChanges]);
 
   // Display avatar (local or remote)
   const displayAvatarUri = localAvatarUri || userAvatar;

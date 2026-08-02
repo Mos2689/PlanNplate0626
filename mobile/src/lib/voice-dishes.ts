@@ -8,6 +8,37 @@
 
 import { apiCall } from './api-router';
 
+// Whisper hallucinates stock phrases ("thank you for watching", "please
+// subscribe", music notes, …) on silence/noise — treat those, and anything too
+// short, as "not heard" rather than capturing them as a dish.
+const NOISE_PATTERNS: RegExp[] = [
+  /\bthank you\b/i,
+  /\bthanks for\b/i,
+  /\bfor watching\b/i,
+  /\bsubscribe\b/i,
+  /\bsee you (next|again|soon)\b/i,
+  /[♪♫]/,
+];
+
+export function looksLikeNoise(s: string): boolean {
+  const t = (s || '').trim();
+  if (t.replace(/[^a-z0-9]/gi, '').length < 3) return true; // empty / too short
+  return NOISE_PATTERNS.some((re) => re.test(t));
+}
+
+/**
+ * A spoken or typed answer may name several dishes ("Butter Chicken, Vindaloo,
+ * Aloo Gobi") — split on commas / semicolons / newlines into separate dishes.
+ * NOTE: we deliberately do NOT split on " and " (breaks "Fish and Chips",
+ * "Mac and Cheese", …).
+ */
+export function splitDishNames(raw: string): string[] {
+  return (raw || '')
+    .split(/[,;\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !looksLikeNoise(s));
+}
+
 /**
  * Split a spoken transcript into distinct dish names. Keeps multi-word dish
  * names intact ("Fish and Chips", "Veg au Gratin") and only separates
@@ -42,7 +73,7 @@ Spoken text: "${trimmed}"`;
     max_tokens: 256,
   });
 
-  if (result.error) throw new Error(result.error);
+  if (result.failure) throw result.failure;
 
   const content = result.data?.choices?.[0]?.message?.content ?? '[]';
   const cleaned = content.replace(/```json/gi, '').replace(/```/g, '').trim();

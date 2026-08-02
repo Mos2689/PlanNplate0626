@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { classifyFailure, makeFailure, type Failure } from './failure';
 import type { User, Session } from '@supabase/supabase-js';
 import { useSubscriptionStore } from './subscription-store';
 import { sendWelcomeEmail, sendVerificationEmail } from './email';
@@ -7,7 +8,7 @@ import { logoutUser as revenuecatLogout } from './revenuecatClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   completeAuthCallback,
-  getSocialAuthErrorMessage,
+  socialAuthFailure,
   startSocialAuth,
   type SocialProvider,
 } from './social-auth';
@@ -59,7 +60,9 @@ export interface AuthUser {
 export interface SocialSignInResult {
   success: boolean;
   cancelled?: boolean;
-  error?: string;
+  /** Classified failure. OAuth errors can carry one-time codes, so the raw
+   *  provider text never leaves this module. */
+  failure?: Failure;
   isNewUser?: boolean;
   user?: AuthUser;
 }
@@ -99,14 +102,14 @@ interface AuthStore {
 
   // Actions
   initialize: () => Promise<void>;
-  checkEmailExists: (email: string) => Promise<{ exists: boolean; error?: string }>;
-  signUp: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  checkEmailExists: (email: string) => Promise<{ exists: boolean; failure?: Failure }>;
+  signUp: (email: string, password: string, name: string) => Promise<{ success: boolean; failure?: Failure }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; failure?: Failure }>;
   signInWithProvider: (provider: SocialProvider) => Promise<SocialSignInResult>;
   handleAuthRedirect: (url: string) => Promise<AuthRedirectResult>;
-  sendPasswordResetOTP: (email: string) => Promise<{ success: boolean; error?: string }>;
-  verifyOTP: (otp: string) => Promise<{ success: boolean; error?: string }>;
-  resetPasswordWithOTP: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  sendPasswordResetOTP: (email: string) => Promise<{ success: boolean; failure?: Failure }>;
+  verifyOTP: (otp: string) => Promise<{ success: boolean; failure?: Failure }>;
+  resetPasswordWithOTP: (newPassword: string) => Promise<{ success: boolean; failure?: Failure }>;
   clearOTPState: () => void;
   logout: () => Promise<void>;
   setSession: (session: Session | null) => void;
@@ -478,7 +481,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   // Check if email already exists (for early validation during signup)
   checkEmailExists: async (email: string) => {
     if (!isSupabaseConfigured()) {
-      return { exists: false, error: 'Supabase not configured' };
+      return { exists: false, failure: makeFailure('not-configured', { feature: 'auth' }) };
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -523,29 +526,29 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       return { exists: true };
     } catch (error) {
       console.error('[Auth] Check email exists error:', error);
-      return { exists: false, error: 'Failed to check email' };
+      return { exists: false, failure: makeFailure('unknown', { feature: 'auth' }) };
     }
   },
 
   // Sign up
   signUp: async (email, password, name) => {
     if (!isSupabaseConfigured()) {
-      return { success: false, error: 'Supabase not configured. Please add your credentials in the ENV tab.' };
+      return { success: false, failure: makeFailure('not-configured', { feature: 'auth' }) };
     }
 
     const normalizedEmail = email.toLowerCase().trim();
 
     // Validation
     if (!normalizedEmail || !password || !name.trim()) {
-      return { success: false, error: 'All fields are required' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     if (!normalizedEmail.includes('@') || !normalizedEmail.includes('.')) {
-      return { success: false, error: 'Please enter a valid email address' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     if (password.length < 6) {
-      return { success: false, error: 'Password must be at least 6 characters' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     // AUTH-LAST: if the current session is an anonymous guest, take the
@@ -609,16 +612,16 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             console.log('[Auth] Link blocked — email already belongs to another account');
             return {
               success: false,
-              error: 'An account with this email already exists. Please log in instead.',
+              failure: makeFailure('validation', { feature: 'auth-existing-account' }),
             };
           }
           console.error('[Auth] Anonymous link failed:', linkError.message);
-          return { success: false, error: linkError.message };
+          return { success: false, failure: classifyFailure(linkError, { feature: 'auth' }) };
         }
 
         const linkedUser = linkData.user;
         if (!linkedUser) {
-          return { success: false, error: 'Sign up failed. Please try again.' };
+          return { success: false, failure: makeFailure('unknown', { feature: 'auth' }) };
         }
 
         // Idempotent — the users-table row was already created for the anon id
@@ -679,10 +682,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           console.log('[Auth] Signup blocked — explicit duplicate-email error from Supabase');
           return {
             success: false,
-            error: 'An account with this email already exists. Please log in instead.',
+            failure: makeFailure('validation', { feature: 'auth-existing-account' }),
           };
         }
-        return { success: false, error: signUpError.message };
+        return { success: false, failure: classifyFailure(signUpError, { feature: 'auth' }) };
       }
 
       // 2) Obscured response from Supabase for an existing email.
@@ -697,7 +700,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           }
           return {
             success: false,
-            error: 'An account with this email already exists. Please log in instead.',
+            failure: makeFailure('validation', { feature: 'auth-existing-account' }),
           };
         }
 
@@ -712,7 +715,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           }
           return {
             success: false,
-            error: 'An account with this email already exists. Please log in instead.',
+            failure: makeFailure('validation', { feature: 'auth-existing-account' }),
           };
         }
 
@@ -744,10 +747,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         return { success: true };
       }
 
-      return { success: false, error: 'Sign up failed. Please try again.' };
+      return { success: false, failure: makeFailure('unknown', { feature: 'auth' }) };
     } catch (error) {
       console.error('[Auth] Sign up error:', error);
-      return { success: false, error: 'An unexpected error occurred' };
+      return { success: false, failure: classifyFailure(error, { feature: 'auth' }) };
     } finally {
       set({ _isSigningUp: false });
     }
@@ -756,22 +759,22 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   // Login
   login: async (email, password) => {
     if (!isSupabaseConfigured()) {
-      return { success: false, error: 'Supabase not configured. Please add your credentials in the ENV tab.' };
+      return { success: false, failure: makeFailure('not-configured', { feature: 'auth' }) };
     }
 
     const normalizedEmail = email.toLowerCase().trim();
 
     // Provide specific error messages for missing fields
     if (!normalizedEmail && !password) {
-      return { success: false, error: 'Email and password are required' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     if (!normalizedEmail) {
-      return { success: false, error: 'Email is required' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     if (!password) {
-      return { success: false, error: 'Password is required' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     try {
@@ -781,7 +784,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       });
 
       if (error) {
-        return { success: false, error: error.message };
+        return { success: false, failure: classifyFailure(error, { feature: 'auth' }) };
       }
 
       if (data.user) {
@@ -807,16 +810,16 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         return { success: true };
       }
 
-      return { success: false, error: 'Login failed. Please try again.' };
+      return { success: false, failure: makeFailure('auth-denied', { feature: 'auth' }) };
     } catch (error) {
       console.error('Login error:', error);
-      return { success: false, error: 'An unexpected error occurred' };
+      return { success: false, failure: classifyFailure(error, { feature: 'auth' }) };
     }
   },
 
   signInWithProvider: async (provider) => {
     if (!isSupabaseConfigured()) {
-      return { success: false, error: 'Authentication is not configured.' };
+      return { success: false, failure: makeFailure('not-configured', { feature: 'auth' }) };
     }
 
     set({ _isCompletingOAuth: true });
@@ -828,7 +831,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       if (result.error || !result.session?.user) {
         return {
           success: false,
-          error: getSocialAuthErrorMessage(provider, result.error),
+          failure: socialAuthFailure(provider, result.error),
         };
       }
 
@@ -837,14 +840,14 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         await supabase.auth.signOut().catch(() => {});
         return {
           success: false,
-          error: getSocialAuthErrorMessage(provider, 'Email is missing'),
+          failure: socialAuthFailure(provider, 'Email is missing'),
         };
       }
       if (!isUsableSession(session.user)) {
         await supabase.auth.signOut().catch(() => {});
         return {
           success: false,
-          error: `${provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google' : 'Facebook'} could not verify this email address.`,
+          failure: socialAuthFailure(provider, 'missing email'),
         };
       }
 
@@ -870,7 +873,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       console.error('[Auth] Social sign in failed:', error instanceof Error ? error.message : error);
       return {
         success: false,
-        error: getSocialAuthErrorMessage(
+        failure: socialAuthFailure(
           provider,
           error instanceof Error ? error.message : undefined,
         ),
@@ -892,7 +895,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           handled: true,
           type: result.type,
           success: false,
-          error: result.error || 'The authentication link is invalid or expired.',
+          failure: makeFailure('auth-expired', { feature: 'auth-link' }),
         };
       }
 
@@ -911,7 +914,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           handled: true,
           type: result.type,
           success: false,
-          error: 'The provider could not supply a verified email address.',
+          failure: makeFailure('auth-denied', { feature: 'auth' }),
         };
       }
 
@@ -944,7 +947,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         handled: true,
         type: null,
         success: false,
-        error: 'We could not complete sign in. Please try again.',
+        failure: makeFailure('auth-denied', { feature: 'auth' }),
       };
     } finally {
       set({ _isCompletingOAuth: false });
@@ -954,17 +957,17 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   // Send OTP for password reset
   sendPasswordResetOTP: async (email: string) => {
     if (!isSupabaseConfigured()) {
-      return { success: false, error: 'Supabase not configured. Please add your credentials in the ENV tab.' };
+      return { success: false, failure: makeFailure('not-configured', { feature: 'auth' }) };
     }
 
     const normalizedEmail = email.toLowerCase().trim();
 
     if (!normalizedEmail) {
-      return { success: false, error: 'Email is required' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     if (!normalizedEmail.includes('@') || !normalizedEmail.includes('.')) {
-      return { success: false, error: 'Please enter a valid email address' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     try {
@@ -993,7 +996,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         if (msg.includes('signups not allowed') || msg.includes('otp')) {
           return {
             success: false,
-            error: "We couldn't find an account for that email. Double-check the address you signed up with, or create an account first."
+            failure: makeFailure('validation', { feature: 'auth-no-account' }),
           };
         }
 
@@ -1001,11 +1004,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         if (msg.includes('email') || msg.includes('provider')) {
           return {
             success: false,
-            error: 'Email sending is not configured in Supabase. Please contact support to set up email authentication.'
+            failure: makeFailure('not-configured', { feature: 'auth-email' }),
           };
         }
 
-        return { success: false, error: error.message };
+        return { success: false, failure: classifyFailure(error, { feature: 'auth' }) };
       }
 
       // Store email for OTP verification and mark as password reset flow
@@ -1020,23 +1023,23 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       return { success: true };
     } catch (error) {
       console.error('[Auth] Send OTP error:', error);
-      return { success: false, error: 'An unexpected error occurred while sending OTP' };
+      return { success: false, failure: classifyFailure(error, { feature: 'auth' }) };
     }
   },
 
   // Verify OTP
   verifyOTP: async (otp: string) => {
     if (!isSupabaseConfigured()) {
-      return { success: false, error: 'Supabase not configured.' };
+      return { success: false, failure: makeFailure('not-configured', { feature: 'auth' }) };
     }
 
     const state = get();
     if (!state.otpEmail) {
-      return { success: false, error: 'No email found for OTP verification' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     if (!otp || otp.length !== 6) {
-      return { success: false, error: 'OTP must be 6 digits' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     try {
@@ -1050,7 +1053,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
 
       if (error) {
         console.error('[Auth] OTP verification error:', error.message);
-        return { success: false, error: error.message };
+        return { success: false, failure: classifyFailure(error, { feature: 'auth' }) };
       }
 
       if (data.session) {
@@ -1065,26 +1068,26 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         return { success: true };
       }
 
-      return { success: false, error: 'OTP verification failed' };
+      return { success: false, failure: makeFailure('auth-denied', { feature: 'auth' }) };
     } catch (error) {
       console.error('[Auth] Verify OTP error:', error);
-      return { success: false, error: 'An unexpected error occurred' };
+      return { success: false, failure: classifyFailure(error, { feature: 'auth' }) };
     }
   },
 
   // Reset password with OTP
   resetPasswordWithOTP: async (newPassword: string) => {
     if (!isSupabaseConfigured()) {
-      return { success: false, error: 'Supabase not configured.' };
+      return { success: false, failure: makeFailure('not-configured', { feature: 'auth' }) };
     }
 
     const state = get();
     if (!state.session) {
-      return { success: false, error: 'No active session for password reset' };
+      return { success: false, failure: makeFailure('unknown', { feature: 'auth' }) };
     }
 
     if (!newPassword || newPassword.length < 6) {
-      return { success: false, error: 'Password must be at least 6 characters' };
+      return { success: false, failure: makeFailure('validation', { feature: 'auth' }) };
     }
 
     try {
@@ -1096,7 +1099,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
 
       if (error) {
         console.error('[Auth] Password reset error:', error.message);
-        return { success: false, error: error.message };
+        return { success: false, failure: classifyFailure(error, { feature: 'auth' }) };
       }
 
       console.log('[Auth] Password reset successfully');
@@ -1117,7 +1120,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       return { success: true };
     } catch (error) {
       console.error('[Auth] Reset password error:', error);
-      return { success: false, error: 'An unexpected error occurred' };
+      return { success: false, failure: classifyFailure(error, { feature: 'auth' }) };
     }
   },
 

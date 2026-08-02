@@ -17,6 +17,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HERO_GRADIENT, HERO_LOCATIONS } from '@/components/TodayCookHero';
 import {
@@ -142,12 +143,25 @@ function ThumbnailStack({ thumbnails }: { thumbnails: Array<string | number> }) 
               zIndex: i,
             }}
           >
-            <Image
-              source={typeof src === 'string' ? { uri: src } : src}
-              style={{ width: '100%', height: '100%' }}
-              contentFit="cover"
-              transition={150}
-            />
+            {/* Remote thumbnails go through DishImage for sizing + placeholder;
+                bundled cold-start assets are already local, so they skip it. */}
+            {typeof src === 'string' ? (
+              <DishImage
+                url={src}
+                width={80}
+                style={{ width: '100%', height: '100%' }}
+                transition={150}
+                recyclingKey={src}
+              />
+            ) : (
+              <Image
+                source={src}
+                style={{ width: '100%', height: '100%' }}
+                contentFit="cover"
+                transition={150}
+                cachePolicy="memory-disk"
+              />
+            )}
           </View>
         );
       })}

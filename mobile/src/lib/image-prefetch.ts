@@ -15,7 +15,7 @@
 
 import { Image } from 'expo-image';
 import { CURATED_MEAL_PLANS } from './curated-meal-plans';
-import { optimizedImageUrl } from './supabase-image';
+import { optimizedImageUrl, recipeImageUrl } from './supabase-image';
 
 // Idempotency guard. Reset only on a full JS bundle reload.
 let didPrefetchHeroes = false;
@@ -49,5 +49,48 @@ export async function prefetchPlanHeroImages(): Promise<void> {
     );
   } catch {
     // Any aggregate rejection is non-fatal — surface will load on demand.
+  }
+}
+
+// Sized URLs already handed to Image.prefetch this session. Keyed on the FINAL
+// URL (width included), because that's what expo-image caches by — the same
+// photo warmed at 150 and at 340 is genuinely two entries.
+const prefetchedRecipeUrls = new Set<string>();
+
+/**
+ * Warm recipe photos so a surface paints from cache instead of the network.
+ *
+ * `width` MUST match the width the surface renders at. expo-image caches by
+ * URL, and the URL carries the width — prefetching a different size (or the raw
+ * original) warms a key nothing ever reads, which costs bandwidth and buys
+ * nothing. Widths are snapped to the shared ladder in supabase-image.ts so a
+ * caller passing 170 and a card passing 170 land on the same key.
+ *
+ * Only the leading `limit` are warmed: beyond roughly a screenful, expo-image's
+ * fetch-on-mount plus the memory cache is enough, and firing hundreds of
+ * requests would starve the ones actually on screen. Errors are swallowed — a
+ * failed prefetch just means the image loads on demand.
+ */
+export async function prefetchRecipeImages(
+  urls: (string | null | undefined)[],
+  { width, limit = 12 }: { width: number; limit?: number },
+): Promise<void> {
+  const pending: string[] = [];
+  for (const url of urls) {
+    if (pending.length >= limit) break;
+    if (!url) continue;
+    const sized = recipeImageUrl(url, { width });
+    if (prefetchedRecipeUrls.has(sized)) continue;
+    prefetchedRecipeUrls.add(sized);
+    pending.push(sized);
+  }
+  if (pending.length === 0) return;
+
+  try {
+    await Promise.all(
+      pending.map((url) => Image.prefetch(url).catch(() => undefined)),
+    );
+  } catch {
+    // Non-fatal, same rationale as prefetchPlanHeroImages.
   }
 }

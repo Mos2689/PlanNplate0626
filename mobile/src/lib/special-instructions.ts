@@ -142,7 +142,8 @@ export async function parseInstructions(text: string): Promise<ParsedInstruction
       },
     );
     const content = result.data?.choices?.[0]?.message?.content;
-    if (result.error || !content) throw new Error(result.error || 'no content');
+    if (result.failure) throw result.failure;
+    if (!content) throw new Error('empty response');
 
     const json = extractJson(content);
     const parsed = normaliseParsed(json, raw);

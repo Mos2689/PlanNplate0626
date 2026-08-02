@@ -18,7 +18,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -69,6 +69,7 @@ import * as Linking from 'expo-linking';
 import * as Clipboard from 'expo-clipboard';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useMealPlanStore, resolveRecipeId, type Recipe, type Ingredient } from '@/lib/store';
+import { makeFailure, presentFailure, reportAndPresent } from '@/lib/failure';
 import { inspiredToRecipe, findInspiredById } from '@/lib/inspired-adapters';
 import { formatIngredientDisplay, resolveMeasurementSystem } from '@/lib/unit-conversion';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -370,7 +371,7 @@ export default function RecipeDetailScreen() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch (err) {
-      console.error('Failed to copy ingredients:', err);
+      reportAndPresent(err, { feature: 'clipboard' });
     }
   }, [recipe, adjustedIngredients, measurementSystem]);
 
@@ -467,24 +468,14 @@ export default function RecipeDetailScreen() {
       const canOpen = await Linking.canOpenURL(url);
       if (!canOpen) {
         console.warn('[recipe-detail] Cannot open URL:', url);
-        Alert.alert(
-          'Cannot Open Link',
-          'This link cannot be opened on this device. Please try copying the URL and opening it in a browser.',
-          [
-            { text: 'OK' },
-          ]
-        );
+        presentFailure(makeFailure('unknown', { feature: 'external-link' }));
         return;
       }
       await Linking.openURL(url);
       console.log('[recipe-detail] Successfully opened URL');
     } catch (err) {
       console.error('[recipe-detail] Failed to open source URL:', err);
-      Alert.alert(
-        'Error Opening Link',
-        'There was an error opening the recipe link. Please try again.',
-        [{ text: 'OK' }]
-      );
+      presentFailure(makeFailure('unknown', { feature: 'external-link' }));
     }
   }, [recipe?.sourceUrl]);
 
@@ -633,7 +624,7 @@ export default function RecipeDetailScreen() {
         });
       }
     } catch (error) {
-      console.error('Error sharing recipe:', error);
+      reportAndPresent(error, { feature: 'share' });
     }
   }, [recipe, adjustedIngredients, displayServings, measurementSystem]);
 
@@ -685,11 +676,13 @@ export default function RecipeDetailScreen() {
       >
         {/* Hero Image (tap → full-screen viewer) */}
         <Pressable onPress={handleOpenImage} style={{ position: 'relative' }}>
-          <Image
-            source={{ uri: recipe.imageUrl }}
-            style={{ width: SCREEN_WIDTH, height: SCREEN_WIDTH * 0.8, backgroundColor: '#F4F0E8' }}
-            contentFit="cover"
+          <DishImage
+            url={recipe.imageUrl}
+            width={800}
+            style={{ width: SCREEN_WIDTH, height: SCREEN_WIDTH * 0.8 }}
             transition={250}
+            recyclingKey={recipe.id}
+            priority="high"
           />
           {/* Subtle top gradient for icon legibility + bottom fade into content */}
           <LinearGradient
@@ -1663,11 +1656,12 @@ export default function RecipeDetailScreen() {
                   borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
                 }}>
                   {editingImageUrl ? (
-                    <Image
-                      source={{ uri: editingImageUrl }}
+                    <DishImage
+                      url={editingImageUrl}
+                      width={600}
                       style={{ width: '100%', height: 200 }}
-                      contentFit="cover"
                       transition={150}
+                      recyclingKey={editingImageUrl}
                     />
                   ) : (
                     <View style={{
@@ -2146,11 +2140,14 @@ export default function RecipeDetailScreen() {
             justifyContent: 'center',
           }}
         >
-          <Image
-            source={{ uri: recipe.imageUrl }}
+          <DishImage
+            url={recipe.imageUrl}
+            width={1200}
             style={{ width: '100%', height: '100%' }}
             contentFit="contain"
             transition={200}
+            recyclingKey={recipe.id}
+            priority="high"
           />
           <SafeAreaView
             edges={['top']}

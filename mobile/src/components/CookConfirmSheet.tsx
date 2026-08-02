@@ -7,10 +7,13 @@ import {
   View,
   Text,
   Pressable,
-  Image,
   TextInput,
   StyleSheet,
 } from 'react-native';
+// expo-image rather than RN's Image: this hero shows recipe photos the user has
+// almost always already seen elsewhere in the app, so the shared memory/disk
+// cache makes it paint instantly. RN's Image has no disk cache on Android.
+import { DishImage } from '@/components/DishImage';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { Check, ArrowRight, Utensils } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -322,7 +325,12 @@ function MealPage({
       {/* Hero image */}
       <View style={[styles.hero, elevation.card]}>
         {recipe?.imageUrl ? (
-          <Image source={{ uri: recipe.imageUrl }} style={styles.heroImg} />
+          <DishImage
+            url={recipe.imageUrl}
+            width={600}
+            style={styles.heroImg}
+            recyclingKey={recipe.id}
+          />
         ) : (
           <View style={[styles.heroImg, styles.heroFallback]}>
             <Utensils size={32} color={designTokens.colors.ink3} strokeWidth={1.4} />

@@ -7,6 +7,7 @@ import {
   type SocialAuthProvider,
 } from './social-auth-errors';
 import { supabase } from './supabase';
+import { makeFailure, type Failure } from './failure';
 
 export type SocialProvider = SocialAuthProvider;
 
@@ -145,3 +146,22 @@ export const getSocialAuthErrorMessage = (
   provider: SocialProvider,
   error?: string,
 ): string => presentSocialAuthError(provider, error).message;
+
+/**
+ * Adapter that folds the pre-existing social-auth mapper into the global
+ * failure system.
+ *
+ * The provider-specific wording is kept — naming Google/Apple/Facebook is fine
+ * because the user deliberately chose that provider, unlike an internal vendor
+ * name. What changes is that the result is a `Failure`, so it presents, logs
+ * and reports through the same pipeline as everything else, and the raw OAuth
+ * string (which can contain one-time codes) stays in `cause`.
+ */
+export const socialAuthFailure = (provider: SocialProvider, error?: string): Failure => {
+  const presented = presentSocialAuthError(provider, error);
+  const base = makeFailure(
+    presented.code === 'network_error' ? 'offline' : 'auth-denied',
+    { feature: 'auth-social', context: { provider, code: presented.code } },
+  );
+  return { ...base, body: presented.message, cause: error };
+};

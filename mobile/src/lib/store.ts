@@ -22,6 +22,7 @@ import { getSkipReasonEffect } from './skip-reason-handler';
 import { findExistingRecipe, normalizeRecipeSourceUrl } from './recipe-identity';
 import { CURATED_GROCERY_CACHE } from './curated-grocery-cache';
 import { track } from './analytics';
+import { classifyFailure, reportFailure, swallow, type Failure } from './failure';
 
 // Debounce map to prevent cascading syncs
 const mealSlotSyncQueue = new Map<string, ReturnType<typeof setTimeout>>();
@@ -738,7 +739,9 @@ interface MealPlanStore {
 
   // Sync state
   isSyncing: boolean;
-  lastSyncError: string | null;
+  /** Classified sync failure. Was a bare string; now carries category and
+   *  recovery so any surface can present it consistently. */
+  lastSyncError: Failure | null;
 
   // User Profile
   userProfile: UserProfile | null;
@@ -4515,14 +4518,23 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
         try {
           console.log('[STORE] Fetching user data from database...');
-          const data = await db.fetchAllUserData(userId);
-          const savedGroceryLists = await db.fetchUserSavedGroceryLists(userId);
+          // PERF: these six fetches have no data dependency on each other, so
+          // they run as ONE parallel wave. Previously this was three sequential
+          // awaits (fetchAllUserData → savedGroceryLists → the four-way
+          // Promise.all), which meant three network round-trips before the app
+          // could finish hydrating. Per-call `.catch` fallbacks are preserved
+          // verbatim so a single failing table degrades exactly as before
+          // rather than rejecting the whole wave.
           const [
+            data,
+            savedGroceryLists,
             remoteCookingLogs,
             remoteRecipeRatings,
             remotePlanningEvents,
             remoteCollections,
           ] = await Promise.all([
+            db.fetchAllUserData(userId),
+            db.fetchUserSavedGroceryLists(userId),
             db.fetchCookingLogs(userId).catch(() => []),
             db.fetchRecipeRatings(userId).catch(() => []),
             db.fetchPlanningEvents(userId).catch(() => [] as PlanningEvent[]),
@@ -4709,11 +4721,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
             groceryItems: data.groceryItems.length,
           });
         } catch (error) {
-          console.error('Error loading user data:', error);
-          set({
-            isSyncing: false,
-            lastSyncError: 'Failed to load data from server'
-          });
+          // Classified, not presented: the store must not throw UI over
+          // whatever the user is doing. Local data is intact, so the surface
+          // that cares can decide whether and how to show this.
+          const failure = classifyFailure(error, { feature: 'grocery-sync' });
+          reportFailure(failure);
+          set({ isSyncing: false, lastSyncError: failure });
         }
       },
 

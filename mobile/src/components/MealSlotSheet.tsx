@@ -1,7 +1,10 @@
 // MealSlotSheet — bottom sheet for managing all recipes in a single meal slot
 // Matches the PlannPlate Home design language (hair borders, Geist fonts, sage/olive palette).
 import React from 'react';
-import { View, Text, Pressable, Modal, ScrollView, Image } from 'react-native';
+import { View, Text, Pressable, Modal, ScrollView } from 'react-native';
+// expo-image for the shared memory/disk cache — these thumbnails repeat across
+// the meal plan, so a cache hit avoids re-downloading and re-decoding them.
+import { DishImage } from '@/components/DishImage';
 import {
   Plus,
   AlertTriangle,
@@ -296,14 +299,15 @@ export function MealSlotSheet({
                       onPress={() => onView(recipe.id, slot.id)}
                       style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}
                     >
-                      <Image
-                        source={{ uri: recipe.imageUrl }}
+                      <DishImage
+                        url={recipe.imageUrl}
+                        width={150}
                         style={{
                           width: 64,
                           height: 64,
                           borderRadius: 12,
-                          backgroundColor: '#F4F0E8',
                         }}
+                        recyclingKey={recipe.id}
                       />
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text

@@ -3,7 +3,7 @@ import { ThemeProvider } from '@react-navigation/core';
 import { Stack, useRouter, useSegments, useGlobalSearchParams } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, type AppStateStatus, Text, TextInput, View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { AppState, type AppStateStatus, Text, TextInput, View, ActivityIndicator, StyleSheet, Platform, InteractionManager } from 'react-native';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -29,6 +29,9 @@ import {
 import { InstrumentSerif_400Regular_Italic } from '@expo-google-fonts/instrument-serif';
 import { initializeMetaSDK } from '@/lib/meta-sdk';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { FailureHost } from '@/components/failure';
+import { setCurrentScreen, startConnectivityMonitoring } from '@/lib/failure';
+import { useShareTarget } from '@/hooks/useShareTarget';
 import { scheduleInactivityNotifications, scheduleMealPlanNotifications, cancelAllNotifications, requestNotificationPermissions } from '@/lib/notifications';
 
 
@@ -136,6 +139,11 @@ function useProtectedRoute() {
 
 function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null | undefined }) {
   useProtectedRoute();
+  // Collects links arriving from the iOS share extension and the Android share
+  // sheet, and opens /share-import once the app is past its auth/onboarding
+  // gates. Mounted here for the same reason the deep-link effect below is: it
+  // has to survive every screen the user might be on when a share arrives.
+  useShareTarget();
   const router = useRouter();
   const segments = useSegments();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -154,7 +162,11 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   // PostHog screen tracking
   useEffect(() => {
     if (segments.length > 0) {
-      posthog.screen(segments.join('/'));
+      const screen = segments.join('/');
+      posthog.screen(screen);
+      // Every failure reported from here on is tagged with this screen, so
+      // diagnostics can answer "where does this break?" without extra plumbing.
+      setCurrentScreen(screen);
     }
   }, [segments]);
 
@@ -240,9 +252,16 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     router,
   ]);
 
-  // Initialize recipe cache on app start
+  // Initialize recipe cache on app start.
+  // PERF: this is a Supabase round-trip whose result is never read (it only
+  // warns when the table is missing), so running it during the first frame just
+  // stole bandwidth from the user-data load. Deferred until after the initial
+  // render/animation work settles — the check is equally useful a beat later.
   useEffect(() => {
-    initializeCacheTable();
+    const task = InteractionManager.runAfterInteractions(() => {
+      initializeCacheTable();
+    });
+    return () => task.cancel();
   }, []);
 
   // Re-sync RevenueCat on foreground. Webhook-driven entitlement changes
@@ -266,7 +285,13 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   useEffect(() => {
     // We optionally request permissions on first mount in this component
     // so we can schedule them when they leave.
-    requestNotificationPermissions().catch(() => {});
+    // PERF: deferred off the first frame — this triggers a native permission
+    // dialog and its associated bridge work. It still resolves long before the
+    // app can be backgrounded, which is the only place the permission is used.
+    // The AppState listener below is registered synchronously, unchanged.
+    const permissionTask = InteractionManager.runAfterInteractions(() => {
+      requestNotificationPermissions().catch(() => {});
+    });
 
     const handleAppStateChange = (status: AppStateStatus) => {
       if (status === 'active') {
@@ -287,7 +312,10 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
-    return () => subscription.remove();
+    return () => {
+      permissionTask.cancel();
+      subscription.remove();
+    };
   }, []);
 
   // Handle PKCE OAuth callbacks plus legacy password-reset/email fragment links.
@@ -295,7 +323,20 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   useEffect(() => {
     const handleDeepLink = async (event: { url: string }) => {
       const result = await handleAuthRedirect(event.url);
-      if (!result.handled) return;
+      if (!result.handled) {
+        // Not an auth callback. `parseAuthCallback` only claims URLs carrying a
+        // code, access_token or error, so everything else falls through here.
+        //
+        // The iOS share extension asks iOS to open this after queueing a link
+        // (see targets/share/ShareViewController.swift). If the OS grants it,
+        // the import runs immediately instead of waiting for the user's next
+        // launch. If it doesn't, nothing arrives and the queue is drained on
+        // foreground as before — the app behaves identically either way.
+        if (event.url.includes('share-import')) {
+          router.push('/share-import');
+        }
+        return;
+      }
 
       if (!result.success) {
         // Provider errors can contain one-time authorization codes. Keep the
@@ -442,6 +483,17 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
             presentation: 'modal',
           }}
         />
+        {/* Share to PlanNplate. Transparent so the sheet reads as an overlay on
+            whatever the user was doing, rather than a full screen change — a
+            share is a quick decision, not a destination. */}
+        <Stack.Screen
+          name="share-import"
+          options={{
+            headerShown: false,
+            presentation: 'transparentModal',
+            animation: 'fade',
+          }}
+        />
         <Stack.Screen
           name="paywall"
           options={{
@@ -483,6 +535,10 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           useReviewStore.getState().maybePrompt(). Self-gates on
           already-reviewed / snooze / don't-ask-again. */}
       <ReviewPromptModal isDark={colorScheme === 'dark'} />
+      {/* Global failure surfaces — toast / banner / dialog / offline banner.
+          Same pattern as PaywallSheet above: mounted once, driven from
+          anywhere via presentFailure(). Rendered last so it stacks on top. */}
+      <FailureHost isDark={colorScheme === 'dark'} />
     </ThemeProvider>
       {holdForRedirect && (
         <View
@@ -540,6 +596,10 @@ export default function RootLayout() {
   useEffect(() => {
     initializeMetaSDK();
   }, []);
+
+  // Connectivity monitoring. NetInfo was a dependency the app never imported,
+  // so offline was previously indistinguishable from a generic request failure.
+  useEffect(() => startConnectivityMonitoring(), []);
 
 
   if (!fontsLoaded && !fontError) {

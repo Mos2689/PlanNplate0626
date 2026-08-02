@@ -1,7 +1,7 @@
 // MealCard Component - PlannPlate Home design
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import { t } from '@/lib/platform-tokens';
 import {
   Plus,
@@ -88,7 +88,10 @@ const rowActionBtn = {
   justifyContent: 'center' as const,
 };
 
-export function MealCard({
+// Memoized below. The meal plan renders one of these per slot per day, and the
+// screen holds enough local state (sheets, selected date, swap flows) that an
+// unmemoized card re-rendered the whole week on almost any interaction.
+function MealCardImpl({
   slot,
   title,
   image,
@@ -197,11 +200,12 @@ export function MealCard({
         }}
       >
         {image ? (
-          <Image
-            source={{ uri: image }}
+          <DishImage
+            url={image}
+            width={150}
             style={{ width: 88, height: 88, borderRadius: 14 }}
-            contentFit="cover"
             transition={150}
+            recyclingKey={image}
           />
         ) : (
           <View
@@ -447,7 +451,7 @@ export function MealCard({
         }}
       >
         {image ? (
-          <Image source={{ uri: image }} style={{ width: 88, height: 88 }} contentFit="cover" transition={150} />
+          <DishImage url={image} width={150} style={{ width: 88, height: 88 }} transition={150} recyclingKey={image} />
         ) : null}
       </View>
 
@@ -596,3 +600,5 @@ export function MealCard({
     </Pressable>
   );
 }
+
+export const MealCard = React.memo(MealCardImpl);

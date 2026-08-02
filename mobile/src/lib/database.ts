@@ -409,17 +409,17 @@ export async function deleteUserAccount(userId: string): Promise<boolean> {
   // server-side — the function verifies the caller's JWT then admin-deletes it.
   try {
     console.log('[DB] Calling auth-delete Edge Function to remove Supabase Auth user...');
-    const { error: authDeleteError } = await apiDelete('auth-delete');
+    const { failure: authDeleteFailure } = await apiDelete('auth-delete');
 
     // Sign out locally regardless — the session is invalid once the auth
     // user is gone, and we don't want a half-authenticated state to linger.
     await supabase.auth.signOut().catch(() => {});
 
-    if (authDeleteError) {
+    if (authDeleteFailure) {
       // User data rows were already removed above, but the auth account still
       // exists. Report failure so the UI can ask the user to retry rather than
       // falsely claiming the account was fully deleted.
-      console.error('[DB] Failed to delete user from Supabase Auth:', authDeleteError);
+      console.error('[DB] Auth user deletion failed:', authDeleteFailure.category);
       return false;
     }
 

@@ -2,7 +2,7 @@
 // Horizontal carousel of recipe suggestions
 import React from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
-import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import { ChevronRight } from 'lucide-react-native';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
 
@@ -110,11 +110,12 @@ export function PicksForYou({
             {/* Image */}
             <View style={{ width: '100%', height: 130, backgroundColor: '#F4F0E8' }}>
               {item.image ? (
-                <Image
-                  source={{ uri: item.image }}
+                <DishImage
+                  url={item.image}
+                  width={340}
                   style={{ width: '100%', height: '100%' }}
-                  contentFit="cover"
                   transition={150}
+                  recyclingKey={item.id}
                 />
               ) : null}
               {/* Reason chip */}

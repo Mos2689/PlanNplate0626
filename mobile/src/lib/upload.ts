@@ -26,8 +26,8 @@ export async function uploadFile(uri: string, filename: string, mimeType: string
 
   const result = await apiFormCall<UploadResult>('upload-file', formData);
 
-  if (result.error) {
-    throw new Error(result.error);
+  if (result.failure) {
+    throw result.failure;
   }
 
   if (!result.data) {
@@ -81,8 +81,8 @@ export async function deleteFile(fileId: string): Promise<void> {
 
   const result = await apiCall<{ success: boolean }>('upload-file', { id: fileId });
 
-  if (result.error) {
-    throw new Error(result.error);
+  if (result.failure) {
+    throw result.failure;
   }
 
   console.log('[Upload] File deleted successfully:', fileId);

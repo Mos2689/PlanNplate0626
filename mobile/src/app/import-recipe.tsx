@@ -38,7 +38,10 @@ import {
   detectSourceType,
   type ImportedRecipe,
 } from '@/lib/recipeImport';
+import { ingestPastedUrl } from '@/lib/share/url-ingest';
+import { reasonForIngest, shareFailure } from '@/lib/share/outcome';
 import { isOpenAIConfigured } from '@/lib/openai';
+import { presentFailure, reportAndPresent } from '@/lib/failure';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { useRecipeFeatureGate } from '@/hooks/useRecipeFeatureGate';
 import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
@@ -73,9 +76,9 @@ export default function ImportRecipeScreen() {
         params: { recipe: JSON.stringify(data) },
       });
     },
-    onError: (error) => {
+    onError: (error, url) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      console.error('URL extraction error:', error);
+      reportAndPresent(error, { feature: 'recipe-import' }, () => urlMutation.mutate(url));
     },
   });
 
@@ -91,9 +94,9 @@ export default function ImportRecipeScreen() {
         params: { recipe: JSON.stringify(data) },
       });
     },
-    onError: (error) => {
+    onError: (error, text) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      console.error('Text extraction error:', error);
+      reportAndPresent(error, { feature: 'recipe-import' }, () => textMutation.mutate(text));
     },
   });
 
@@ -116,7 +119,7 @@ export default function ImportRecipeScreen() {
         }
       }
     } catch (err) {
-      console.error('Failed to paste from clipboard:', err);
+      reportAndPresent(err, { feature: 'clipboard' });
     }
   }, []);
 
@@ -126,7 +129,19 @@ export default function ImportRecipeScreen() {
     if (importMethod === 'url') {
       const trimmedUrl = urlInput.trim();
       if (!trimmedUrl) return;
-      mutateUrl(trimmedUrl);
+
+      // Pasting and sharing now judge a link the same way — same scheme
+      // allowlist, same private-address guards, same tracking-parameter
+      // stripping, same canonical key for duplicate detection. Previously the
+      // pasted value went straight to the importer unchecked, so `javascript:`
+      // and `http://127.0.0.1/` reached `fetch` and failed with nothing useful
+      // to say.
+      const ingested = ingestPastedUrl(trimmedUrl);
+      if (ingested.kind !== 'ok') {
+        presentFailure(shareFailure(reasonForIngest(ingested), { entry: 'pasted_link' }));
+        return;
+      }
+      mutateUrl(ingested.url);
     } else {
       const trimmedText = textInput.trim();
       if (!trimmedText) return;

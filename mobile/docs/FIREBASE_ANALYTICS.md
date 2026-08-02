@@ -81,6 +81,30 @@ views, purchase button taps, cancellations, failed purchases, restores, logins,
 recipe details, ingredient data, preferences, and screen views are not forwarded
 to Firebase.
 
+### Onboarding behaviour events are PostHog-only
+
+`lib/onboarding-analytics.ts` emits a funnel for the two-step onboarding flow
+(`onboarding_started`, `onboarding_welcome_viewed`, `onboarding_welcome_action`,
+`onboarding_step_viewed`, `onboarding_step_completed`, `onboarding_step_back`,
+`onboarding_abandoned`), the dish-capture step (`onboarding_dish_capture_started`,
+`onboarding_voice_permission_denied`, `onboarding_voice_recording_stopped`,
+`onboarding_voice_transcribe_succeeded`, `onboarding_voice_transcribe_failed`,
+`onboarding_dish_added`, `onboarding_dish_removed`, `onboarding_dish_renamed`),
+the taste-pick step (`onboarding_taste_grid_viewed`,
+`onboarding_taste_pick_toggled`), and persona edits (`persona_updated`).
+
+None of these are on the allowlist above, so `buildFirebaseAnalyticsCommand`
+returns `null` for every one of them and they reach PostHog and the dev sink
+only. This is deliberate, not an oversight — they are product telemetry, not ad
+conversions. `src/lib/__tests__/onboarding-analytics.test.ts` asserts it for
+each name so the boundary can't drift.
+
+`onboarding_completed` is the one event in that set Firebase does consume. Its
+PostHog payload was rewritten (it previously carried eleven persona properties
+that had become fixed defaults once the old 5-step flow was removed), but the
+policy matches on the event **name** only, so `onboarding_complete` and the
+Google Ads conversion behind it are unaffected.
+
 The Firebase user ID is set only to the authenticated user's internal UUID. It
 is cleared for logged-out and anonymous sessions. Email, name, recipe text,
 free-form text, and PostHog identity properties never enter the Firebase bridge.

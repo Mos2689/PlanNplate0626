@@ -24,8 +24,11 @@ async function callOpenAIDirect(messages: Array<{ role: string; content: string 
     max_tokens: 2048,
   });
 
-  if (result.error) {
-    throw new Error(result.error);
+  if (result.failure) {
+    // Throw the classified failure rather than re-wrapping its text. Wrapping
+    // in `new Error(string)` used to erase the category, so everything upstream
+    // re-classified as 'unknown'.
+    throw result.failure;
   }
 
   const content = result.data?.choices?.[0]?.message?.content;

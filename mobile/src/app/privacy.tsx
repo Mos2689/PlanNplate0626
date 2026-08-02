@@ -16,6 +16,7 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { designTokens } from '@/lib/design-tokens';
+import { makeFailure, presentFailure } from '@/lib/failure';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from '@/lib/legal';
 
@@ -39,7 +40,7 @@ export default function PrivacyScreen() {
   const openFullPolicy = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Linking.openURL(PRIVACY_POLICY_URL).catch(() => {
-      Alert.alert('Error', 'Unable to open the full Privacy Policy right now.');
+      presentFailure(makeFailure('unknown', { feature: 'external-link' }));
     });
   }, []);
 

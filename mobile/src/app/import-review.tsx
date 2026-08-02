@@ -30,22 +30,13 @@ import {
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { ImportedRecipe } from '@/lib/recipeImport';
-import type { Ingredient, Recipe } from '@/lib/store';
+import { makeFailure, presentFailure } from '@/lib/failure';
+import type { Ingredient } from '@/lib/store';
 import { useMealPlanStore } from '@/lib/store';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { cn } from '@/lib/cn';
 import { classifyRecipeByContent } from '@/lib/meal-type-validator';
-import { validateIngredients } from '@/lib/ingredient-validator';
-import { generateRecipeImage } from '@/lib/openai';
-import { uploadRecipeImage } from '@/lib/uploadRecipeImage';
-
-// Meta (Facebook/Instagram) serve recipe photos from signed CDN hosts whose
-// URLs EXPIRE after a few days (note the `oe=` param). We persist those to our
-// own storage so a saved recipe keeps its photo. Stable hosts (blogs, YouTube
-// thumbnails) are left as-is.
-function isEphemeralImageUrl(url: string): boolean {
-  return /(?:fbcdn\.net|cdninstagram\.com|scontent)/i.test(url);
-}
+import { persistImportedRecipe } from '@/lib/share/persist-imported-recipe';
 
 const CATEGORY_OPTIONS: Ingredient['category'][] = [
   'produce',
@@ -62,7 +53,6 @@ export default function ImportReviewScreen() {
   const params = useLocalSearchParams<{ recipe: string }>();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const addRecipe = useMealPlanStore((s) => s.addRecipe);
   const hasRecipeWithSourceUrl = useMealPlanStore((s) => s.hasRecipeWithSourceUrl);
 
   // Parse the imported recipe from params
@@ -134,149 +124,64 @@ export default function ImportReviewScreen() {
 
       const canOpen = await Linking.canOpenURL(url);
       if (!canOpen) {
-        Alert.alert('Error', 'Cannot open this link on your device');
+        presentFailure(makeFailure('unknown', { feature: 'external-link' }));
         return;
       }
 
       await Linking.openURL(url);
     } catch (err) {
-      Alert.alert('Error', 'Unable to open link');
+      presentFailure(makeFailure('unknown', { feature: 'external-link' }));
       console.error('Failed to open URL:', err);
     }
   }, [sourceUrl]);
 
-  // All hooks must be called before any early returns
+  // All hooks must be called before any early returns.
+  //
+  // The body of this used to live here in full — normalise the URL, check for a
+  // duplicate, validate ingredients, classify the meal type, resolve and
+  // re-host the image, build the Recipe, save. It now lives in
+  // lib/share/persist-imported-recipe.ts so the share flow saves through
+  // exactly the same code rather than a second copy of it. The steps, their
+  // order and the duplicate rule (source URL only) are unchanged; the private
+  // `normalizeUrl` helper was character-for-character `normalizeRecipeSourceUrl`
+  // from lib/recipe-identity.ts, which is what the shared version calls.
   const handleSaveRecipe = useCallback(async () => {
-    // Normalize URL for comparison (remove query parameters like 'si' for YouTube)
-    const normalizeUrl = (url: string): string => {
-      try {
-        const urlObj = new URL(url);
-        // Remove YouTube tracking parameters
-        if (urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')) {
-          // Keep only the video ID parameter (v= for youtube.com, nothing for youtu.be path)
-          const videoId = urlObj.searchParams.get('v');
-          if (videoId) {
-            return `https://youtube.com/watch?v=${videoId}`;
-          }
-          // For short URLs like youtu.be/xyz, just use the pathname
-          return `https://youtu.be${urlObj.pathname}`;
-        }
-        // For other URLs, return as-is
-        return url;
-      } catch {
-        return url;
-      }
-    };
-
-    const normalizedSourceUrl = sourceUrl ? normalizeUrl(sourceUrl) : null;
-
-    // Debug: Log source URL and existing recipes
-    console.log('[IMPORT-REVIEW] Source URL (original):', sourceUrl);
-    console.log('[IMPORT-REVIEW] Source URL (normalized):', normalizedSourceUrl);
-    if (normalizedSourceUrl) {
-      console.log('[IMPORT-REVIEW] Checking for duplicate:', hasRecipeWithSourceUrl(normalizedSourceUrl));
-    }
-
-    // Check if recipe with same source URL already exists
-    if (normalizedSourceUrl && hasRecipeWithSourceUrl(normalizedSourceUrl)) {
-      Alert.alert(
-        'Recipe Already Imported',
-        'This recipe has already been imported from this URL.',
-        [{ text: 'OK' }]
-      );
+    // Duplicate gate and success haptic stay AHEAD of the save, exactly where
+    // they were: the buzz used to land the instant the button was tapped, and
+    // moving it behind the image work would have made saving feel slower even
+    // though nothing about it changed. `hasRecipeWithSourceUrl` normalises its
+    // argument internally, which is what the old inline `normalizeUrl` did.
+    if (sourceUrl && hasRecipeWithSourceUrl(sourceUrl)) {
+      presentFailure(makeFailure('validation', { feature: 'recipe-import' }));
       return;
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    // Validate and normalize ingredients using strict unit type rules
-    const validatedIngredients = validateIngredients(ingredients);
-
-    // First, classify recipe by content to determine meal type
-    const tempRecipe = {
+    const result = await persistImportedRecipe({
       name,
       description,
-      cookTime: parseInt(cookTime, 10) || 20,
-      prepTime: parseInt(prepTime, 10) || 10,
-      servings: parseInt(servings, 10) || 2,
-      ingredients: validatedIngredients.map((ing) => ({
-        name: ing.name,
-        quantity: ing.quantity,
-        unit: ing.unit,
-        category: ing.category,
-      })),
-      instructions,
-      calories: parseInt(calories, 10) || undefined,
-      tags: [],
-    };
-
-    const mealType = classifyRecipeByContent(tempRecipe as any);
-
-    // Add meal type to tags if not already present
-    const updatedTags = [...tags];
-    if (!updatedTags.includes(mealType)) {
-      updatedTags.push(mealType);
-    }
-
-    // Image: prefer the source post's own photo (og:image) — the real dish —
-    // and only fall back to a Pexels search when the import didn't capture one.
-    let imageUrl = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
-    const sourceImage = initialRecipe?.imageUrl;
-    if (sourceImage && /^https?:\/\//i.test(sourceImage)) {
-      if (isEphemeralImageUrl(sourceImage)) {
-        // Download the expiring Meta CDN image and re-host it permanently.
-        const persisted = await uploadRecipeImage(sourceImage);
-        imageUrl = persisted ?? sourceImage;
-      } else {
-        imageUrl = sourceImage;
-      }
-    } else {
-      try {
-        const ingredientsForImage = validatedIngredients.map(ing => ({ name: ing.name, category: ing.category }));
-        imageUrl = await generateRecipeImage(name, description, ingredientsForImage);
-      } catch (error) {
-        console.log('[IMPORT-REVIEW] Failed to fetch recipe image, using fallback:', error);
-      }
-    }
-
-    const newRecipe: Recipe = {
-      id: '', // Will be generated by store
-      name,
-      description,
-      imageUrl,
       prepTime: parseInt(prepTime, 10) || 10,
       cookTime: parseInt(cookTime, 10) || 20,
       servings: parseInt(servings, 10) || 2,
-      ingredients: validatedIngredients.map((ing, idx) => ({
-        id: `${Date.now()}-${idx}`,
-        name: ing.name,
-        quantity: ing.quantity,
-        unit: ing.unit,
-        category: ing.category,
-      })),
-      instructions,
-      tags: updatedTags,
       calories: parseInt(calories, 10) || undefined,
-      isAIGenerated: false,
-      isImported: true,
-      sourceUrl: normalizedSourceUrl || undefined, // Save the normalized URL if available
-      isSaved: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    console.log('[IMPORT-REVIEW] Final recipe object:', {
-      name: newRecipe.name,
-      isImported: newRecipe.isImported,
-      sourceUrl: newRecipe.sourceUrl,
-      sourceUrlType: typeof newRecipe.sourceUrl,
-      sourceUrlLength: newRecipe.sourceUrl?.length,
+      ingredients,
+      instructions,
+      tags,
+      sourceUrl,
+      imageUrl: initialRecipe?.imageUrl,
     });
 
-    addRecipe(newRecipe);
+    if (result.kind === 'duplicate') {
+      // Belt and braces: the gate above already caught the common case, but the
+      // library can gain a matching recipe while the image work is in flight.
+      presentFailure(makeFailure('validation', { feature: 'recipe-import' }));
+      return;
+    }
 
     router.dismissAll();
     router.replace('/(tabs)/recipes');
-  }, [name, description, prepTime, cookTime, servings, calories, ingredients, instructions, tags, sourceUrl, addRecipe, router, hasRecipeWithSourceUrl]);
+  }, [name, description, prepTime, cookTime, servings, calories, ingredients, instructions, tags, sourceUrl, initialRecipe?.imageUrl, router, hasRecipeWithSourceUrl]);
 
   const handleUpdateIngredient = useCallback(
     (index: number, field: string, value: string) => {

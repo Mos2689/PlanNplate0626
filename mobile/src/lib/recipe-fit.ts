@@ -114,7 +114,7 @@ Use the ingredient names exactly as given.`;
       max_tokens: 512,
     });
 
-    if (result.error) return failOpen;
+    if (result.failure) return failOpen;
     const parsed = parseJsonLoose(result.data?.choices?.[0]?.message?.content ?? '') as
       | Record<string, unknown>
       | null;
@@ -210,7 +210,7 @@ Return ONLY JSON (no prose, no markdown):
       max_tokens: 256,
     });
 
-    if (result.error) return failOpen;
+    if (result.failure) return failOpen;
     const parsed = parseJsonLoose(result.data?.choices?.[0]?.message?.content ?? '') as
       | Record<string, unknown>
       | null;

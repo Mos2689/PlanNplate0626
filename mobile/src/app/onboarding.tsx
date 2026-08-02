@@ -21,8 +21,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
-import { Video, ResizeMode, Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system/legacy';
+import { Video, ResizeMode } from 'expo-av';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
@@ -36,19 +35,11 @@ import {
   Clock,
   DollarSign,
   Heart,
-  CirclePlus,
   CircleMinus,
   ArrowLeft,
   ArrowRight,
   Compass,
   Wallet,
-  Mic,
-  Keyboard as KeyboardIcon,
-  X,
-  Pencil,
-  Plus,
-  ChevronRight,
-  CookingPot,
 } from 'lucide-react-native';
 import Animated, {
   useSharedValue,
@@ -65,15 +56,29 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SvgXml } from 'react-native-svg';
 import { designTokens, easing, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
+import { swallow } from '@/lib/failure';
 import { deviceCurrencySymbol } from '@/lib/currency';
 import { getOptionIcon } from '@/lib/onboarding-icons';
 import { BrandLogo } from '@/components/BrandLogo';
+import { VoiceDishCapture } from '@/components/VoiceDishCapture';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { useAuthStore } from '@/lib/auth-store';
 import { useSubscriptionStore, useUserName } from '@/lib/subscription-store';
 import { logMetaEvent } from '@/lib/meta-sdk';
-import { track } from '@/lib/analytics';
+import {
+  trackOnboardingAbandoned,
+  trackOnboardingCompleted,
+  trackOnboardingStarted,
+  trackStepBack,
+  trackStepCompleted,
+  trackStepViewed,
+  trackTasteGridViewed,
+  trackTastePickToggled,
+  trackWelcomeAction,
+  trackWelcomeViewed,
+} from '@/lib/onboarding-analytics';
+import type { DishInputMethod } from '@/lib/onboarding-analytics-policy';
 import {
   useMealPlanStore,
   type Household,
@@ -88,10 +93,9 @@ import {
 } from '@/lib/store';
 import { pickImage, takePhoto, uploadFile } from '@/lib/upload';
 import { getTasteSampleRecipes } from '@/lib/inspired-plan-source';
-import { profileAndSuggest } from '@/lib/frequent-cook-profiling';
+import { profileAndSuggest, profileFrequentCooks } from '@/lib/frequent-cook-profiling';
 import { inspiredToRecipe } from '@/lib/inspired-adapters';
-import { apiFormCall } from '@/lib/api-router';
-import { parseDishNamesFromTranscript } from '@/lib/voice-dishes';
+import { splitDishNames } from '@/lib/voice-dishes';
 import { generateRecipe, generateRecipeImage, type MealType } from '@/lib/openai';
 import {
   classifyMealTypeFromName,
@@ -248,33 +252,6 @@ function buildSmartPantryList(cuisines: string[]): string[] {
 const TOTAL_STEPS = 2;
 const STEP_NAMES = ['Your cooking', 'For you'];
 const MAX_FREQUENT_COOKS = 5;
-
-// Whisper hallucinates stock phrases ("thank you for watching", "please
-// subscribe", music notes, …) on silence/noise — treat those, and anything too
-// short, as "not heard" rather than capturing them as a dish.
-const NOISE_PATTERNS: RegExp[] = [
-  /\bthank you\b/i,
-  /\bthanks for\b/i,
-  /\bfor watching\b/i,
-  /\bsubscribe\b/i,
-  /\bsee you (next|again|soon)\b/i,
-  /[♪♫]/,
-];
-function looksLikeNoise(s: string): boolean {
-  const t = (s || '').trim();
-  if (t.replace(/[^a-z0-9]/gi, '').length < 3) return true; // empty / too short
-  return NOISE_PATTERNS.some((re) => re.test(t));
-}
-// A spoken or typed answer may name several dishes ("Butter Chicken, Vindaloo,
-// Aloo Gobi") — split on commas / semicolons / newlines into separate dishes.
-// NOTE: we deliberately do NOT split on " and " (breaks "Fish and Chips",
-// "Mac and Cheese", …).
-function splitDishNames(raw: string): string[] {
-  return (raw || '')
-    .split(/[,;\n]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !looksLikeNoise(s));
-}
 
 // Bundled local require() (not a remote URL) so the welcome hero plays
 // instantly from disk with no network fetch.
@@ -723,17 +700,17 @@ export default function OnboardingScreen() {
   const beginRecipePrep = useMealPlanStore((s) => s.beginRecipePrep);
   const markRecipePrepProgress = useMealPlanStore((s) => s.markRecipePrepProgress);
   const [frequentCooks, setFrequentCooks] = useState<string[]>([]);
-  const [typeDraft, setTypeDraft] = useState('');
-  const [typing, setTyping] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-  const recordingRef = useRef<Audio.Recording | null>(null);
 
-  const addFrequentCook = useCallback((raw: string) => {
+  // Which capture paths this user actually used, in first-use order. Reported
+  // once at completion; a ref because it must not re-render anything.
+  const inputMethodsRef = useRef<DishInputMethod[]>([]);
+
+  const addFrequentCook = useCallback((raw: string, method: DishInputMethod) => {
     const parts = splitDishNames(raw); // one input may name several dishes
     if (parts.length === 0) return;
-    setVoiceError(null);
+    if (!inputMethodsRef.current.includes(method)) {
+      inputMethodsRef.current = [...inputMethodsRef.current, method];
+    }
     setFrequentCooks((prev) => {
       const next = [...prev];
       for (const dish of parts) {
@@ -748,134 +725,20 @@ export default function OnboardingScreen() {
     setFrequentCooks((prev) => prev.filter((p) => p !== dish));
   }, []);
 
-  // Inline edit of a captured dish name.
-  const [editingDish, setEditingDish] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState('');
-  const startEditDish = useCallback((dish: string) => {
-    setEditingDish(dish);
-    setEditDraft(dish);
+  // Inline rename of a captured dish (from tapping a chip's label).
+  const renameFrequentCook = useCallback((original: string, draft: string) => {
+    const name = draft.trim();
+    setFrequentCooks((prev) => {
+      const idx = prev.findIndex((p) => p === original);
+      if (idx < 0) return prev;
+      if (!name) return prev.filter((_, i) => i !== idx); // emptied → remove
+      // Renamed onto an existing dish → drop the duplicate.
+      if (prev.some((p, i) => i !== idx && p.toLowerCase() === name.toLowerCase())) {
+        return prev.filter((_, i) => i !== idx);
+      }
+      return prev.map((p, i) => (i === idx ? name : p));
+    });
   }, []);
-  const commitEditDish = useCallback(
-    (original: string) => {
-      const name = editDraft.trim();
-      setEditingDish(null);
-      setFrequentCooks((prev) => {
-        const idx = prev.findIndex((p) => p === original);
-        if (idx < 0) return prev;
-        if (!name) return prev.filter((_, i) => i !== idx); // emptied → remove
-        // Renamed onto an existing dish → drop the duplicate.
-        if (prev.some((p, i) => i !== idx && p.toLowerCase() === name.toLowerCase())) {
-          return prev.filter((_, i) => i !== idx);
-        }
-        return prev.map((p, i) => (i === idx ? name : p));
-      });
-    },
-    [editDraft]
-  );
-
-  // Voice → text: record, transcribe via Whisper edge fn, add as a dish chip.
-  const transcribeToChip = useCallback(
-    async (uri: string) => {
-      setIsTranscribing(true);
-      try {
-        const info = await FileSystem.getInfoAsync(uri);
-        if (!info.exists) throw new Error('Audio file not found');
-        const form = new FormData();
-        form.append('file', { uri, type: 'audio/m4a', name: 'recording.m4a' } as any);
-        form.append('model', 'whisper-1');
-        const result = await apiFormCall<{ text: string }>('openai-transcribe', form);
-        if (result.error) throw new Error(result.error);
-        const text = (result.data?.text ?? '').trim();
-        // Empty, too short, or a Whisper silence-hallucination → "not heard".
-        if (splitDishNames(text).length === 0) {
-          setVoiceError("Didn't quite get that. Try again.");
-          return;
-        }
-        // Whisper transcribes spoken lists without commas ("Butter Chicken
-        // Shakshuka Bhindi Masala"), which naive splitting captures as one
-        // dish. Ask the model to split it into distinct dishes; fall back to
-        // the raw transcript if that fails or finds nothing.
-        let names: string[] = [];
-        try {
-          names = await parseDishNamesFromTranscript(text);
-        } catch (parseErr) {
-          console.warn('[Onboarding] dish split failed, using raw transcript', parseErr);
-        }
-        addFrequentCook(names.length > 0 ? names.join(', ') : text);
-      } catch (e) {
-        console.error('[Onboarding] transcription failed', e);
-        setVoiceError('Could not transcribe. Please type instead.');
-      } finally {
-        setIsTranscribing(false);
-      }
-    },
-    [addFrequentCook]
-  );
-  const startVoice = useCallback(async () => {
-    try {
-      setVoiceError(null);
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        setVoiceError('Microphone permission is required');
-        return;
-      }
-      // expo-av allows only ONE active Recording. A recorder left behind by a
-      // previous (possibly failed) run makes the next prepare fail with
-      // "recorder not prepared" — so unload any lingering one first.
-      if (recordingRef.current) {
-        try {
-          await recordingRef.current.stopAndUnloadAsync();
-        } catch {
-          /* already unloaded / never prepared */
-        }
-        recordingRef.current = null;
-      }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      // createAsync prepares AND starts atomically — avoids the prepare/start
-      // race that intermittently throws "recorder not prepared".
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-      );
-      recordingRef.current = recording;
-      setIsRecording(true);
-    } catch (e) {
-      console.error('[Onboarding] startVoice failed', e);
-      setVoiceError('Failed to start recording');
-      setIsRecording(false);
-      // Never leave a half-initialised recorder around for the next attempt.
-      if (recordingRef.current) {
-        try {
-          await recordingRef.current.stopAndUnloadAsync();
-        } catch {
-          /* ignore */
-        }
-        recordingRef.current = null;
-      }
-    }
-  }, []);
-  const stopVoice = useCallback(async () => {
-    setIsRecording(false);
-    const recording = recordingRef.current;
-    recordingRef.current = null;
-    if (!recording) return;
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      if (uri) await transcribeToChip(uri);
-    } catch (e) {
-      console.error('[Onboarding] stopVoice failed', e);
-      setVoiceError('Could not process recording.');
-    } finally {
-      // Release the iOS record session so the next prepare starts clean.
-      try {
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      } catch {
-        /* ignore */
-      }
-    }
-  }, [transcribeToChip]);
 
   // Fire-and-forget after onboarding: build each named dish into a full,
   // saved library recipe (editable later) with a matching photo. Never blocks
@@ -942,7 +805,7 @@ export default function OnboardingScreen() {
           };
           addRecipe(recipe);
         } catch (e) {
-          console.warn('[Onboarding] failed to build frequent cook:', dishName, e);
+          swallow(e, 'one dish failed to build; the rest of the batch continues', 'onboarding');
         } finally {
           // Tick the banner forward whether the dish built or failed, so the
           // "being created" state always resolves to "ready" once every dish
@@ -967,6 +830,10 @@ export default function OnboardingScreen() {
         : getTasteSampleRecipes({ limit: 12 }),
     [frequentCooks]
   );
+  // Same condition the grid itself branches on, so the reported source can't
+  // drift from what was actually shown.
+  const suggestionSource: 'profiled' | 'generic' =
+    frequentCooks.length > 0 ? 'profiled' : 'generic';
   // Materialise the step-2 picks as real library rows on completion. They're
   // Get-Inspired entries, so we mint them exactly the way the Explore tab does
   // (`inspiredToRecipe` + `curatedSourceId: inspired::<id>`) — that shared key
@@ -994,12 +861,27 @@ export default function OnboardingScreen() {
     }
   }, [tasteRecipeIds, tasteRecipes, addRecipe]);
 
-  const toggleTaste = useCallback((id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setTasteRecipeIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  }, []);
+  const toggleTaste = useCallback(
+    (id: string) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // Derived outside the updater on purpose: a state updater can be invoked
+      // more than once for a single call (StrictMode), and an event fired from
+      // inside one would double-count.
+      const selected = !tasteRecipeIds.includes(id);
+      const next = selected
+        ? [...tasteRecipeIds, id]
+        : tasteRecipeIds.filter((x) => x !== id);
+      setTasteRecipeIds(next);
+      // Meal type, not the recipe name — enough to see whether the grid's
+      // breakfast half earns its space, without recording what they picked.
+      trackTastePickToggled(
+        selected,
+        next.length,
+        tasteRecipes.find((r) => r.id === id)?.mealType ?? 'unknown',
+      );
+    },
+    [tasteRecipeIds, tasteRecipes]
+  );
 
   const smartPantry = useMemo(
     () => buildSmartPantryList(cuisinePreferences),
@@ -1028,11 +910,71 @@ export default function OnboardingScreen() {
   // Derived personalization signal — first name for ribbon, subtitles, final CTA.
   const firstName = useMemo(() => name.trim().split(/\s+/)[0] ?? '', [name]);
 
+  // ── Behaviour tracking clocks ─────────────────────────────────────────────
+  // Two stopwatches: one for the whole flow (how long onboarding takes, and how
+  // long an abandoner lasted before leaving) and one reset on every step change
+  // (which step people stall on). Refs, not state — they must never re-render.
+  const flowStartedAtRef = useRef(Date.now());
+  const stepEnteredAtRef = useRef(Date.now());
+  const completedRef = useRef(false);
+
   // Persist current step on each change so the user can resume after exit.
   useEffect(() => {
     setPreferences({ onboardingStep: currentStep });
-    track('onboarding_step_viewed', { step: STEP_NAMES[currentStep] || `Step ${currentStep}` });
+    stepEnteredAtRef.current = Date.now();
+    trackStepViewed(
+      currentStep,
+      STEP_NAMES[currentStep] || `Step ${currentStep}`,
+      TOTAL_STEPS,
+    );
   }, [currentStep, setPreferences]);
+
+  // One `onboarding_started` per mount, with how the user got here. `showWelcome`
+  // and `onboardingStep` are read from the refs' initial values via a mount-only
+  // effect, so a later step change can't re-fire this.
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    const resumedAtStep = preferences.onboardingStep ?? 0;
+    const entryPoint = showWelcome ? 'welcome' : resumedAtStep > 0 ? 'resumed' : 'direct';
+    trackOnboardingStarted(entryPoint, resumedAtStep);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The welcome hero renders behind an early return, so it can't own a hook.
+  // Tracked here instead; only anonymous sessions ever see it.
+  const welcomeSeenRef = useRef(false);
+  useEffect(() => {
+    if (!showWelcome || welcomeSeenRef.current) return;
+    welcomeSeenRef.current = true;
+    trackWelcomeViewed();
+  }, [showWelcome]);
+
+  // Drop-off. Fires on unmount unless the user completed — the abandon and the
+  // completion are mutually exclusive, which is what makes the funnel add up.
+  // `frequentCooks` is read through a ref so this effect can stay mount-only
+  // and not re-register (and re-arm its cleanup) on every dish added.
+  const abandonStateRef = useRef({ step: 0, dishCount: 0 });
+  useEffect(() => {
+    abandonStateRef.current = { step: currentStep, dishCount: frequentCooks.length };
+  }, [currentStep, frequentCooks.length]);
+  useEffect(
+    () => () => {
+      if (completedRef.current) return;
+      const { step, dishCount } = abandonStateRef.current;
+      trackOnboardingAbandoned(step, dishCount, Date.now() - flowStartedAtRef.current);
+    },
+    [],
+  );
+
+  // The step-2 grid. Fires on each entry to the step rather than once per
+  // mount, because walking back to step 1 and forward again rebuilds the grid
+  // from a different dish list — a genuinely different impression.
+  useEffect(() => {
+    if (currentStep !== 1) return;
+    trackTasteGridViewed(tasteRecipes.length, suggestionSource);
+  }, [currentStep, tasteRecipes.length, suggestionSource]);
 
   // Image upload handlers
   const handlePickImage = useCallback(async () => {
@@ -1111,6 +1053,7 @@ export default function OnboardingScreen() {
     if (!canProceed()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (currentStep < TOTAL_STEPS - 1) {
+      trackStepCompleted(currentStep, Date.now() - stepEnteredAtRef.current);
       transitionDirection.current = 'forward';
       setCurrentStep((p) => p + 1);
     }
@@ -1119,10 +1062,12 @@ export default function OnboardingScreen() {
   const handleBack = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (currentStep > 0) {
+      trackStepBack(currentStep, 'previous_step');
       transitionDirection.current = 'backward';
       setCurrentStep((p) => p - 1);
       return;
     }
+    trackStepBack(currentStep, 'signup');
     // Step 0 → back to the signup / sign-in screen. Sign out first so the
     // just-created account doesn't get immediately bounced back into the app,
     // letting the user pick a different account or sign in instead.
@@ -1179,7 +1124,7 @@ export default function OnboardingScreen() {
           });
         } catch (profileError) {
           // Non-fatal — local prefs are the source of truth during onboarding.
-          console.warn('Profile update failed (non-fatal):', profileError);
+          swallow(profileError, 'profile write is non-fatal; onboarding completes regardless', 'onboarding');
         }
       } else {
         console.warn('[Onboarding] No currentUser — skipping server profile update, saving locally.');
@@ -1228,19 +1173,33 @@ export default function OnboardingScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // Log onboarding complete event to Meta SDK
       logMetaEvent('SubmitApplication', { step: 'onboarding_complete' });
-      // Log to PostHog
-      track('onboarding_completed', {
-        dietaryRestrictions,
-        allergies,
-        cuisinePreferences,
-        cookingSkillLevel,
-        household,
-        cookingDaysPerWeek,
-        weeknightMinutes,
-        equipment,
-        mealHabits,
-        priorities,
-        goals,
+
+      // Suppress the unmount `onboarding_abandoned` — from here the flow ended
+      // in a completion, and the two must never both fire for one session.
+      completedRef.current = true;
+      // The payload reports what THIS flow captures. It used to carry
+      // dietaryRestrictions / allergies / cuisinePreferences / cookingSkillLevel
+      // / household / cookingDaysPerWeek / weeknightMinutes / equipment /
+      // mealHabits / priorities / goals — but the screens that collected those
+      // went away with the old 5-step flow, so every one of them had become the
+      // same declared default for every user. They're still written to the store
+      // above (recipe generation needs the defaults); they just no longer
+      // masquerade as persona signal in analytics. Real persona edits now report
+      // themselves from EditProfileModal as `persona_updated`.
+      //
+      // Firebase maps `onboarding_completed` → `onboarding_complete` on the
+      // event NAME alone (lib/firebase-analytics-policy.ts), so rewriting these
+      // properties leaves the Google Ads conversion untouched.
+      trackOnboardingCompleted({
+        dishCount: frequentCooks.length,
+        inputMethods: inputMethodsRef.current,
+        tastePicksCount: tasteRecipeIds.length,
+        tasteSuggestionsShown: tasteRecipes.length,
+        suggestionSource,
+        // Derived signal only: counts and flags, never the dish names.
+        profile: frequentCooks.length > 0 ? profileFrequentCooks(frequentCooks) : null,
+        stepsCompleted: TOTAL_STEPS,
+        durationMs: Date.now() - flowStartedAtRef.current,
       });
 
       // Straight into the app — the user lands on their recipe library (already
@@ -1280,16 +1239,30 @@ export default function OnboardingScreen() {
     setPreferences,
     router,
     celebrate,
+    // Read by the completion event. A stale closure here would report the
+    // wrong suggestion source or a suggestion count from an earlier dish list.
+    suggestionSource,
+    tasteRecipes.length,
   ]);
 
   // ── PROGRESS BAR ──────────────────────────────────────────────────────────
-  const progressFillWidth = useSharedValue(((currentStep + 1) / TOTAL_STEPS) * 100);
+  // Step 1 also moves *within* the step: capturing a first dish is real progress
+  // the user should feel, so the bar nudges past the halfway mark once a dish
+  // lands rather than sitting still until they hit Continue.
+  const stepProgress = useCallback(
+    () =>
+      currentStep === 0 && frequentCooks.length > 0
+        ? 72
+        : ((currentStep + 1) / TOTAL_STEPS) * 100,
+    [currentStep, frequentCooks.length]
+  );
+  const progressFillWidth = useSharedValue(stepProgress());
   useEffect(() => {
-    progressFillWidth.value = withTiming(((currentStep + 1) / TOTAL_STEPS) * 100, {
+    progressFillWidth.value = withTiming(stepProgress(), {
       duration: 350,
       easing: Easing.out(Easing.cubic),
     });
-  }, [currentStep, progressFillWidth]);
+  }, [stepProgress, progressFillWidth]);
 
   // ── WELCOME CINEMATIC MOTION ──────────────────────────────────────────────
   // All shared values + animated styles live here (above the `showWelcome`
@@ -1413,11 +1386,13 @@ export default function OnboardingScreen() {
   if (showWelcome) {
     const handleGetStarted = () => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      trackWelcomeAction('get_started');
       setShowWelcome(false);
     };
 
     const handleSignIn = () => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      trackWelcomeAction('sign_in');
       // `reauth=1` tells the login screen + root guard NOT to auto-bounce to the
       // tabs — the user deliberately wants the sign-in form (e.g. an anonymous
       // guest signing into a real account, or switching accounts).
@@ -2375,409 +2350,31 @@ export default function OnboardingScreen() {
   };
 
   // ── STEP 5: Priorities, budget, pantry, goals ─────────────────────────────
-  // ── STEP 1: Frequent cooks — Speak it / Type it cards (Add-Recipe style) ───
-  const renderFrequentCooksStep = () => {
-    const atMax = frequentCooks.length >= MAX_FREQUENT_COOKS;
-    const cardBg = isDark ? '#1f1f1f' : '#FFFFFF';
-    const cardHair = isDark ? '#2a2a2a' : designTokens.colors.hair;
-    const inkC = isDark ? '#fff' : designTokens.colors.ink;
-    const ink2C = isDark ? '#888' : designTokens.colors.ink2;
-    const ink3C = isDark ? '#666' : designTokens.colors.ink3;
-    const commitType = () => {
-      if (atMax) return;
-      addFrequentCook(typeDraft);
-      setTypeDraft('');
-    };
-
-    const speakSubtitle = isTranscribing
-      ? 'Transcribing…'
-      : isRecording
-        ? 'Listening… tap to stop'
-        : 'Tell us what you cook';
-
-    return (
-      <KeyboardAwareScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 4, paddingBottom: 28 }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bottomOffset={24}
-      >
-        <IdentityRibbon firstName={firstName} avatarUrl={avatarUrl} isDark={isDark} />
-        <StepHeader
-          prefix="Tell us what you feel like "
-          italic="eating or usually cook."
-          subtitle="We will create the perfect recipe for you."
-          isDark={isDark}
-          italicColor={designTokens.colors.brand}
-        />
-
-        {/* Centred entry: big mic (Speak it) → OR → full-width Type it card */}
-        <View style={{ flex: 1, justifyContent: 'center', paddingVertical: 8 }}>
-          {/* ── Speak it — large central mic with concentric rings ── */}
-          <View style={{ alignItems: 'center' }}>
-            <Pressable
-              onPress={isRecording ? stopVoice : startVoice}
-              disabled={atMax || isTranscribing}
-              style={{
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: atMax || isTranscribing ? 0.55 : 1,
-              }}
-            >
-              {/* Outer ring */}
-              <View
-                style={{
-                  width: 236,
-                  height: 236,
-                  borderRadius: 118,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isDark ? 'rgba(228,109,70,0.10)' : 'rgba(228,109,70,0.06)',
-                }}
-              >
-                {/* Inner ring */}
-                <View
-                  style={{
-                    width: 186,
-                    height: 186,
-                    borderRadius: 93,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isDark ? 'rgba(228,109,70,0.16)' : 'rgba(228,109,70,0.10)',
-                  }}
-                >
-                  {/* White collar + mic disc */}
-                  <View
-                    style={{
-                      width: 150,
-                      height: 150,
-                      borderRadius: 75,
-                      backgroundColor: '#FFFFFF',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      ...elevation.card,
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 126,
-                        height: 126,
-                        borderRadius: 63,
-                        backgroundColor: isRecording
-                          ? designTokens.colors.olive
-                          : designTokens.colors.brand,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Mic size={46} color="#F6F2E9" strokeWidth={1.6} />
-                    </View>
-                  </View>
-                </View>
-              </View>
-            </Pressable>
-
-            {/* SPEAK IT pill — floats over the top of the rings */}
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                top: 20,
-                alignSelf: 'center',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 5,
-                paddingHorizontal: 13,
-                paddingVertical: 6,
-                borderRadius: 999,
-                backgroundColor: designTokens.colors.olive,
-                ...elevation.card,
-              }}
-            >
-              <Mic size={12} color="#FFFFFF" strokeWidth={2.2} />
-              <Text
-                style={{
-                  fontFamily: designTokens.font.semibold,
-                  fontSize: 12,
-                  letterSpacing: 1,
-                  textTransform: 'uppercase',
-                  color: '#FFFFFF',
-                }}
-              >
-                Speak it
-              </Text>
-            </View>
-          </View>
-
-          {/* Recording / transcription status */}
-          <Text
-            style={{
-              marginTop: 12,
-              textAlign: 'center',
-              fontFamily: designTokens.font.regular,
-              fontSize: 12.5,
-              color: voiceError ? designTokens.colors.olive : ink3C,
-            }}
-          >
-            {voiceError ?? speakSubtitle}
-          </Text>
-
-          {/* OR divider */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 18 }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: cardHair }} />
-            <Text
-              style={{
-                fontFamily: designTokens.font.medium,
-                fontSize: 12,
-                letterSpacing: 1.2,
-                color: ink3C,
-              }}
-            >
-              OR
-            </Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: cardHair }} />
-          </View>
-
-          {/* ── Type it — full-width card ── */}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setTyping((t) => !t);
-            }}
-            disabled={atMax}
-            style={{ opacity: atMax ? 0.55 : 1 }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 14,
-                padding: 16,
-                borderRadius: 18,
-                borderWidth: typing ? 1.5 : 1,
-                borderColor: typing ? designTokens.colors.brand : cardHair,
-                backgroundColor: cardBg,
-                ...elevation.card,
-              }}
-            >
-              <View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 13,
-                  backgroundColor: designTokens.colors.brand,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <KeyboardIcon size={20} color="#F6F2E9" strokeWidth={1.9} />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.semibold,
-                    fontSize: 15,
-                    letterSpacing: 0.8,
-                    textTransform: 'uppercase',
-                    color: designTokens.colors.brand,
-                  }}
-                  numberOfLines={1}
-                >
-                  Type it
-                </Text>
-                <Text
-                  style={{ marginTop: 3, fontFamily: designTokens.font.regular, fontSize: 12.5, lineHeight: 16, color: ink2C }}
-                  numberOfLines={2}
-                >
-                  Enter the name of what you want to cook
-                </Text>
-              </View>
-              <ChevronRight size={20} color={ink3C} strokeWidth={2} />
-            </View>
-          </Pressable>
-
-          {/* Type input — revealed when "Type it" is tapped */}
-          {typing && !atMax && (
-            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 14 }}>
-              <View
-                style={{
-                  flex: 1,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 14,
-                  height: 52,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: cardHair,
-                  backgroundColor: cardBg,
-                }}
-              >
-                <TextInput
-                  value={typeDraft}
-                  onChangeText={setTypeDraft}
-                  onSubmitEditing={commitType}
-                  autoFocus
-                  returnKeyType="done"
-                  placeholder="e.g. Butter Chicken"
-                  placeholderTextColor={ink3C}
-                  style={{
-                    flex: 1,
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 15,
-                    color: inkC,
-                    padding: 0,
-                  }}
-                />
-              </View>
-              <Pressable
-                onPress={commitType}
-                disabled={typeDraft.trim().length === 0}
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 14,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor:
-                    typeDraft.trim().length === 0 ? cardHair : designTokens.colors.brand,
-                }}
-              >
-                <CirclePlus size={22} color={designTokens.colors.cream} strokeWidth={2} />
-              </Pressable>
-            </View>
-          )}
-
-          {/* Dishes-count pill */}
-          <View
-            style={{
-              alignSelf: 'center',
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              marginTop: 18,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 999,
-              backgroundColor: isDark ? '#20201c' : 'rgba(84,100,69,0.06)',
-            }}
-          >
-            <CookingPot size={15} color={ink3C} strokeWidth={1.9} />
-            <Text
-              style={{
-                fontFamily: designTokens.font.regular,
-                fontSize: 12.5,
-                color: ink3C,
-              }}
-            >
-              {atMax
-                ? "That's 5, plenty to go on!"
-                : `Add up to ${MAX_FREQUENT_COOKS} dishes you cook often.`}
-            </Text>
-          </View>
-        </View>
-
-        {/* Captured dishes — vertical list at the bottom */}
-        {frequentCooks.length > 0 && (
-          <View style={{ marginTop: 20 }}>
-            <SectionEyebrow
-              label={`Your dishes · ${frequentCooks.length}/${MAX_FREQUENT_COOKS}`}
-              isDark={isDark}
-            />
-            {frequentCooks.map((dish) => {
-              const isEditing = editingDish === dish;
-              return (
-                <View
-                  key={dish}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingVertical: 11,
-                    paddingHorizontal: 16,
-                    borderRadius: 14,
-                    borderWidth: isEditing ? 1.5 : 1,
-                    borderColor: isEditing ? designTokens.colors.brand : cardHair,
-                    backgroundColor: cardBg,
-                    marginBottom: 8,
-                  }}
-                >
-                  {isEditing ? (
-                    <>
-                      <TextInput
-                        value={editDraft}
-                        onChangeText={setEditDraft}
-                        autoFocus
-                        returnKeyType="done"
-                        onSubmitEditing={() => commitEditDish(dish)}
-                        onBlur={() => commitEditDish(dish)}
-                        placeholder="Dish name"
-                        placeholderTextColor={ink3C}
-                        style={{
-                          flex: 1,
-                          fontFamily: designTokens.font.medium,
-                          fontSize: 14.5,
-                          color: inkC,
-                          padding: 0,
-                        }}
-                      />
-                      <Pressable onPress={() => commitEditDish(dish)} hitSlop={10} style={{ marginLeft: 8 }}>
-                        <Check size={18} color={designTokens.colors.brand} strokeWidth={2.4} />
-                      </Pressable>
-                    </>
-                  ) : (
-                    <>
-                      <Pressable style={{ flex: 1 }} onPress={() => startEditDish(dish)}>
-                        <Text
-                          style={{ fontFamily: designTokens.font.medium, fontSize: 14.5, color: inkC }}
-                          numberOfLines={1}
-                        >
-                          {dish}
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => startEditDish(dish)}
-                        hitSlop={8}
-                        style={{ marginLeft: 8, marginRight: 6 }}
-                      >
-                        <Pencil size={15} color={ink3C} strokeWidth={2} />
-                      </Pressable>
-                      <Pressable onPress={() => removeFrequentCook(dish)} hitSlop={8}>
-                        <X size={16} color={ink3C} strokeWidth={2} />
-                      </Pressable>
-                    </>
-                  )}
-                </View>
-              );
-            })}
-
-            {/* + Add another — shown while there are still empty holders */}
-            {frequentCooks.length < MAX_FREQUENT_COOKS && (
-              <View style={{ alignItems: 'center', marginTop: 6 }}>
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setTyping(true);
-                  }}
-                  hitSlop={8}
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 24,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: designTokens.colors.brand,
-                    ...elevation.card,
-                  }}
-                >
-                  <Plus size={24} color={designTokens.colors.cream} strokeWidth={2.6} />
-                </Pressable>
-              </View>
-            )}
-          </View>
-        )}
-      </KeyboardAwareScrollView>
-    );
-  };
+  // ── STEP 1: Frequent cooks ─ voice-first capture (see VoiceDishCapture) ───
+  // The identity ribbon + headline are passed down as `header` so the component
+  // can collapse them out of the way once the mic is live.
+  const renderFrequentCooksStep = () => (
+    <VoiceDishCapture
+      dishes={frequentCooks}
+      max={MAX_FREQUENT_COOKS}
+      onAdd={addFrequentCook}
+      onRemove={removeFrequentCook}
+      onRename={renameFrequentCook}
+      isDark={isDark}
+      header={
+        <>
+          <IdentityRibbon firstName={firstName} avatarUrl={avatarUrl} isDark={isDark} />
+          <StepHeader
+            prefix="Tell us what you feel like "
+            italic="eating or usually cook."
+            subtitle="We will create the perfect recipe for you."
+            isDark={isDark}
+            italicColor={designTokens.colors.brand}
+          />
+        </>
+      }
+    />
+  );
 
   const renderPrioritiesStep = () => {
     const cardW = (SCREEN_WIDTH - 48 - 10) / 2;
@@ -2974,7 +2571,23 @@ export default function OnboardingScreen() {
             <ArrowLeft size={18} color={isDark ? '#fff' : designTokens.colors.ink} strokeWidth={1.8} />
           </Pressable>
 
-          <Animated.View style={[{ flex: 1, borderRadius: 999, overflow: 'hidden' }, isFinalStep ? celebrateStyle : null]}>
+          {/* The CTA lifts off the page once it unlocks — the moment the user's
+              first dish lands is the one worth marking. */}
+          <Animated.View
+            style={[
+              { flex: 1, borderRadius: 999 },
+              canProceed() && !isSaving
+                ? {
+                    shadowColor: designTokens.colors.brand,
+                    shadowOffset: { width: 0, height: 10 },
+                    shadowOpacity: 0.32,
+                    shadowRadius: 20,
+                    elevation: 6,
+                  }
+                : null,
+              isFinalStep ? celebrateStyle : null,
+            ]}
+          >
             <Pressable
               onPress={isFinalStep ? handleComplete : handleNext}
               disabled={!canProceed() || isSaving}

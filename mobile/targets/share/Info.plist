@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>PlanNplate</string>
+	<key>CFBundleDisplayName</key>
+	<string>PlanNplate</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+		<!--
+			The narrowest rule that still covers how recipes are actually shared.
+
+			`SupportsWebURL` catches Safari, Chrome, YouTube and Pinterest, which
+			hand over a real `public.url`. `SupportsText` catches Instagram and
+			TikTok, which hand over a caption with the link inside it — without
+			it PlanNplate simply would not appear in their share sheets.
+
+			Nothing else is listed on purpose. No image, movie, file or generic
+			attachment keys, so PlanNplate does not clutter the share sheet for
+			photos, videos or documents it has no way to import.
+		-->
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsText</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>

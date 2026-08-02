@@ -1,0 +1,7 @@
+{
+  "name": "plannplate-share-target",
+  "version": "1.0.0",
+  "description": "Reads recipe links handed to PlanNplate by the native share sheets.",
+  "main": "index.ts",
+  "private": true
+}

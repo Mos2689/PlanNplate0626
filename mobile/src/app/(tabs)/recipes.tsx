@@ -3,8 +3,8 @@
 // Visual-only redesign — every store read, callback, route, and side effect
 // from the previous implementation is preserved.
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, FlatList, Modal, Dimensions } from 'react-native';
-import { Image } from 'expo-image';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, Platform } from 'react-native';
+import { DishImage } from '@/components/DishImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -45,13 +45,14 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import { useMealPlanStore, type Recipe } from '@/lib/store';
+import { reportAndPresent } from '@/lib/failure';
 import { useHasPremiumAccess, useSubscriptionStore } from '@/lib/subscription-store';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { designTokens, getThemeColors, serifItalicFontStyle, elevation } from '@/lib/design-tokens';
 import { t } from '@/lib/platform-tokens';
 import { CURATED_MEAL_PLANS } from '@/lib/curated-meal-plans';
 import { FILTER_CATEGORIES } from '@/lib/recipe-categories';
-import { isDefaultRecipeImage } from '@/lib/recipe-image';
+import { RecipeGridCard } from '@/components/RecipeGridCard';
 import { RecipePrepBanner } from '@/components/RecipePrepBanner';
 import { DuplicateRecipeModal, findDuplicateGroups } from '@/components/DuplicateRecipeModal';
 import { NewCollectionModal } from '@/components/NewCollectionModal';
@@ -209,7 +210,7 @@ function RecipeRow({ recipe, onPress, onToggleSave, onAddToPlan, isDark, index }
     try {
       await Linking.openURL(url);
     } catch (err) {
-      console.error('[recipes] Failed to open source URL:', err);
+      reportAndPresent(err, { feature: 'external-link' });
     }
   }, [recipe.sourceUrl]);
 
@@ -245,11 +246,12 @@ function RecipeRow({ recipe, onPress, onToggleSave, onAddToPlan, isDark, index }
         }}
       >
         <View style={{ position: 'relative' }}>
-          <Image
-            source={{ uri: recipe.imageUrl }}
-            style={{ width: '100%', aspectRatio: 1.55, backgroundColor: '#F4F0E8' }}
-            contentFit="cover"
+          <DishImage
+            url={recipe.imageUrl}
+            width={600}
+            style={{ width: '100%', aspectRatio: 1.55 }}
             transition={150}
+            recyclingKey={recipe.id}
           />
 
           {/* Legibility gradients — subtle at top (badges/heart), strong at bottom (text). */}
@@ -343,179 +345,6 @@ function RecipeRow({ recipe, onPress, onToggleSave, onAddToPlan, isDark, index }
   );
 }
 
-// ── RecipeGridCard — 2-up visual grid tile (image + overlaid name/meta) ──
-const GRID_CARD_W = (Dimensions.get('window').width - 40 - 12) / 2; // 20px pad ×2 + 12px gap
-
-interface RecipeGridCardProps {
-  recipe: Recipe;
-  onPress: () => void;
-  onToggleSave: () => void;
-  /** Quick-add → opens the add-to-meal-plan picker without opening the recipe. */
-  onAddToPlan: () => void;
-  /** Long-press → "Save to collection" sheet. */
-  onLongPress?: () => void;
-  isDark: boolean;
-  index: number;
-}
-
-function RecipeGridCard({
-  recipe,
-  onPress,
-  onToggleSave,
-  onAddToPlan,
-  onLongPress,
-  isDark,
-  index,
-}: RecipeGridCardProps) {
-  const colors = getThemeColors(isDark);
-  const totalMin = (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);
-  const meta: string[] = [];
-  if (totalMin > 0) meta.push(`${totalMin} min`);
-  if (recipe.calories) meta.push(`${recipe.calories} cal`);
-  const handleSave = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onToggleSave();
-  };
-  return (
-    <Animated.View
-      entering={FadeInUp.delay(Math.min(index * 60, 400)).springify()}
-      layout={Layout.springify()}
-      style={{ width: GRID_CARD_W, marginBottom: 12 }}
-    >
-      <Pressable
-        onPress={onPress}
-        onLongPress={onLongPress}
-        delayLongPress={350}
-        style={{
-          borderRadius: 16,
-          overflow: 'hidden',
-          borderWidth: 1,
-          borderColor: colors.hair,
-          backgroundColor: colors.bg,
-        }}
-      >
-        <View style={{ position: 'relative' }}>
-          <Image
-            source={{ uri: recipe.imageUrl }}
-            style={{ width: '100%', aspectRatio: 1, backgroundColor: '#F4F0E8' }}
-            contentFit="cover"
-            transition={150}
-          />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.78)']}
-            locations={[0.4, 1]}
-            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: '38%' }}
-            pointerEvents="none"
-          />
-          {/* Default-image nudge — label only, shown on the stock placeholder
-              photo (never a real photo). Tapping the card opens the recipe
-              where the photo can be updated. */}
-          {isDefaultRecipeImage(recipe.imageUrl) && (
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                top: 8,
-                left: 8,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 999,
-                backgroundColor: designTokens.colors.brand,
-              }}
-            >
-              <Camera size={11} color={designTokens.colors.cream} strokeWidth={2} />
-              <Text
-                style={{
-                  fontFamily: designTokens.font.medium,
-                  fontSize: 10,
-                  color: designTokens.colors.cream,
-                  letterSpacing: -0.05,
-                }}
-              >
-                Update image
-              </Text>
-            </View>
-          )}
-          <Pressable
-            onPress={handleSave}
-            hitSlop={8}
-            style={{
-              position: 'absolute',
-              top: 8,
-              right: 8,
-              width: 30,
-              height: 30,
-              borderRadius: 15,
-              backgroundColor: 'rgba(0,0,0,0.28)',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Heart
-              size={15}
-              color={recipe.isSaved ? designTokens.colors.olive : '#FFFFFF'}
-              fill={recipe.isSaved ? designTokens.colors.olive : 'transparent'}
-              strokeWidth={2}
-            />
-          </Pressable>
-          {/* Quick add to meal plan — skips opening the recipe first. */}
-          <Pressable
-            onPress={onAddToPlan}
-            hitSlop={8}
-            style={{
-              position: 'absolute',
-              right: 8,
-              bottom: 8,
-              width: 30,
-              height: 30,
-              borderRadius: 15,
-              backgroundColor: designTokens.colors.brand,
-              alignItems: 'center',
-              justifyContent: 'center',
-              shadowColor: '#000',
-              shadowOpacity: 0.25,
-              shadowRadius: 5,
-              shadowOffset: { width: 0, height: 2 },
-              elevation: 3,
-            }}
-          >
-            <Plus size={17} color="#FFFFFF" strokeWidth={2.4} />
-          </Pressable>
-          {/* Right inset keeps long titles clear of the quick-add button. */}
-          <View style={{ position: 'absolute', left: 10, right: 44, bottom: 10 }}>
-            <Text
-              numberOfLines={1}
-              style={{
-                fontFamily: designTokens.font.semibold,
-                fontSize: 14,
-                color: '#FFFFFF',
-                letterSpacing: -0.2,
-              }}
-            >
-              {recipe.name}
-            </Text>
-            {meta.length > 0 && (
-              <Text
-                numberOfLines={1}
-                style={{
-                  marginTop: 3,
-                  fontFamily: designTokens.font.regular,
-                  fontSize: 11,
-                  color: 'rgba(255,255,255,0.9)',
-                }}
-              >
-                {meta.join('  ·  ')}
-              </Text>
-            )}
-          </View>
-        </View>
-      </Pressable>
-    </Animated.View>
-  );
-}
 
 // ── Screen ────────────────────────────────────────────────────────────
 export default function RecipesScreen() {
@@ -857,6 +686,25 @@ export default function RecipesScreen() {
     [router],
   );
 
+  // Grid cell renderer. Hoisted out of the JSX (and off inline per-item arrows)
+  // so RecipeGridCard's memo actually holds: the four handlers below are all
+  // useCallback-stable, so every prop the card receives keeps its identity
+  // between renders unless the recipe itself changed.
+  const renderRecipeCard = useCallback(
+    ({ item, index }: { item: Recipe; index: number }) => (
+      <RecipeGridCard
+        recipe={item}
+        onPress={handleRecipePress}
+        onToggleSave={handleToggleSave}
+        onAddToPlan={handleAddToPlan}
+        onLongPress={handleOpenSaveSheet}
+        isDark={isDark}
+        index={index}
+      />
+    ),
+    [handleRecipePress, handleToggleSave, handleAddToPlan, handleOpenSaveSheet, isDark],
+  );
+
   // Sticky compact header — fades in past the title block.
   const scrollY = useSharedValue(0);
   const stickyScrollHandler = useAnimatedScrollHandler({
@@ -883,6 +731,15 @@ export default function RecipesScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
+          // Virtualization budget. RN's defaults (10 initial, 10 per batch,
+          // windowSize 21) render roughly ten screens of cards up front, which
+          // on a 2-column image grid is a lot of mounting and decoding before
+          // first paint. These values keep ~1 screen ready in each direction.
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          updateCellsBatchingPeriod={50}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
           ListHeaderComponent={
             <View>
               {/* ── Header ─────────────────────────────────────── */}
@@ -1249,8 +1106,9 @@ export default function RecipesScreen() {
                           {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
                         </Text>
                         {meta.cover ? (
-                          <Image
-                            source={{ uri: meta.cover }}
+                          <DishImage
+                            url={meta.cover}
+                            width={150}
                             style={{
                               width: 88,
                               height: 88,
@@ -1258,8 +1116,8 @@ export default function RecipesScreen() {
                               marginTop: 12,
                               alignSelf: 'center',
                             }}
-                            contentFit="cover"
                             transition={150}
+                            recyclingKey={meta.cover}
                           />
                         ) : (
                           <View style={{ height: 100 }} />
@@ -1317,8 +1175,9 @@ export default function RecipesScreen() {
                           {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
                         </Text>
                         {meta.cover ? (
-                          <Image
-                            source={{ uri: meta.cover }}
+                          <DishImage
+                            url={meta.cover}
+                            width={150}
                             style={{
                               width: 88,
                               height: 88,
@@ -1326,8 +1185,8 @@ export default function RecipesScreen() {
                               marginTop: 12,
                               alignSelf: 'center',
                             }}
-                            contentFit="cover"
                             transition={150}
+                            recyclingKey={meta.cover}
                           />
                         ) : (
                           <View style={{ height: 100 }} />
@@ -1592,17 +1451,7 @@ export default function RecipesScreen() {
           }
           numColumns={2}
           columnWrapperStyle={{ paddingHorizontal: 20, gap: 12 }}
-          renderItem={({ item, index }) => (
-            <RecipeGridCard
-              recipe={item}
-              onPress={() => handleRecipePress(item)}
-              onToggleSave={() => handleToggleSave(item.id)}
-              onAddToPlan={() => handleAddToPlan(item.id)}
-              onLongPress={() => handleOpenSaveSheet(item)}
-              isDark={isDark}
-              index={index}
-            />
-          )}
+          renderItem={renderRecipeCard}
           ListEmptyComponent={
             <Animated.View
               entering={FadeInDown.delay(300).springify()}

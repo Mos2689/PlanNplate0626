@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, ActivityIndicator, Text, ScrollView, Platform } from 'react-native';
+import { View, ActivityIndicator, Text, ScrollView, Platform, InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { useMealPlanStore } from '@/lib/store';
+import { swallow } from '@/lib/failure';
 import { useAuthStore } from '@/lib/auth-store';
 import { reclassifyAllRecipes } from '@/lib/recipe-reclassifier';
-import { prefetchPlanHeroImages } from '@/lib/image-prefetch';
+import { prefetchPlanHeroImages, prefetchRecipeImages } from '@/lib/image-prefetch';
 import { track } from '@/lib/analytics';
 
 // Persisted flag so `app_installed` fires exactly once per install (survives
@@ -47,8 +48,12 @@ export function StoreHydration({ children }: StoreHydrationProps) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isReadyRef = useRef(false);
 
-  // Log initialization state
+  // Log initialization state.
+  // PERF: this allocates and formats a 7-key object on EVERY hydration state
+  // change, all of which happen during cold start. __DEV__-gated so release
+  // builds skip the work entirely (same pattern as analytics.ts / firebase-analytics.ts).
   useEffect(() => {
+    if (!__DEV__) return;
     console.log('[StoreHydration] State:', {
       mealPlanHydrated,
       authHydrated,
@@ -83,9 +88,25 @@ export function StoreHydration({ children }: StoreHydrationProps) {
           await AsyncStorage.setItem(INSTALLED_FLAG_KEY, new Date().toISOString());
         }
       } catch (e) {
-        console.warn('[Analytics] Failed to record app_installed flag', e);
+        swallow(e, 'install-flag write is analytics-only', 'analytics');
       }
     })();
+  }, []);
+
+  // Warm the image caches once the first screen is up. Runs after interactions
+  // so the prefetch requests never compete with the initial render, and reads
+  // recipes via getState() so it doesn't need them as a dependency.
+  const warmImageCaches = useCallback(() => {
+    InteractionManager.runAfterInteractions(() => {
+      prefetchPlanHeroImages();
+      const urls = useMealPlanStore
+        .getState()
+        .recipes.map((r) => r.imageUrl)
+        .filter((u): u is string => Boolean(u));
+      // 340 is the width the Recipes grid and Explore masonry both render at,
+      // so this warms exactly the cache key those cards will ask for.
+      prefetchRecipeImages(urls, { width: 340 });
+    });
   }, []);
 
   // Load user data when authenticated
@@ -200,12 +221,15 @@ export function StoreHydration({ children }: StoreHydrationProps) {
           // Fire-and-forget: warm the 5 curated plan hero images so the home
           // tab + Curated Meal Plans listing render instantly on first open.
           // Idempotent at the helper level — safe to fire on every re-run.
-          prefetchPlanHeroImages();
+          // PERF: deferred until after the first screen has actually rendered.
+          // Firing it synchronously here put 10 image requests on the wire in
+          // the same frame the UI was trying to mount.
+          warmImageCaches();
         }
       } else {
         console.log('[StoreHydration] Ready - unauthenticated or no valid session');
         setIsReady(true);
-        prefetchPlanHeroImages();
+        warmImageCaches();
       }
     }
   }, [mealPlanHydrated, authHydrated, isAuthenticated, session?.access_token, hasLoadedUserData, isSyncing]);

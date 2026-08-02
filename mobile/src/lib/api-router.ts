@@ -1,20 +1,33 @@
 /**
  * API Router for Supabase Edge Functions
  *
- * Unified API client that replaces all direct backend calls with
- * Supabase Edge Function calls. Handles authentication, token refresh,
- * and response parsing.
+ * Unified API client for all backend calls. Handles authentication, token
+ * refresh, and response parsing.
+ *
+ * FAILURE CONTRACT: this module returns a classified `Failure`, never a
+ * message string. Previously each of the three request functions built its own
+ * error text, which is how nine separate leaks reached the UI — raw HTTP status
+ * codes, `'Unknown error'`, the literal string `'Supabase is not configured'`,
+ * and backend error text passed straight through as
+ * `` `${data.error}: ${data.details}` ``. Callers can no longer render what
+ * came back from the server, because what comes back is a category, and the
+ * wording is looked up from lib/failure/copy.ts.
+ *
+ * Backend text is preserved for diagnostics in `failure.cause` — which is typed
+ * `unknown` precisely so it can't be dropped into JSX.
  */
 
 import { supabase, isSupabaseConfigured, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
+import { classifyFailure, makeFailure, type Failure } from './failure';
 
 // Session refresh lock to prevent concurrent refreshes
 let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
 
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   data?: T;
-  error?: string;
+  /** Classified failure. Present iff the call did not succeed. */
+  failure?: Failure;
   rateLimitRemaining?: number;
   resetsAt?: string;
 }
@@ -84,196 +97,145 @@ async function getValidAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
+type Method = 'POST' | 'DELETE';
+
+interface RequestSpec {
+  functionName: string;
+  method: Method;
+  /** JSON body, or FormData for uploads. */
+  payload: Record<string, unknown> | FormData;
+  requireAuth: boolean;
+  /** Product area, for copy + diagnostics grouping. */
+  feature: string;
+}
+
 /**
- * Make a JSON API call to a Supabase Edge Function
+ * One implementation for every edge-function call.
+ *
+ * The three public wrappers below differ only in shape, not in error handling —
+ * that's deliberate. Each previously had its own copy of the failure branches,
+ * and they drifted: only the FormData path leaked HTTP status codes, only two
+ * of three emitted `'Unknown error'`. A single path can't drift.
  */
+async function request<T>(spec: RequestSpec): Promise<ApiResponse<T>> {
+  const { functionName, method, payload, requireAuth, feature } = spec;
+  const ctx = { feature, context: { fn: functionName } };
+
+  if (!isSupabaseConfigured()) {
+    // Never name the vendor. This is a build-configuration problem, and from
+    // the user's side the feature simply isn't available.
+    return { failure: makeFailure('not-configured', ctx) };
+  }
+
+  if (!requireAuth) {
+    // Historically this returned an "Authentication required" string for every
+    // unauthenticated call, which meant `requireAuth: false` silently never
+    // worked. Preserved as a classified failure rather than changed, since
+    // fixing the behaviour is a functional change and out of scope here.
+    return { failure: makeFailure('auth-denied', ctx) };
+  }
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { failure: makeFailure('auth-expired', ctx) };
+  }
+
+  const isForm = typeof FormData !== 'undefined' && payload instanceof FormData;
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+      method,
+      headers: {
+        ...(isForm ? {} : { 'Content-Type': 'application/json' }),
+        Authorization: `Bearer ${accessToken}`,
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: isForm ? (payload as FormData) : JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      // Read the body for DIAGNOSTICS only. It never becomes user-facing copy;
+      // the status drives the category and the category drives the wording.
+      const detail = await response.text().catch(() => '');
+      return {
+        failure: classifyFailure(detail || `status ${response.status}`, {
+          ...ctx,
+          status: response.status,
+        }),
+      };
+    }
+
+    const body = (await response.json()) as EdgeFunctionResponse<T>;
+
+    if (body.error) {
+      // A 200 carrying an application-level error. Classify from the text so
+      // e.g. a rate-limit message still routes correctly — but the text itself
+      // stays in `cause`.
+      return {
+        failure: classifyFailure(
+          body.details ? `${body.error} ${body.details}` : body.error,
+          ctx,
+        ),
+        rateLimitRemaining: body.rateLimitRemaining,
+        resetsAt: body.resetsAt,
+      };
+    }
+
+    return {
+      data: body.data,
+      rateLimitRemaining: body.rateLimitRemaining,
+      resetsAt: body.resetsAt,
+    };
+  } catch (cause) {
+    // Transport-level failure — no response at all. React Native throws a bare
+    // `TypeError: Network request failed` here, which the classifier maps to
+    // `offline`; presentFailure() then refines it to `poor-connection` if the
+    // device is in fact online.
+    return { failure: classifyFailure(cause, ctx) };
+  }
+}
+
+/** JSON API call to a Supabase Edge Function. */
 export async function apiCall<T>(
   functionName: string,
   body: Record<string, unknown>,
-  options: { requireAuth?: boolean } = { requireAuth: true }
+  options: { requireAuth?: boolean; feature?: string } = {},
 ): Promise<ApiResponse<T>> {
-  if (!isSupabaseConfigured()) {
-    return { error: 'Supabase is not configured' };
-  }
-
-  const { requireAuth = true } = options;
-
-  if (requireAuth) {
-    const accessToken = await getValidAccessToken();
-    if (!accessToken) {
-      return { error: 'Session expired. Please log in again.' };
-    }
-
-    const supabaseUrl = SUPABASE_URL;
-    const supabaseAnonKey = SUPABASE_ANON_KEY;
-
-    try {
-      const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'apikey': supabaseAnonKey,
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        if (response.status === 401) return { error: 'Session expired. Please log in again.' };
-        if (response.status === 429) return { error: 'Rate limit exceeded. Please try again later.' };
-        return { error: errorData.error || 'Request failed' };
-      }
-
-      const data = await response.json() as EdgeFunctionResponse<T>;
-
-      if (data.error) {
-        return {
-          error: data.details ? `${data.error}: ${data.details}` : data.error,
-          rateLimitRemaining: data.rateLimitRemaining,
-          resetsAt: data.resetsAt,
-        };
-      }
-
-      return {
-        data: data.data,
-        rateLimitRemaining: data.rateLimitRemaining,
-        resetsAt: data.resetsAt,
-      };
-    } catch (error) {
-      console.error('[API] Request error:', error);
-      return { error: 'Network error. Please check your connection.' };
-    }
-  }
-
-  return { error: 'Authentication required' };
+  return request<T>({
+    functionName,
+    method: 'POST',
+    payload: body,
+    requireAuth: options.requireAuth ?? true,
+    feature: options.feature ?? functionName,
+  });
 }
 
-/**
- * Make a form data API call to a Supabase Edge Function (for file uploads/audio)
- */
+/** Multipart call to a Supabase Edge Function (file uploads / audio). */
 export async function apiFormCall<T>(
   functionName: string,
   formData: FormData,
-  options: { requireAuth?: boolean } = { requireAuth: true }
+  options: { requireAuth?: boolean; feature?: string } = {},
 ): Promise<ApiResponse<T>> {
-  if (!isSupabaseConfigured()) {
-    return { error: 'Supabase is not configured' };
-  }
-
-  const { requireAuth = true } = options;
-
-  if (requireAuth) {
-    const accessToken = await getValidAccessToken();
-    if (!accessToken) {
-      return { error: 'Session expired. Please log in again.' };
-    }
-
-    const supabaseUrl = SUPABASE_URL;
-    const supabaseAnonKey = SUPABASE_ANON_KEY;
-
-    try {
-      const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'apikey': supabaseAnonKey,
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        console.error(`[API] Form request failed: HTTP ${response.status} ${response.statusText}`);
-        console.error(`[API] Response body: ${errorText.substring(0, 500)}`);
-        let errorData: any;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText || 'Unknown error'}` };
-        }
-        if (response.status === 401) return { error: 'Session expired. Please log in again.' };
-        if (response.status === 429) return { error: 'Rate limit exceeded. Please try again later.' };
-        return { error: errorData.error || `Request failed (HTTP ${response.status})` };
-      }
-
-      const data = await response.json() as EdgeFunctionResponse<T>;
-
-      if (data.error) {
-        return {
-          error: data.error,
-          rateLimitRemaining: data.rateLimitRemaining,
-          resetsAt: data.resetsAt,
-        };
-      }
-
-      return {
-        data: data.data,
-        rateLimitRemaining: data.rateLimitRemaining,
-        resetsAt: data.resetsAt,
-      };
-    } catch (error) {
-      console.error('[API] Form request error:', error);
-      return { error: 'Network error. Please check your connection.' };
-    }
-  }
-
-  return { error: 'Authentication required' };
+  return request<T>({
+    functionName,
+    method: 'POST',
+    payload: formData,
+    requireAuth: options.requireAuth ?? true,
+    feature: options.feature ?? functionName,
+  });
 }
 
-/**
- * Make a DELETE request to a Supabase Edge Function
- */
+/** DELETE request to a Supabase Edge Function. */
 export async function apiDelete<T>(
   functionName: string,
   body: Record<string, unknown> = {},
-  options: { requireAuth?: boolean } = { requireAuth: true }
+  options: { requireAuth?: boolean; feature?: string } = {},
 ): Promise<ApiResponse<T>> {
-  if (!isSupabaseConfigured()) {
-    return { error: 'Supabase is not configured' };
-  }
-
-  const { requireAuth = true } = options;
-
-  if (requireAuth) {
-    const accessToken = await getValidAccessToken();
-    if (!accessToken) {
-      return { error: 'Session expired. Please log in again.' };
-    }
-
-    const supabaseUrl = SUPABASE_URL;
-    const supabaseAnonKey = SUPABASE_ANON_KEY;
-
-    try {
-      const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'apikey': supabaseAnonKey,
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        if (response.status === 401) return { error: 'Session expired. Please log in again.' };
-        if (response.status === 429) return { error: 'Rate limit exceeded. Please try again later.' };
-        return { error: errorData.error || 'Request failed' };
-      }
-
-      const data = await response.json() as EdgeFunctionResponse<T>;
-
-      if (data.error) {
-        return { error: data.error };
-      }
-
-      return { data: data.data };
-    } catch (error) {
-      console.error('[API] Delete request error:', error);
-      return { error: 'Network error. Please check your connection.' };
-    }
-  }
-
-  return { error: 'Authentication required' };
+  return request<T>({
+    functionName,
+    method: 'DELETE',
+    payload: body,
+    requireAuth: options.requireAuth ?? true,
+    feature: options.feature ?? functionName,
+  });
 }

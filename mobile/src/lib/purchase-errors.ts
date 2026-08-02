@@ -16,10 +16,30 @@
 // generic case and the user still gets a sensible alert (not silent
 // failure, like before this helper existed).
 
+import { makeFailure, type Failure } from './failure';
+
 export interface FriendlyPurchaseError {
   title: string;
   message: string;
   hint?: string;
+}
+
+/** Build a purchase Failure from this module's hand-written wording. */
+function purchaseFailure(
+  copy: FriendlyPurchaseError,
+  cause?: Error,
+): Failure {
+  const base = makeFailure('subscription-required', { feature: 'subscription' });
+  return {
+    ...base,
+    // Purchases aren't retryable automatically — the store sheet has to be
+    // re-opened by the user — so the action is an explicit tap.
+    retryable: false,
+    title: copy.title,
+    body: copy.hint ? `${copy.message} ${copy.hint}` : copy.message,
+    action: { kind: 'retry', label: 'Try again' },
+    cause,
+  };
 }
 
 // User dismissed the App Store / Play Billing sheet — return null so the
@@ -77,7 +97,17 @@ function looksLikePaymentDeclined(raw: string): boolean {
   );
 }
 
-export function friendlyPurchaseError(
+/**
+ * Public entry point. Returns a presentable `Failure`, or null when the user
+ * simply cancelled (which must stay silent — a "Purchase Failed" popup every
+ * time someone backs out of the App Store sheet would be its own bug).
+ */
+export function friendlyPurchaseError(reason: string, raw?: Error): Failure | null {
+  const copy = purchaseErrorCopy(reason, raw);
+  return copy ? purchaseFailure(copy, raw) : null;
+}
+
+function purchaseErrorCopy(
   reason: string,
   raw?: Error,
 ): FriendlyPurchaseError | null {
@@ -141,12 +171,12 @@ export function friendlyPurchaseError(
     };
   }
 
-  // Generic fallback — surface SOMETHING so silent failures stop.
+  // Generic fallback. This previously spliced the raw SDK message into the
+  // body (`rawMessage.slice(0, 140)`), which put store/StoreKit internals in
+  // front of users. The raw text now goes to diagnostics via `cause` only.
   return {
-    title: 'Purchase failed',
-    message: rawMessage
-      ? `${rawMessage.slice(0, 140)}${rawMessage.length > 140 ? '…' : ''}`
-      : "Something went wrong on the App Store side.",
-    hint: 'Try again, or use Restore purchases if you already subscribed.',
+    title: 'We couldn’t complete that purchase',
+    message: 'Nothing has been charged.',
+    hint: 'Try again, or use Restore purchases if you’ve subscribed before.',
   };
 }

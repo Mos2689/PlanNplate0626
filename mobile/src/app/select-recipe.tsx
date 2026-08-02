@@ -2,7 +2,7 @@
 // (Geist fonts, hair borders, deep sage #546445, 18–20px radii)
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
-import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
@@ -77,16 +77,16 @@ function RecipeItem({ recipe, isSelected, onSelect, isDark, index }: RecipeItemP
           backgroundColor: colors.bg,
         }}
       >
-        <Image
-          source={{ uri: recipe.imageUrl }}
+        <DishImage
+          url={recipe.imageUrl}
+          width={150}
           style={{
             width: 64,
             height: 64,
             borderRadius: 14,
-            backgroundColor: '#F4F0E8',
           }}
-          contentFit="cover"
           transition={150}
+          recyclingKey={recipe.id}
         />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text
@@ -789,16 +789,16 @@ export default function SelectRecipeScreen() {
                         backgroundColor: colors.bg,
                       }}
                     >
-                      <Image
-                        source={{ uri: recipe.imageUrl }}
+                      <DishImage
+                        url={recipe.imageUrl}
+                        width={150}
                         style={{
                           width: 72,
                           height: 72,
                           borderRadius: 14,
-                          backgroundColor: '#F4F0E8',
                         }}
-                        contentFit="cover"
                         transition={150}
+                        recyclingKey={recipe.id}
                       />
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text

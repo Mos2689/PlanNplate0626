@@ -40,6 +40,24 @@ yarn-error.*
 /ios
 /android
 
+# Local Expo modules ship their own native SOURCE, which is not prebuild output.
+#
+# The repo-root .gitignore excludes `ios/` and `android/` WITHOUT a leading
+# slash, so those patterns match a directory of that name at any depth — which
+# silently swallowed modules/*/ios and modules/*/android. The files existed
+# locally (so autolinking resolved them and everything looked fine) but were
+# never uploaded to EAS, so the pod was never installed and the native module
+# was never registered. On device that presented as the share extension saving a
+# link the app could then never read.
+#
+# The two anchored patterns above still ignore the real prebuild output at
+# mobile/ios and mobile/android. This file is lower in the tree than the root
+# one, so these negations take precedence for anything under mobile/.
+!modules/**/ios/
+!modules/**/ios/**
+!modules/**/android/
+!modules/**/android/**
+
 # Expo log
 expo.log
 
@@ -48,3 +66,13 @@ expo.log
 
 # Supabase
 .supabase/
+
+# EAS Build Logs & Debug Dumps
+decompressed_log.txt
+eas_full_logs.txt
+eas_log*.jsonl
+error_summary*.txt
+final_error.txt
+last_build*.json
+messages.txt
+parsed_log.txt

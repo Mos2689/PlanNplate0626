@@ -1,245 +1,161 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+// Global render-error boundary.
+//
+// This screen previously rendered the exception message, the full stack trace
+// and the React component stack in a scrollable view — the single worst leak in
+// the app, and the one users were most likely to hit, since any render crash
+// anywhere lands here. It also said "The application encountered an unexpected
+// render exception", which is developer language, and offered "Reload
+// Interface".
+//
+// Now: a calm FailureState in production, with the diagnostics captured rather
+// than displayed. The stack and the copy-to-clipboard affordance still exist,
+// but only behind __DEV__ where they're genuinely useful.
+
+import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { designTokens } from '@/lib/design-tokens';
-import { ShieldAlert, Copy, RefreshCw } from 'lucide-react-native';
+import { FailureState } from '@/components/failure';
+import { makeFailure, reportFailure, type Failure } from '@/lib/failure';
 
 interface Props {
   children: ReactNode;
+  /** Escape hatch for a host that can navigate somewhere safe. */
+  onGoHome?: () => void;
 }
 
 interface State {
-  hasError: boolean;
+  failure: Failure | null;
   error: Error | null;
   errorInfo: ErrorInfo | null;
   copied: boolean;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null,
-    errorInfo: null,
-    copied: false,
-  };
+  public state: State = { failure: null, error: null, errorInfo: null, copied: false };
 
   public static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+    // A render crash has no useful category — the classifier would guess from
+    // an exception message that describes our own code, not the user's
+    // situation. `unknown` is honest, and its copy is reassuring rather than
+    // vague ("Something didn't go through. Your plan is safe.").
+    return {
+      error,
+      failure: makeFailure('unknown', { feature: 'app-shell' }),
+    };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('[ErrorBoundary] Caught render error:', error, errorInfo);
     this.setState({ errorInfo });
+    // Route through the same diagnostics sink as every other failure, so a
+    // render crash shows up in the same dashboards as a failed request.
+    reportFailure({
+      ...makeFailure('unknown', { feature: 'app-shell' }),
+      cause: error,
+      context: { componentStack: errorInfo.componentStack?.slice(0, 2000) },
+    });
   }
 
   private handleCopyLog = async () => {
     const { error, errorInfo } = this.state;
     if (!error) return;
-
+    // Guarded here, not just at the render site. The button is only rendered in
+    // dev today, but guarding the handler means a future refactor that renders
+    // it unconditionally still can't put a stack trace on a user's clipboard.
+    if (!__DEV__) return;
     const logText = [
+      // leak-gate:allow dev-only diagnostics — early-returned above when !__DEV__
       `Error: ${error.message}`,
       `Stack: ${error.stack}`,
-      `Component Stack: ${errorInfo?.componentStack || 'N/A'}`,
+      `Component Stack: ${errorInfo?.componentStack ?? 'n/a'}`,
     ].join('\n\n');
-
     try {
       await Clipboard.setStringAsync(logText);
       this.setState({ copied: true });
       setTimeout(() => this.setState({ copied: false }), 2000);
-    } catch (err) {
-      console.error('[ErrorBoundary] Failed to copy error log:', err);
+    } catch {
+      // Clipboard is a developer convenience; failing to copy is not worth
+      // surfacing anywhere.
     }
   };
 
   private handleReset = () => {
-    this.setState({
-      hasError: false,
-      error: null,
-      errorInfo: null,
-      copied: false,
-    });
+    this.setState({ failure: null, error: null, errorInfo: null, copied: false });
   };
 
   public render() {
-    if (this.state.hasError) {
-      const { error, errorInfo, copied } = this.state;
-      return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-          <View style={styles.header}>
-            <View style={styles.iconContainer}>
-              <ShieldAlert size={32} color="#D32F2F" strokeWidth={1.8} />
-            </View>
-            <Text style={styles.title}>Something went wrong</Text>
-            <Text style={styles.subtitle}>
-              The application encountered an unexpected render exception.
-            </Text>
-          </View>
+    const { failure, error, errorInfo, copied } = this.state;
+    if (!failure) return this.props.children;
 
-          <View style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Error Message</Text>
-            <Text style={styles.errorMessage}>{error?.message || 'Unknown error'}</Text>
-          </View>
+    return (
+      <View style={styles.container}>
+        <FailureState
+          failure={failure}
+          onAction={this.handleReset}
+          secondaryLabel={this.props.onGoHome ? 'Return home' : undefined}
+          onSecondary={this.props.onGoHome}
+        />
 
-          {error?.stack && (
-            <View style={styles.logCard}>
-              <Text style={styles.logTitle}>Stack Trace</Text>
-              <ScrollView horizontal style={styles.horizontalScroll}>
-                <Text style={styles.logText}>{error.stack}</Text>
-              </ScrollView>
-            </View>
-          )}
-
-          {errorInfo?.componentStack && (
-            <View style={styles.logCard}>
-              <Text style={styles.logTitle}>Component Stack</Text>
-              <ScrollView horizontal style={styles.horizontalScroll}>
-                <Text style={styles.logText}>{errorInfo.componentStack}</Text>
-              </ScrollView>
-            </View>
-          )}
-
-          <View style={styles.actions}>
-            <Pressable onPress={this.handleCopyLog} style={styles.btnSecondary}>
-              <Copy size={16} color={designTokens.colors.ink2} strokeWidth={1.8} />
-              <Text style={styles.btnSecondaryText}>
-                {copied ? 'Copied Details!' : 'Copy Diagnostics'}
+        {/* Diagnostics are DEV-only. In production they're reported, not shown —
+            a user should never see a stack trace. */}
+        {__DEV__ && error && (
+          <View style={styles.devPanel}>
+            <Text style={styles.devTitle}>Dev diagnostics</Text>
+            <ScrollView style={styles.devScroll} horizontal>
+              <Text style={styles.devText}>
+                {error.message}
+                {'\n\n'}
+                {error.stack}
+                {errorInfo?.componentStack ? `\n\n${errorInfo.componentStack}` : ''}
               </Text>
-            </Pressable>
-
-            <Pressable onPress={this.handleReset} style={styles.btnPrimary}>
-              <RefreshCw size={16} color={designTokens.colors.cream} strokeWidth={1.8} />
-              <Text style={styles.btnPrimaryText}>Reload Interface</Text>
+            </ScrollView>
+            <Pressable onPress={this.handleCopyLog} style={styles.devBtn}>
+              <Text style={styles.devBtnText}>{copied ? 'Copied' : 'Copy diagnostics'}</Text>
             </Pressable>
           </View>
-        </ScrollView>
-      );
-    }
-
-    return this.props.children;
+        )}
+      </View>
+    );
   }
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FEFDFB',
-  },
-  contentContainer: {
-    padding: 24,
-    paddingTop: 72,
-    paddingBottom: 48,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(211, 47, 47, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontFamily: designTokens.font.medium,
-    fontSize: 22,
-    color: designTokens.colors.ink,
-    letterSpacing: -0.44,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontFamily: designTokens.font.regular,
-    fontSize: 14,
-    color: designTokens.colors.ink2,
-    lineHeight: 20,
-    textAlign: 'center',
-    paddingHorizontal: 16,
-  },
-  errorCard: {
-    backgroundColor: '#FFF8F8',
-    borderWidth: 1,
-    borderColor: '#FFEBEE',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  errorTitle: {
-    fontFamily: designTokens.font.medium,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    color: '#D32F2F',
-    marginBottom: 6,
-  },
-  errorMessage: {
-    fontFamily: designTokens.font.semibold,
-    fontSize: 14,
-    color: designTokens.colors.ink,
-    lineHeight: 20,
-  },
-  logCard: {
+  container: { flex: 1, backgroundColor: '#FEFDFB' },
+  devPanel: {
+    maxHeight: 260,
+    margin: 16,
+    padding: 12,
+    borderRadius: 12,
     backgroundColor: '#F7F7F9',
     borderWidth: 1,
     borderColor: designTokens.colors.hair,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
   },
-  logTitle: {
+  devTitle: {
     fontFamily: designTokens.font.medium,
-    fontSize: 12,
+    fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     color: designTokens.colors.ink3,
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  horizontalScroll: {
-    maxHeight: 200,
-  },
-  logText: {
+  devScroll: { maxHeight: 170 },
+  devText: {
     fontFamily: 'monospace',
-    fontSize: 11,
+    fontSize: 10,
+    lineHeight: 15,
     color: designTokens.colors.ink,
-    lineHeight: 16,
   },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-  },
-  btnPrimary: {
-    flex: 1.2,
-    flexDirection: 'row',
+  devBtn: {
+    marginTop: 10,
+    height: 36,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    height: 50,
-    borderRadius: 999,
-    backgroundColor: designTokens.colors.brand,
+    backgroundColor: designTokens.colors.hair2,
   },
-  btnPrimaryText: {
-    fontFamily: designTokens.font.semibold,
-    fontSize: 14.5,
-    color: designTokens.colors.cream,
-  },
-  btnSecondary: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 50,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: designTokens.colors.hair2,
-    backgroundColor: '#FFFFFF',
-  },
-  btnSecondaryText: {
+  devBtnText: {
     fontFamily: designTokens.font.medium,
-    fontSize: 14,
+    fontSize: 12.5,
     color: designTokens.colors.ink2,
   },
 });

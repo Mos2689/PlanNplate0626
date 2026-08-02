@@ -1,34 +1,37 @@
-// DishImage — the single image wrapper used by every curated-plan surface.
+// DishImage — the single image wrapper for every recipe photo in the app.
 //
-// What it does:
-//   1. Rewrites the source URL through Supabase's transform endpoint to a
-//      resized WebP (Layer 1). Cuts payloads from ~1 MB PNG to ~30 KB WebP.
-//      If that endpoint isn't available on the Supabase project (the Image
-//      Transformations add-on must be enabled in Settings → Storage), the
-//      onError handler transparently falls back to the raw object URL so the
-//      blurhash placeholder doesn't stick.
-//   2. Renders a blurhash preview instantly via expo-image's native
-//      `placeholder` prop (Layer 2). When `blurhash` is undefined the wrapper
-//      gracefully falls back to a soft cream tile so first-launch (before the
-//      offline blurhash script has run) still beats the flat #F4F0E8 block.
-//   3. Keeps the 250 ms cross-fade transition consistent across surfaces.
+// The loading experience is layered so the slot is NEVER empty:
 //
-// Designed as a thin drop-in replacement for the bare
-//   <View bg='#F4F0E8'><Image source={{ uri }} contentFit='cover' /></View>
-// pattern that was duplicated across curated screens.
+//   Layer 0 · Tone tile (frame 1, zero network)
+//       A warm tile picked deterministically from the item's id. Replaces the
+//       old flat #F4F0E8, so a grid of loading cards reads as intentional
+//       rather than broken, and two adjacent cards never look identical.
+//
+//   Layer 1 · Placeholder (frame 1 if hashed, ~1 round trip otherwise)
+//       A pre-computed blurhash when the data file carries one (instant, no
+//       request). Otherwise a ~1–4 KB low-quality preview of the real photo
+//       from the same CDN. Never both — that would be a wasted request.
+//
+//   Layer 2 · Full image, cross-faded in
+//       Requested at the size it actually renders. Measured against the live
+//       bucket: 1.5–2.1 MB raw PNG versus ~23–30 KB at width=340. Cache policy
+//       is memory-disk so a second look is a memory hit, not a re-decode.
+//
+// Failure is bounded: one retry against the raw object URL, then it settles on
+// the tone tile. A card whose photo 404s keeps its title, metadata and actions.
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import type { ImageStyle, StyleProp } from 'react-native';
 import { Image, type ImageContentFit } from 'expo-image';
-import { optimizedImageUrl } from '@/lib/supabase-image';
+import { previewImageUrl, recipeImageUrl } from '@/lib/supabase-image';
 
 interface DishImageProps {
   /** Source URL (Supabase storage or any other host). Empty/null renders the placeholder only. */
   url: string | null | undefined;
   /** Blurhash for the source image. Generated offline by scripts/generate-blurhashes.ts. */
   blurhash?: string;
-  /** Logical width of the rendered slot. Used to size the CDN transform; pass roughly 2× the displayed width. */
+  /** Width the image actually renders at, in points. Snapped to the shared ladder. */
   width: number;
   /** Style for the image itself. Should normally fill its container. */
   style?: StyleProp<ImageStyle>;
@@ -36,12 +39,40 @@ interface DishImageProps {
   contentFit?: ImageContentFit;
   /** Cross-fade duration in ms when the image swaps in. Defaults to 250. */
   transition?: number;
+  /**
+   * Stable identity for the item this image belongs to (e.g. a recipe id).
+   * Pass it whenever the wrapper sits inside a list: it tells expo-image to
+   * clear the previous bitmap when a cell is recycled, instead of showing the
+   * old photo until the new one decodes. Also seeds the tone tile.
+   */
+  recyclingKey?: string;
+  /** Raise for above-the-fold heroes so they win the download queue. */
+  priority?: 'low' | 'normal' | 'high';
 }
 
-// Cream fallback used when no blurhash is available yet. Matches the historical
-// bare-View background so visually nothing regresses if the offline blurhash
-// pass hasn't been run for a particular image.
-const CREAM_FALLBACK = '#F4F0E8';
+// Warm neutral tones drawn from the app's cream/sage palette. Deliberately low
+// contrast: this is a resting state behind a photo, not a UI surface. A grid of
+// these reads as "loading, on purpose" rather than "broken".
+const TONE_TILES = [
+  '#F4F0E8', // cream (the historical value — keeps existing screens familiar)
+  '#EFEAE0',
+  '#EAE6DA',
+  '#F1EDE3',
+  '#ECE9DE',
+  '#F2EDE1',
+] as const;
+
+// Same cheap string hash used for the Explore masonry heights. Deterministic,
+// so a given recipe always gets the same tone — no flicker between renders and
+// no reshuffling when a list re-orders.
+function toneFor(seed: string | undefined): string {
+  if (!seed) return TONE_TILES[0];
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) | 0;
+  }
+  return TONE_TILES[Math.abs(h) % TONE_TILES.length];
+}
 
 export function DishImage({
   url,
@@ -50,54 +81,86 @@ export function DishImage({
   style,
   contentFit = 'cover',
   transition = 250,
+  recyclingKey,
+  priority = 'normal',
 }: DishImageProps) {
-  const transformed = url ? optimizedImageUrl(url, { width }) : undefined;
+  const sized = url ? recipeImageUrl(url, { width }) : undefined;
+  const tone = useMemo(() => toneFor(recyclingKey ?? url ?? undefined), [recyclingKey, url]);
 
-  // Tracks whether the transformed URL failed to load. When true we re-render
-  // pointing `source` at the raw URL instead. Reset when the input `url` (or
-  // its transform) changes so a recycled list cell evaluates a fresh URL from
-  // scratch instead of inheriting a stale failure.
+  // Placeholder chain. A pre-computed hash wins because it costs no request and
+  // paints in the first frame; the LQIP is the fallback for anything not in a
+  // data file we generate (user uploads, Pexels results, AI-generated photos).
+  const placeholder = useMemo(() => {
+    if (blurhash) return { blurhash };
+    const preview = previewImageUrl(url);
+    return preview ? { uri: preview } : undefined;
+  }, [blurhash, url]);
+
+  // Bounded retry. `failed` means even the raw URL didn't load, so we stop and
+  // show the tone tile instead of looping. Both reset when the URL changes, so
+  // a recycled list cell evaluates a fresh URL rather than inheriting a stale
+  // failure from whatever item previously occupied it.
   const [useRawFallback, setUseRawFallback] = useState(false);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     setUseRawFallback(false);
-  }, [url, transformed]);
+    setFailed(false);
+  }, [url, sized]);
 
-  // No URL at all — render the cream tile only. Avoids passing a falsy source
-  // into expo-image which would log a warning.
-  if (!url || !transformed) {
-    return <View style={[{ backgroundColor: CREAM_FALLBACK }, style as object]} />;
+  const handleError = useCallback(() => {
+    if (!useRawFallback && sized && sized !== url) {
+      // The resize endpoint failed (transform add-on disabled, or a transient
+      // 4xx on the render route). Retry once against the raw object URL, which
+      // is always served while the bucket is public.
+      // Log the host and path only — never the full signed/query URL.
+      console.warn(
+        '[DishImage] sized URL failed, retrying raw:',
+        (() => {
+          try {
+            const u = new URL(url!);
+            return `${u.host}${u.pathname}`;
+          } catch {
+            return 'unparseable url';
+          }
+        })(),
+      );
+      setUseRawFallback(true);
+      return;
+    }
+    // Raw failed too (or there was nothing to fall back to) — stop here.
+    setFailed(true);
+  }, [useRawFallback, sized, url]);
+
+  // Nothing to show, or every attempt failed: the tone tile IS the final state.
+  // Same dimensions, radius and layout as the image, so the card never resizes.
+  if (!url || !sized || failed) {
+    return <View style={[{ backgroundColor: tone }, style as object]} />;
   }
 
-  // Skip the transform entirely once we know it failed for this URL. If the
-  // transformed string is identical to the raw URL (non-Supabase host), the
-  // fallback is a no-op — we'd hit the same URL again.
-  const sourceUri = useRawFallback ? url : transformed;
+  const sourceUri = useRawFallback ? url : sized;
 
   return (
     <Image
       source={{ uri: sourceUri }}
-      placeholder={blurhash ? { blurhash } : undefined}
-      placeholderContentFit="cover"
+      placeholder={placeholder}
+      // Must match contentFit — expo-image's docs call out that a mismatch
+      // between placeholder and final scaling causes a visible flicker as the
+      // two swap, which is exactly what we're trying to eliminate.
+      placeholderContentFit={contentFit}
       contentFit={contentFit}
       transition={transition}
-      onError={() => {
-        // The transform endpoint failed (typically because Supabase Image
-        // Transformations isn't enabled on the project, or a transient 4xx
-        // on the render route). Swap to the raw object URL — that's always
-        // served as long as the bucket is public. Without this swap, the
-        // blurhash placeholder would stay up forever.
-        if (!useRawFallback && transformed !== url) {
-          console.warn(
-            '[DishImage] transformed URL failed — falling back to raw URL:',
-            url,
-          );
-          setUseRawFallback(true);
-        }
-      }}
-      // Cream tile sits behind the placeholder via the style background — when
-      // there's no blurhash yet, this is what the user sees until the image
-      // streams in. Once a blurhash is present, expo-image paints over this.
-      style={[{ backgroundColor: CREAM_FALLBACK }, style as object]}
+      // expo-image defaults to `cachePolicy: 'disk'`, which re-reads and
+      // re-decodes the file every time the image scrolls back into view.
+      // 'memory-disk' keeps the decoded bitmap around, so a second look is
+      // instant instead of a fresh decode.
+      cachePolicy="memory-disk"
+      recyclingKey={recyclingKey}
+      priority={priority}
+      onError={handleError}
+      // Tone tile sits behind everything via the style background, so there is
+      // never a transparent/empty frame — not before the placeholder resolves,
+      // and not during the cross-fade.
+      style={[{ backgroundColor: tone }, style as object]}
     />
   );
 }

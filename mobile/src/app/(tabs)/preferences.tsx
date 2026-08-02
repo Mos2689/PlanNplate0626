@@ -2,7 +2,7 @@
 // Every store read, callback, route, side-effect, and modal
 // from the previous implementation is preserved exactly.
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Linking, Alert, Image, Share } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Linking, Alert, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -39,6 +39,7 @@ import {
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useMealPlanStore, servingSizeFromHousehold } from '@/lib/store';
+import { makeFailure, presentFailure } from '@/lib/failure';
 import { useAuthStore } from '@/lib/auth-store';
 import { useSubscriptionStore, useAccountStatus, useIsPremium, useUserAvatar, useUserName } from '@/lib/subscription-store';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -1980,7 +1981,7 @@ export default function ProfileScreen() {
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   Linking.openURL(TERMS_OF_USE_URL).catch(() => {
-                    Alert.alert('Error', 'Unable to open Terms of Use.');
+                    presentFailure(makeFailure('unknown', { feature: 'external-link' }));
                   });
                 }}
                 isDark={isDark}

@@ -49,7 +49,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import Slider from '@react-native-community/slider';
-import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -1473,11 +1473,12 @@ export default function PlanMealsScreen() {
                       >
                         <View style={{ width: '100%', aspectRatio: 4 / 3, backgroundColor: '#F4F0E8' }}>
                           {r.imageUrl ? (
-                            <Image
-                              source={{ uri: r.imageUrl }}
+                            <DishImage
+                              url={r.imageUrl}
+                              width={340}
                               style={{ width: '100%', height: '100%' }}
-                              contentFit="cover"
                               transition={150}
+                              recyclingKey={r.id}
                             />
                           ) : null}
                           {/* Signal badge */}

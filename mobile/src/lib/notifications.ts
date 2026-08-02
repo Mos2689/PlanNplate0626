@@ -55,6 +55,33 @@ export async function requestNotificationPermissions() {
   }
 }
 
+/**
+ * Take down the "tap to add it" banner the iOS share extension posted.
+ *
+ * The extension is a separate process that ends the moment its sheet closes, so
+ * it has no way to know the import later ran. Left alone, the banner sits in
+ * Notification Center inviting a tap into work that is already done. Called once
+ * the share screen is up, which is the point at which the notification has
+ * served its only purpose — getting the user here.
+ *
+ * NOTE: `cancelAllNotifications` does NOT cover this. That cancels *scheduled*
+ * notifications; this one has no trigger, so it is delivered immediately and is
+ * only reachable through the dismiss API.
+ *
+ * The identifier format is fixed by targets/share/ShareNotification.swift.
+ * Change one, change both.
+ */
+export async function dismissShareNotification(shareId: string) {
+  if (!isNativeNotificationsAvailable) return;
+  try {
+    await Notifications.dismissNotificationAsync(`share-import.${shareId}`);
+  } catch (e) {
+    // Best-effort tidying. A stale banner is a blemish, not a failure, and it
+    // must never be the reason an import doesn't happen.
+    console.warn('[notifications] dismissShareNotification failed:', e);
+  }
+}
+
 export async function cancelAllNotifications() {
   if (!isNativeNotificationsAvailable) return;
   try {

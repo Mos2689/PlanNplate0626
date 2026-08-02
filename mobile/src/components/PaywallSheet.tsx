@@ -47,6 +47,7 @@ import {
   isRevenueCatEnabled,
 } from '@/lib/revenuecatClient';
 import { friendlyPurchaseError } from '@/lib/purchase-errors';
+import { makeFailure, presentFailure } from '@/lib/failure';
 import { useRouter } from 'expo-router';
 import { useSubscriptionStore } from '@/lib/subscription-store';
 import { MONTHLY_FEATURE_LIMITS } from '@/lib/store';
@@ -161,7 +162,7 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
 
   const handlePurchase = useCallback(async () => {
     if (!monthly) {
-      Alert.alert('Unavailable', 'No subscription package available right now.');
+      presentFailure(makeFailure('not-configured', { feature: 'subscription' }));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -227,15 +228,10 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
         cancelled: !friendly, // user-initiated cancel
       });
       if (!friendly) return; // user-initiated cancel — stay silent
-      Alert.alert(
-        friendly.title,
-        friendly.message + (friendly.hint ? `\n\n${friendly.hint}` : ''),
-        [
-          { text: 'Try again', onPress: () => handlePurchase() },
-          { text: 'Restore purchases', onPress: () => handleRestore() },
-          { text: 'Cancel', style: 'cancel' },
-        ],
-      );
+      // friendlyPurchaseError already maps the store SDK's failure modes to
+      // product wording; it now returns a Failure, so this presents through the
+      // same surface as every other failure instead of an OS dialog.
+      presentFailure(friendly, () => handlePurchase());
     }
   }, [monthly, closeSheet, isOnboarding, router, trigger]);
 
@@ -255,7 +251,10 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
         Alert.alert("No Purchases Found", "We couldn't find any previous purchases to restore.");
       }
     } else {
-      Alert.alert('Restore Failed', 'Unable to restore purchases. Please try again.');
+      presentFailure(
+        makeFailure('unknown', { feature: 'subscription-restore' }),
+        () => handleRestore(),
+      );
     }
   }, [closeSheet]);
 

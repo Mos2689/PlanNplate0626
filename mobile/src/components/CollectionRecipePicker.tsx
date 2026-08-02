@@ -9,7 +9,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, Pressable, Modal, TextInput, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import { X, Check, Search } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -119,11 +119,12 @@ export function CollectionRecipePicker({
           paddingVertical: 10,
         }}
       >
-        <Image
-          source={{ uri: item.imageUrl }}
-          style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: '#F4F0E8' }}
-          contentFit="cover"
+        <DishImage
+          url={item.imageUrl}
+          width={150}
+          style={{ width: 52, height: 52, borderRadius: 12 }}
           transition={120}
+          recyclingKey={item.id}
         />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text
@@ -269,6 +270,11 @@ export function CollectionRecipePicker({
             renderItem={renderRow}
             contentContainerStyle={{ paddingBottom: 110 + insets.bottom }}
             keyboardShouldPersistTaps="handled"
+            // Each row carries a thumbnail; keep ~a screen either side ready
+            // instead of RN's default ten screens.
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={7}
             ListEmptyComponent={
               <Text
                 style={{

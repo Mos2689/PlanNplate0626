@@ -9,3 +9,6 @@ export const trackFirebaseConversion = (
 ) => {};
 
 export const setFirebaseUserId = async (_userId: string | null) => {};
+
+/** Mirrors the native module's export. Always false on web — no Firebase app. */
+export const isFirebaseAnalyticsAvailable = (): boolean => false;

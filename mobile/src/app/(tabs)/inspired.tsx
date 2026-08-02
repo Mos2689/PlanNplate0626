@@ -11,7 +11,7 @@
 // Design language: editorial header (italic "Inspired"), sage primary,
 // terracotta accent, hairline borders, Geist + Instrument Serif.
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Keyboard, Dimensions, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Keyboard, Dimensions, KeyboardAvoidingView, Platform, Modal, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withSpring, interpolate, Extrapolation } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -27,7 +27,7 @@ import {
   Dumbbell,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   StickyScreenHeader,
@@ -40,6 +40,7 @@ import { INSPIRED_RECIPES, type InspiredRecipe } from '@/lib/inspired-recipe-lib
 import { useMealPlanStore } from '@/lib/store';
 import { inspiredToRecipe } from '@/lib/inspired-adapters';
 import { buildTrendingRecipes } from '@/lib/inspired-trending';
+import { prefetchRecipeImages } from '@/lib/image-prefetch';
 
 // ───────────────────────────────────────────────────────────────────────────────
 // BROWSE-BY-CATEGORY (meal type) + QUICK FILTERS + TRENDING placeholders
@@ -131,13 +132,22 @@ interface PinCardProps {
   recipe: InspiredRecipe;
   saved: boolean;
   index: number;
-  onPress: () => void;
-  onToggleSave: () => void;
-  onQuickAdd: () => void;
+  onPress: (recipe: InspiredRecipe) => void;
+  onToggleSave: (recipe: InspiredRecipe) => void;
+  onQuickAdd: (recipe: InspiredRecipe) => void;
   colors: ReturnType<typeof getThemeColors>;
 }
 
-function PinCard({ recipe, saved, index, onPress, onToggleSave, onQuickAdd, colors }: PinCardProps) {
+// Memoized: the masonry renders up to PAGE_SIZE (40) of these at a time, and
+// every one of them used to re-render whenever the screen's search text, filter
+// chips or pagination count changed. Handlers now take the recipe instead of
+// being pre-bound per item, so their identity is stable across renders, and
+// `colors` is a hoisted constant (see lib/design-tokens.ts) rather than a fresh
+// object — both are required for the memo to actually hold.
+function PinCardImpl({ recipe, saved, index, onPress, onToggleSave, onQuickAdd, colors }: PinCardProps) {
+  const handlePress = useCallback(() => onPress(recipe), [onPress, recipe]);
+  const handleToggleSave = useCallback(() => onToggleSave(recipe), [onToggleSave, recipe]);
+  const handleQuickAdd = useCallback(() => onQuickAdd(recipe), [onQuickAdd, recipe]);
   const imgH = hashHeight(recipe.id);
   const totalMin = recipe.totalMinutes;
   const calories = recipe.calories ?? 0;
@@ -148,7 +158,7 @@ function PinCard({ recipe, saved, index, onPress, onToggleSave, onQuickAdd, colo
       style={{ marginBottom: 10 }}
     >
       <Pressable
-        onPress={onPress}
+        onPress={handlePress}
         style={({ pressed }) => ({
           borderRadius: 18,
           backgroundColor: colors.bg,
@@ -166,11 +176,13 @@ function PinCard({ recipe, saved, index, onPress, onToggleSave, onQuickAdd, colo
             backgroundColor: '#F4F0E8',
           }}
         >
-          <Image
-            source={{ uri: recipe.imageUrl }}
+          <DishImage
+            url={recipe.imageUrl}
+            blurhash={recipe.blurhash}
+            width={340}
             style={{ width: '100%', height: '100%' }}
-            contentFit="cover"
             transition={150}
+            recyclingKey={recipe.id}
           />
 
           {/* Save / bookmark */}
@@ -178,7 +190,7 @@ function PinCard({ recipe, saved, index, onPress, onToggleSave, onQuickAdd, colo
             onPress={(e) => {
               e.stopPropagation();
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onToggleSave();
+              handleToggleSave();
             }}
             hitSlop={8}
             style={{
@@ -237,7 +249,7 @@ function PinCard({ recipe, saved, index, onPress, onToggleSave, onQuickAdd, colo
             onPress={(e) => {
               e.stopPropagation();
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onQuickAdd();
+              handleQuickAdd();
             }}
             hitSlop={8}
             style={{
@@ -291,6 +303,8 @@ function PinCard({ recipe, saved, index, onPress, onToggleSave, onQuickAdd, colo
   );
 }
 
+const PinCard = React.memo(PinCardImpl);
+
 // ───────────────────────────────────────────────────────────────────────────────
 // SECTION PIECES — Trending card · Category circle · Quick tile · Section header
 // ───────────────────────────────────────────────────────────────────────────────
@@ -337,9 +351,18 @@ function SectionHeader({
   );
 }
 
-function TrendingCard({ recipe, onPress }: { recipe: InspiredRecipe; onPress: () => void }) {
+// Same treatment as PinCard: takes the recipe so the screen can hand it a
+// stable useCallback instead of a per-item arrow, then memoized.
+function TrendingCardImpl({
+  recipe,
+  onPress,
+}: {
+  recipe: InspiredRecipe;
+  onPress: (recipe: InspiredRecipe) => void;
+}) {
+  const handlePress = useCallback(() => onPress(recipe), [onPress, recipe]);
   return (
-    <Pressable onPress={onPress} style={{ width: 150, marginRight: 12 }}>
+    <Pressable onPress={handlePress} style={{ width: 150, marginRight: 12 }}>
       <View
         style={{
           width: 150,
@@ -349,11 +372,13 @@ function TrendingCard({ recipe, onPress }: { recipe: InspiredRecipe; onPress: ()
           backgroundColor: '#F4F0E8',
         }}
       >
-        <Image
-          source={{ uri: recipe.imageUrl }}
+        <DishImage
+          url={recipe.imageUrl}
+          blurhash={recipe.blurhash}
+          width={340}
           style={{ width: '100%', height: '100%' }}
-          contentFit="cover"
           transition={150}
+          recyclingKey={recipe.id}
         />
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.75)']}
@@ -382,6 +407,8 @@ function TrendingCard({ recipe, onPress }: { recipe: InspiredRecipe; onPress: ()
   );
 }
 
+const TrendingCard = React.memo(TrendingCardImpl);
+
 function CategoryCircle({
   label,
   image,
@@ -408,7 +435,7 @@ function CategoryCircle({
           backgroundColor: '#F4F0E8',
         }}
       >
-        <Image source={{ uri: image }} style={{ width: '100%', height: '100%' }} contentFit="cover" transition={150} />
+        <DishImage url={image} width={150} style={{ width: '100%', height: '100%' }} transition={150} recyclingKey={image} />
       </View>
       <Text
         numberOfLines={1}
@@ -618,6 +645,22 @@ export default function CuratedMealPlanScreen() {
     return { leftCol: left, rightCol: right };
   }, [visible]);
 
+  // Warm the NEXT page's photos while the user reads the current one, at the
+  // same width PinCard renders (340), so the cards below the fold are already
+  // cached by the time scrolling reaches them. Bounded to one page — this is a
+  // 736-recipe library and warming all of it would saturate the connection and
+  // starve the images actually on screen. Deferred off the render pass.
+  useEffect(() => {
+    const nextPage = filtered
+      .slice(visibleCount, visibleCount + PAGE_SIZE)
+      .map((r) => r.imageUrl);
+    if (nextPage.length === 0) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      prefetchRecipeImages(nextPage, { width: 340, limit: PAGE_SIZE });
+    });
+    return () => task.cancel();
+  }, [filtered, visibleCount]);
+
   const handleToggleSearch = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isSearchOpen.value === 1) {
@@ -782,7 +825,7 @@ export default function CuratedMealPlanScreen() {
                 style={{ flexGrow: 0 }}
               >
                 {trending.map((r) => (
-                  <TrendingCard key={r.id} recipe={r} onPress={() => handleOpenRecipe(r)} />
+                  <TrendingCard key={r.id} recipe={r} onPress={handleOpenRecipe} />
                 ))}
               </ScrollView>
             </View>
@@ -904,9 +947,9 @@ export default function CuratedMealPlanScreen() {
                       recipe={r}
                       saved={inspiredSavedMap.has(`inspired::${r.id}`)}
                       index={i * 2}
-                      onPress={() => handleOpenRecipe(r)}
-                      onToggleSave={() => handleToggleSave(r)}
-                      onQuickAdd={() => handleQuickAdd(r)}
+                      onPress={handleOpenRecipe}
+                      onToggleSave={handleToggleSave}
+                      onQuickAdd={handleQuickAdd}
                       colors={colors}
                     />
                   ))}
@@ -918,9 +961,9 @@ export default function CuratedMealPlanScreen() {
                       recipe={r}
                       saved={inspiredSavedMap.has(`inspired::${r.id}`)}
                       index={i * 2 + 1}
-                      onPress={() => handleOpenRecipe(r)}
-                      onToggleSave={() => handleToggleSave(r)}
-                      onQuickAdd={() => handleQuickAdd(r)}
+                      onPress={handleOpenRecipe}
+                      onToggleSave={handleToggleSave}
+                      onQuickAdd={handleQuickAdd}
                       colors={colors}
                     />
                   ))}

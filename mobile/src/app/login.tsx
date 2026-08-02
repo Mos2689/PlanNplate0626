@@ -38,6 +38,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useAuthStore } from '@/lib/auth-store';
+import { makeFailure, validationFailure, type Failure } from '@/lib/failure';
+import { InlineFailure } from '@/components/failure';
 import { useMealPlanStore } from '@/lib/store';
 import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -110,7 +112,7 @@ export default function LoginScreen() {
     if (forgot === '1' && !forgotHandledRef.current) {
       forgotHandledRef.current = true;
       setResetEmail(typeof emailParam === 'string' ? emailParam : '');
-      setResetError('');
+      setResetError(null);
       setResetSuccess(false);
       setShowForgotModal(true);
     }
@@ -119,7 +121,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Failure | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [socialLoadingProvider, setSocialLoadingProvider] = useState<SocialProvider | null>(null);
   const [pendingSocialProvider, setPendingSocialProvider] = useState<SocialProvider | null>(null);
@@ -129,7 +131,7 @@ export default function LoginScreen() {
   // Forgot password modal state
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
-  const [resetError, setResetError] = useState('');
+  const [resetError, setResetError] = useState<Failure | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -154,7 +156,7 @@ export default function LoginScreen() {
   const performLogin = useCallback(async () => {
     setShowGuestWarning(false);
     setPendingSocialProvider(null);
-    setError('');
+    setError(null);
     setIsLoading(true);
 
     const result = await login(email, password);
@@ -165,7 +167,7 @@ export default function LoginScreen() {
       router.replace('/(tabs)/recipes');
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(result.error || 'Login failed');
+      setError(result.failure ?? makeFailure('unknown', { feature: 'auth' }));
     }
 
     setIsLoading(false);
@@ -187,7 +189,7 @@ export default function LoginScreen() {
   const performSocialLogin = useCallback(async (provider: SocialProvider) => {
     setShowGuestWarning(false);
     setPendingSocialProvider(null);
-    setError('');
+    setError(null);
     setSocialLoadingProvider(provider);
 
     const result = await signInWithProvider(provider);
@@ -196,7 +198,7 @@ export default function LoginScreen() {
     if (result.cancelled) return;
     if (!result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(result.error || 'Sign in failed. Please try again.');
+      setError(result.failure ?? makeFailure('unknown', { feature: 'auth' }));
       return;
     }
 
@@ -223,7 +225,7 @@ export default function LoginScreen() {
   const openForgotModal = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setResetEmail(email);
-    setResetError('');
+    setResetError(null);
     setResetSuccess(false);
     setShowForgotModal(true);
   }, [email]);
@@ -231,12 +233,12 @@ export default function LoginScreen() {
   const closeForgotModal = useCallback(() => {
     setShowForgotModal(false);
     setResetEmail('');
-    setResetError('');
+    setResetError(null);
     setResetSuccess(false);
   }, []);
 
   const handleForgotPassword = useCallback(async () => {
-    setResetError('');
+    setResetError(null);
     setIsResetting(true);
 
     const result = await sendPasswordResetOTP(resetEmail);
@@ -246,7 +248,7 @@ export default function LoginScreen() {
       setResetSuccess(true);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setResetError(result.error || 'Failed to send OTP');
+      setResetError(result.failure ?? makeFailure('unknown', { feature: 'auth' }));
     }
 
     setIsResetting(false);
@@ -493,33 +495,12 @@ export default function LoginScreen() {
               }}
             />
 
-            {/* Error banner */}
+            {/* Failure banner — wording comes from the failure catalogue, so a
+                raw provider message can no longer reach this screen. */}
             {error ? (
-              <Animated.View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: 11,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: cardBorder,
-                  backgroundColor: isDark ? '#181818' : designTokens.colors.cream,
-                  marginBottom: 14,
-                }}
-              >
-                <AlertTriangle size={14} color={designTokens.colors.olive} strokeWidth={1.8} />
-                <Text
-                  style={{
-                    flex: 1,
-                    fontFamily: designTokens.font.medium,
-                    fontSize: 12.5,
-                    color: inkPrimary,
-                  }}
-                >
-                  {error}
-                </Text>
-              </Animated.View>
+              <View style={{ marginBottom: 14 }}>
+                <InlineFailure failure={error} />
+              </View>
             ) : null}
 
             <SocialAuthButtons
@@ -1034,16 +1015,7 @@ export default function LoginScreen() {
                       }}
                     >
                       <AlertTriangle size={14} color={designTokens.colors.olive} strokeWidth={1.8} />
-                      <Text
-                        style={{
-                          flex: 1,
-                          fontFamily: designTokens.font.medium,
-                          fontSize: 12.5,
-                          color: inkPrimary,
-                        }}
-                      >
-                        {resetError}
-                      </Text>
+                      <InlineFailure failure={resetError} compact />
                     </View>
                   ) : null}
 

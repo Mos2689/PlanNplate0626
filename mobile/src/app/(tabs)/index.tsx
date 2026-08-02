@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight, ChevronLeft, ChevronDown, AlertTriangle, Trash2, ShoppingBasket } from 'lucide-react-native';
 import Animated, {
@@ -1003,16 +1004,23 @@ export default function HomeScreen() {
                     borderColor: isDark ? '#3a2e27' : '#FFFFFF',
                   }}
                 >
-                  <Image
-                    source={
-                      typeof recentThumbnails[0] === 'string'
-                        ? { uri: recentThumbnails[0] }
-                        : recentThumbnails[0]
-                    }
-                    style={{ width: '100%', height: '100%' }}
-                    contentFit="cover"
-                    transition={150}
-                  />
+                  {typeof recentThumbnails[0] === 'string' ? (
+                    <DishImage
+                      url={recentThumbnails[0]}
+                      width={150}
+                      style={{ width: '100%', height: '100%' }}
+                      transition={150}
+                      recyclingKey={recentThumbnails[0]}
+                    />
+                  ) : (
+                    <Image
+                      source={recentThumbnails[0]}
+                      style={{ width: '100%', height: '100%' }}
+                      contentFit="cover"
+                      transition={150}
+                      cachePolicy="memory-disk"
+                    />
+                  )}
                 </View>
               ) : null}
               <ChevronRight size={20} color={colors.ink3} strokeWidth={2} />

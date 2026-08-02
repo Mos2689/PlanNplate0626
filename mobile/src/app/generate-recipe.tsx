@@ -1,5 +1,8 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Modal, Image, KeyboardAvoidingView, Keyboard, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Modal, KeyboardAvoidingView, Keyboard, Platform } from 'react-native';
+// expo-image for the shared memory/disk cache — freshly generated recipe photos
+// are shown again immediately afterwards on the recipes grid and meal plan.
+import { DishImage } from '@/components/DishImage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -67,6 +70,7 @@ import { initializeCacheTable } from '@/lib/recipe-cache';
 import { isDateSelectable } from '@/lib/date-restrictions';
 import { validateIngredients } from '@/lib/ingredient-validator';
 import { track } from '@/lib/analytics';
+import { reportAndPresent, swallow } from '@/lib/failure';
 import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import { VibeDeck } from '@/components/VibeDeck';
 import { InferredFridgeChips } from '@/components/InferredFridgeChips';
@@ -795,11 +799,15 @@ export default function GenerateRecipeScreen() {
     },
     onError: (error) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      track('recipe_generate_failed', {
-        mode: 'single',
-        reason: error instanceof Error ? error.message : String(error),
-      });
-      console.error('Generate recipe error:', error);
+      // `reason` used to carry the raw exception message straight into
+      // analytics. The classified category is both safer and more useful for
+      // aggregation — free-text messages fragment every chart.
+      const failure = reportAndPresent(
+        error,
+        { feature: 'recipe-generation', context: { mode: 'single' } },
+        () => generateMutation.mutate(),
+      );
+      track('recipe_generate_failed', { mode: 'single', reason: failure.category });
     },
   });
 
@@ -835,13 +843,14 @@ export default function GenerateRecipeScreen() {
       setGeneratedRecipe(null);
       setShowMealPlanModal(true); // Show modal when meal plan is generated
     },
-    onError: (error) => {
+    onError: (error, numToGenerate) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      track('recipe_generate_failed', {
-        mode: 'meal_plan',
-        reason: error instanceof Error ? error.message : String(error),
-      });
-      console.error('Generate meal plan error:', error);
+      const failure = reportAndPresent(
+        error,
+        { feature: 'recipe-generation', context: { mode: 'meal_plan' } },
+        () => mealPlanMutation.mutate(numToGenerate),
+      );
+      track('recipe_generate_failed', { mode: 'meal_plan', reason: failure.category });
     },
   });
 
@@ -895,7 +904,7 @@ export default function GenerateRecipeScreen() {
         imageUrl = generatedImage;
       }
     } catch (error) {
-      console.log('Failed to fetch image, using stock image:', error);
+      swallow(error, 'image lookup is best-effort; a stock photo is used', 'recipe-image');
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1003,7 +1012,7 @@ export default function GenerateRecipeScreen() {
           imageUrl = generatedImage;
         }
       } catch (error) {
-        console.log(`Failed to fetch image for ${recipeData.name}, using stock image:`, error);
+        swallow(error, 'image lookup is best-effort; a stock photo is used', 'recipe-image');
       }
 
       // Use the mealType from the recipe if available, otherwise cycle through selected types
@@ -1161,8 +1170,14 @@ export default function GenerateRecipeScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.error('Failed to regenerate single recipe:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      // Previously this vibrated and logged, and that was all — the user tapped
+      // "regenerate", felt a buzz, and nothing changed. Now it offers a retry.
+      reportAndPresent(
+        error,
+        { feature: 'recipe-generation', context: { mode: 'regenerate_single' } },
+        () => handleRegenerateSingle(index),
+      );
     } finally {
       setRegeneratingIndex(null);
     }
@@ -2025,9 +2040,11 @@ export default function GenerateRecipeScreen() {
                           }}
                         >
                           <View style={{ position: 'relative' }}>
-                            <Image
-                              source={{ uri: recipe.imageUrl }}
-                              style={{ width: '100%', height: 100, backgroundColor: '#F4F0E8' }}
+                            <DishImage
+                              url={recipe.imageUrl}
+                              width={340}
+                              style={{ width: '100%', height: 100 }}
+                              recyclingKey={recipe.imageUrl}
                             />
                             {isSelected && (
                               <View
@@ -3217,7 +3234,7 @@ export default function GenerateRecipeScreen() {
                         backgroundColor: '#F4F0E8',
                       }}>
                         {recipe.imageUrl ? (
-                          <Image source={{ uri: recipe.imageUrl }} style={{ width: '100%', height: '100%' }} />
+                          <DishImage url={recipe.imageUrl} width={150} style={{ width: '100%', height: '100%' }} recyclingKey={recipe.imageUrl} />
                         ) : null}
                       </View>
                       <View style={{ flex: 1 }}>

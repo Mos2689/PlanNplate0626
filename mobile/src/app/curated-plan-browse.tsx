@@ -739,6 +739,12 @@ export default function CuratedPlanBrowseScreen() {
           scrollEventThrottle={16}
           decelerationRate="fast"
           removeClippedSubviews={false}
+          // Paged horizontal list: only the current page and its immediate
+          // neighbours are reachable without a swipe, so RN's default
+          // windowSize of 21 was mounting the entire plan up front.
+          initialNumToRender={1}
+          maxToRenderPerBatch={2}
+          windowSize={3}
         />
       </SafeAreaView>
 

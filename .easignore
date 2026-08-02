@@ -1,0 +1,98 @@
+# What EAS Build uploads. Paths are relative to THIS directory — the git repo
+# root — because that is what eas-cli archives, and it reads `.easignore` from
+# `git rev-parse --show-toplevel`, not from the app directory.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The root .gitignore excludes `ios/` and `android/` with no leading slash, so
+# those patterns match a directory of that name at ANY depth. That silently
+# swallowed `mobile/modules/plannplate-share-target/ios` and `.../android` — the
+# native half of the local Expo module. The files were present locally, so
+# `expo-modules-autolinking resolve` found them and every local check passed,
+# but they never reached the build server. The pod was never installed, the
+# native module never registered, and on device the share extension saved links
+# the app could never read. Two builds went to the wrong theory before the build
+# log showed 194 pods with no `PlanNplateShareTarget` among them.
+#
+# IMPORTANT: when `.easignore` exists, eas-cli ignores EVERY `.gitignore` in the
+# repo — including mobile/.gitignore. So this file alone decides the upload, and
+# anything the .gitignores were protecting has to be restated here. Two things
+# that matter most: `.env*` (secrets, and Expo loads them at build time, which
+# would change the values baked into the app) and `mobile/patches/` (an INPUT —
+# `postinstall: patch-package` needs it).
+
+# ── Dependencies and build output ───────────────────────────────────────────
+**/node_modules/
+**/.expo/
+**/dist/
+**/web-build/
+**/.metro-health-check*
+**/*.tsbuildinfo
+mobile/expo-env.d.ts
+
+# ── Prebuild output ─────────────────────────────────────────────────────────
+# ANCHORED to the app directory, unlike the .gitignore patterns that caused
+# this. These must never match mobile/modules/*/ios or mobile/modules/*/android,
+# which are module SOURCE and are required for the pod to install.
+mobile/ios/
+mobile/android/
+**/.kotlin/
+
+# ── Secrets and signing material ────────────────────────────────────────────
+# All env files, not just *.local: the root .gitignore excluded `.env` and
+# `.env.production` outright, so they have never been uploaded. Build-time env
+# belongs in eas.json or EAS secrets.
+**/.env
+**/.env.local
+**/.env.production
+**/.env*.local
+**/*.jks
+**/*.p8
+**/*.p12
+**/*.key
+**/*.pem
+**/*.mobileprovision
+
+# ── Other projects in this repo the app build does not need ─────────────────
+backend/
+__MACOSX/
+pdf_images/
+PlannPlate Inspired/
+*.zip
+
+# ── Large local artefacts (40 MB of patch files alone) ──────────────────────
+diff.patch
+init.patch
+**/graphify-out/
+# Root-level design mockups ONLY. An unanchored `*.png` here would strip
+# mobile/assets and mobile/public — the app icon, splash and notification icon.
+/*.png
+changelog.txt
+
+# ── Logs and debug leftovers ────────────────────────────────────────────────
+**/*.log
+**/npm-debug.*
+**/yarn-debug.*
+**/yarn-error.*
+mobile/decompressed_log.txt
+mobile/parsed_log.txt
+mobile/messages.txt
+mobile/eas_log*.txt
+mobile/eas_log*.jsonl
+mobile/eas_full_logs.txt
+mobile/error_summary*.txt
+mobile/final_error.txt
+mobile/last_build*.json
+mobile/plan-setup-preview.html
+mobile/welcome-preview.html
+
+# ── Editor / OS / tooling ───────────────────────────────────────────────────
+**/.DS_Store
+**/Thumbs.db
+**/.vscode/
+**/.idea/
+**/.claude/
+**/.agents/
+**/.gemini/
+**/.playwright-mcp/
+**/.supabase/

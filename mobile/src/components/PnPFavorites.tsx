@@ -14,7 +14,7 @@
 //   • FadeInDown stagger so the section reads as its own beat.
 import React from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
-import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import { Heart, Star, Flame } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -180,11 +180,12 @@ function FavoriteCard({
               }}
             >
               {recipe.imageUrl ? (
-                <Image
-                  source={{ uri: recipe.imageUrl }}
+                <DishImage
+                  url={recipe.imageUrl}
+                  width={340}
                   style={{ width: '100%', height: '100%' }}
-                  contentFit="cover"
                   transition={200}
+                  recyclingKey={recipe.id}
                 />
               ) : null}
 

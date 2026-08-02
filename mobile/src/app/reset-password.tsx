@@ -21,6 +21,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useAuthStore } from '@/lib/auth-store';
+import { makeFailure, validationFailure, type Failure } from '@/lib/failure';
+import { InlineFailure } from '@/components/failure';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -32,7 +34,7 @@ export default function ResetPasswordScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Failure | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -51,22 +53,22 @@ export default function ResetPasswordScreen() {
   }, []);
 
   const handleResetPassword = useCallback(async () => {
-    setError('');
+    setError(null);
 
     if (!newPassword || !confirmPassword) {
-      setError('All fields are required');
+      setError(validationFailure('A few details are missing', 'Please fill in every field to continue.', 'auth'));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
+      setError(validationFailure('That password is a little short', 'Please use at least 6 characters.', 'auth'));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
+      setError(validationFailure('Those passwords don’t match', 'Please re-enter them and try again.', 'auth'));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
@@ -80,7 +82,7 @@ export default function ResetPasswordScreen() {
       setSuccess(true);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(result.error || 'Failed to reset password');
+      setError(result.failure ?? makeFailure('unknown', { feature: 'auth' }));
     }
 
     setIsLoading(false);
@@ -166,11 +168,8 @@ export default function ResetPasswordScreen() {
 
                 {/* Error Message */}
                 {error ? (
-                  <Animated.View
-                    entering={FadeInDown.duration(300)}
-                    className="bg-red-50 border border-red-200 rounded-xl p-3 mb-6"
-                  >
-                    <Text className="text-red-600 text-center text-sm">{error}</Text>
+                  <Animated.View entering={FadeInDown.duration(300)} className="mb-6">
+                    <InlineFailure failure={error} />
                   </Animated.View>
                 ) : null}
 

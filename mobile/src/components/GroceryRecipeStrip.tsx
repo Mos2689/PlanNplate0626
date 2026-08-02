@@ -12,7 +12,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import { DishImage } from '@/components/DishImage';
 import { X, Plus, Minus, Users } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -109,11 +109,12 @@ export function GroceryRecipeStrip({ isDark, onAddRecipes }: GroceryRecipeStripP
             style={{ alignItems: 'center', width: 78 }}
           >
             <View style={{ width: 64, height: 64 }}>
-              <Image
-                source={{ uri: r.imageUrl }}
-                style={{ width: 64, height: 64, borderRadius: 999, backgroundColor: '#F4F0E8' }}
-                contentFit="cover"
+              <DishImage
+                url={r.imageUrl}
+                width={150}
+                style={{ width: 64, height: 64, borderRadius: 999 }}
                 transition={120}
+                recyclingKey={r.id}
               />
               {/* Delete badge */}
               <Pressable
@@ -229,11 +230,12 @@ export function GroceryRecipeStrip({ isDark, onAddRecipes }: GroceryRecipeStripP
               <>
                 {/* Recipe identity */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 22 }}>
-                  <Image
-                    source={{ uri: editing.imageUrl }}
-                    style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: '#F4F0E8' }}
-                    contentFit="cover"
+                  <DishImage
+                    url={editing.imageUrl}
+                    width={150}
+                    style={{ width: 52, height: 52, borderRadius: 14 }}
                     transition={120}
+                    recyclingKey={editing.id}
                   />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text

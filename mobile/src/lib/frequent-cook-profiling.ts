@@ -91,18 +91,40 @@ type Indexed = {
   haystack: string; // name + ingredient names, lowercased (for protein/carb match)
   noCook: boolean;  // meaningful only for breakfasts
 };
-const INDEX: Indexed[] = INSPIRED_RECIPES.map((r) => {
-  const steps = r.instructions.join(' ').toLowerCase();
-  return {
-    recipe: r,
-    nameTokens: new Set(tokenize(r.name)),
-    ingredientTokens: new Set(r.ingredients.flatMap((i) => tokenize(i.name))),
-    haystack: `${r.name} ${r.ingredients.map((i) => i.name).join(' ')}`.toLowerCase(),
-    noCook: r.mealType === 'Breakfast' ? !COOK_VERBS.some((v) => steps.includes(v)) : false,
-  };
-});
-const MAINS = INDEX.filter((it) => it.recipe.mealType === 'Lunch/Dinner');
-const BREAKFASTS = INDEX.filter((it) => it.recipe.mealType === 'Breakfast');
+// PERF: these three were module-scope constants, which meant importing this
+// file synchronously walked all ~667 recipes in INSPIRED_RECIPES (tokenizing
+// every name and ingredient, joining every instruction list) before the module
+// finished evaluating — and forced the 740 KB library to evaluate with it,
+// defeating Metro's `inlineRequires`. Building them on first use instead moves
+// that work off app start; the values are identical and computed exactly once.
+let _index: Indexed[] | null = null;
+let _mains: Indexed[] | null = null;
+let _breakfasts: Indexed[] | null = null;
+
+function getIndex(): Indexed[] {
+  if (_index) return _index;
+  _index = INSPIRED_RECIPES.map((r) => {
+    const steps = r.instructions.join(' ').toLowerCase();
+    return {
+      recipe: r,
+      nameTokens: new Set(tokenize(r.name)),
+      ingredientTokens: new Set(r.ingredients.flatMap((i) => tokenize(i.name))),
+      haystack: `${r.name} ${r.ingredients.map((i) => i.name).join(' ')}`.toLowerCase(),
+      noCook: r.mealType === 'Breakfast' ? !COOK_VERBS.some((v) => steps.includes(v)) : false,
+    };
+  });
+  return _index;
+}
+
+function getMains(): Indexed[] {
+  if (!_mains) _mains = getIndex().filter((it) => it.recipe.mealType === 'Lunch/Dinner');
+  return _mains;
+}
+
+function getBreakfasts(): Indexed[] {
+  if (!_breakfasts) _breakfasts = getIndex().filter((it) => it.recipe.mealType === 'Breakfast');
+  return _breakfasts;
+}
 
 export interface FrequentCookProfile {
   cuisineWeights: Record<string, number>;
@@ -134,7 +156,7 @@ export function profileFrequentCooks(names: string[]): FrequentCookProfile {
     // Closest library dishes by name-token overlap → borrow cuisine (for the
     // cuisine bucket) + ingredients (for scoring). NOT used for protein/carb
     // detection — that reads only what the user typed, to stay accurate.
-    const analogs = INDEX.map((it) => ({ it, score: overlapCount(it.nameTokens, tokens) }))
+    const analogs = getIndex().map((it) => ({ it, score: overlapCount(it.nameTokens, tokens) }))
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 3);
@@ -231,14 +253,14 @@ export function suggestFromProfile(profile: FrequentCookProfile, limit = 12): In
 
   const out: Indexed[] = [];
   // 1 · same cuisine (3 mains)
-  if (topCuisine) out.push(...pick(MAINS, (it) => it.recipe.cuisine === topCuisine, 3));
+  if (topCuisine) out.push(...pick(getMains(), (it) => it.recipe.cuisine === topCuisine, 3));
   // 2 · same protein / veg (3 mains)
-  if (protein) out.push(...pick(MAINS, (it) => hasWord(it.haystack, protein!), 3));
+  if (protein) out.push(...pick(getMains(), (it) => hasWord(it.haystack, protein!), 3));
   // 3 · same carb form (2 mains)
-  if (carbTerms) out.push(...pick(MAINS, (it) => carbTerms!.some((t) => hasWord(it.haystack, t)), 2));
+  if (carbTerms) out.push(...pick(getMains(), (it) => carbTerms!.some((t) => hasWord(it.haystack, t)), 2));
   // 4 · breakfast (2 no-cook + 2 cooked)
-  out.push(...pick(BREAKFASTS, (it) => it.noCook, 2));
-  out.push(...pick(BREAKFASTS, (it) => !it.noCook, 2));
+  out.push(...pick(getBreakfasts(), (it) => it.noCook, 2));
+  out.push(...pick(getBreakfasts(), (it) => !it.noCook, 2));
 
   // Backfill short buckets: profile-ranked mains, then breakfasts, then generic.
   const topUp = (pool: Indexed[]) => {
@@ -249,8 +271,8 @@ export function suggestFromProfile(profile: FrequentCookProfile, limit = 12): In
       out.push(it);
     }
   };
-  if (out.length < limit) topUp(MAINS);
-  if (out.length < limit) topUp(BREAKFASTS);
+  if (out.length < limit) topUp(getMains());
+  if (out.length < limit) topUp(getBreakfasts());
   if (out.length < limit) {
     const generic = getTasteSampleRecipes({
       limit: limit * 2,
@@ -259,7 +281,7 @@ export function suggestFromProfile(profile: FrequentCookProfile, limit = 12): In
     for (const r of generic) {
       if (out.length >= limit) break;
       if (used.has(r.id) || excluded.has(slug(r.name))) continue;
-      const it = INDEX.find((x) => x.recipe.id === r.id);
+      const it = getIndex().find((x) => x.recipe.id === r.id);
       if (it && available(it)) {
         used.add(r.id);
         out.push(it);

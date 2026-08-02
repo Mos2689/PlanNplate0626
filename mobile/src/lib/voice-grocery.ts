@@ -46,7 +46,7 @@ export async function transcribeAudioToText(audioUri: string): Promise<string> {
   formData.append('model', 'whisper-1');
 
   const result = await apiFormCall<{ text: string }>('openai-transcribe', formData);
-  if (result.error) throw new Error(result.error);
+  if (result.failure) throw result.failure;
   return (result.data?.text ?? '').trim();
 }
 
@@ -90,7 +90,7 @@ Spoken text: "${trimmed}"`;
     max_tokens: 1024,
   });
 
-  if (result.error) throw new Error(result.error);
+  if (result.failure) throw result.failure;
 
   const content = result.data?.choices?.[0]?.message?.content ?? '[]';
   const cleaned = content.replace(/```json/gi, '').replace(/```/g, '').trim();

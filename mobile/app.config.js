@@ -51,14 +51,57 @@ module.exports = function ({ config }) {
     }
   };
 
+  // ── Share to PlanNplate ─────────────────────────────────────────────────
+  // The only channel between the iOS share extension and the app. It must match
+  // `targets/share/expo-target.config.js`, `targets/share/PendingShareQueue.swift`
+  // and `modules/plannplate-share-target/ios/PlanNplateShareTargetModule.swift`.
+  // Nothing sensitive travels through it — see the note in PendingShareQueue.swift.
+  const shareAppGroup = "group.com.vibecode.planplate.8ctfq2";
+
   config.ios = {
     ...config.ios,
     googleServicesFile: "./GoogleService-Info.plist",
+    // Signing an app extension needs the team explicitly — @bacons/apple-targets
+    // warns and guesses without it, and the guess is what makes an extension
+    // fail to sign.
+    //
+    // Committed rather than read from the shell: this config is evaluated on the
+    // EAS build servers, where a local `export APPLE_TEAM_ID=…` doesn't exist.
+    // A Team ID is not a secret (it ships inside every IPA), so there's nothing
+    // to protect by keeping it out of the repo. The env var still wins, for
+    // anyone building under a different team.
+    appleTeamId: process.env.APPLE_TEAM_ID || "KP2T42YA49",
+    entitlements: {
+      ...config.ios?.entitlements,
+      "com.apple.developer.applesignin": ["Default"],
+      "com.apple.security.application-groups": Array.from(
+        new Set([
+          ...(config.ios?.entitlements?.["com.apple.security.application-groups"] ?? []),
+          shareAppGroup,
+        ]),
+      ),
+    },
   };
 
   config.android = {
     ...config.android,
     googleServicesFile: "./google-services.json",
+    intentFilters: [
+      ...(config.android?.intentFilters ?? []),
+      // Makes PlanNplate a share target. `text/plain` ONLY: it's what Chrome,
+      // Instagram, TikTok, YouTube and Pinterest actually send, and registering
+      // anything broader (`*/*`, image, video) would put PlanNplate in share
+      // sheets for content the importer has no way to read.
+      //
+      // MainActivity is already `launchMode="singleTask"` and `exported="true"`,
+      // so a share reaches `onNewIntent` on a running app and launches a cold
+      // one — both handled in modules/plannplate-share-target.
+      {
+        action: "SEND",
+        category: ["DEFAULT"],
+        data: [{ mimeType: "text/plain" }],
+      },
+    ],
   };
 
   // Firebase is a deliberately narrow Google Ads measurement bridge. The
@@ -94,6 +137,17 @@ module.exports = function ({ config }) {
         "userTrackingPermission": "This identifier will be used to deliver personalized ads to you."
       }
     ]);
+  }
+
+  // 3. iOS Share Extension target.
+  // `/ios` is gitignored (Continuous Native Generation), so the Xcode target
+  // can't be committed — this plugin generates it at prebuild from
+  // targets/share/expo-target.config.js. The activation rule lives in the
+  // committed targets/share/Info.plist, which the plugin leaves alone; its own
+  // default for a share target is `TRUEPREDICATE`, which would put PlanNplate in
+  // the share sheet for every file type on the device.
+  if (!hasPlugin("@bacons/apple-targets")) {
+    config.plugins.push("@bacons/apple-targets");
   }
 
   // 2. Meta SDK configuration plugin

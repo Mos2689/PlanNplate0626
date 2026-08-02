@@ -35,6 +35,8 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import { fetch } from 'expo/fetch';
 import { useMealPlanStore, type Recipe, type Ingredient } from '@/lib/store';
+import { classifyFailure, makeFailure, reportFailure, validationFailure, type Failure, swallow } from '@/lib/failure';
+import { InlineFailure } from '@/components/failure';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { cn } from '@/lib/cn';
 import { isOpenAIConfigured, generateRecipeImage } from '@/lib/openai';
@@ -149,8 +151,10 @@ Only output valid JSON, no markdown or explanations. If information is missing, 
     temperature: 0.3,
   });
 
-  if (result.error) {
-    throw new Error(result.error);
+  if (result.failure) {
+    // Throw the classified failure so the screen can present it with real
+    // recovery copy instead of re-wrapping a string.
+    throw result.failure;
   }
 
   const content = result.data?.choices?.[0]?.message?.content || '';
@@ -242,8 +246,10 @@ Combine information from all images to create a complete recipe. Only output val
     temperature: 0.3,
   });
 
-  if (result.error) {
-    throw new Error(result.error);
+  if (result.failure) {
+    // Throw the classified failure so the screen can present it with real
+    // recovery copy instead of re-wrapping a string.
+    throw result.failure;
   }
 
   const content = result.data?.choices?.[0]?.message?.content || '';
@@ -295,9 +301,9 @@ async function transcribeAudio(audioUri: string): Promise<string> {
 
     console.log('[AddRecipe] Transcription result:', JSON.stringify(result).substring(0, 300));
 
-    if (result.error) {
-      console.error('[AddRecipe] Transcription API error:', result.error);
-      throw new Error(result.error);
+    if (result.failure) {
+      console.error('[AddRecipe] Transcription failed:', result.failure.category);
+      throw result.failure;
     }
 
     console.log('[AddRecipe] Audio transcribed successfully');
@@ -342,8 +348,10 @@ The spoken text may mix languages or use non-English words/script (e.g. code-swi
     temperature: 0.3,
   });
 
-  if (result.error) {
-    throw new Error(result.error);
+  if (result.failure) {
+    // Throw the classified failure so the screen can present it with real
+    // recovery copy instead of re-wrapping a string.
+    throw result.failure;
   }
 
   const responseContent = result.data?.choices?.[0]?.message?.content || '';
@@ -408,7 +416,7 @@ export default function AddRecipeScreen() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadText, setUploadText] = useState('');
   const [isUploadProcessing, setIsUploadProcessing] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<Failure | null>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]); // Multiple images (up to 5)
   const [wasAutoFilled, setWasAutoFilled] = useState(false); // Track if form was auto-filled via voice/upload
 
@@ -563,7 +571,7 @@ export default function AddRecipeScreen() {
       setVoiceError(null);
       pulseScale.value = 1;
     } catch (error) {
-      console.error('Failed to cancel recording:', error);
+      swallow(error, 'recording teardown is cleanup-only', 'voice');
     }
   }, [pulseScale]);
 
@@ -598,7 +606,7 @@ export default function AddRecipeScreen() {
   // Handle text upload processing
   const handleProcessText = useCallback(async () => {
     if (!uploadText.trim()) {
-      setUploadError('Please paste some recipe text');
+      setUploadError(validationFailure('Nothing to read yet', 'Paste the recipe text and we’ll take it from there.', 'recipe-import'));
       return;
     }
 
@@ -617,7 +625,7 @@ export default function AddRecipeScreen() {
       setUploadText('');
     } catch (error) {
       console.error('Failed to process text:', error);
-      setUploadError('Failed to parse recipe from text. Please try again.');
+      setUploadError(makeFailure('ai-parsing', { feature: 'recipe-import' }));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsUploadProcessing(false);
@@ -630,7 +638,7 @@ export default function AddRecipeScreen() {
       setUploadError(null);
 
       if (uploadedImages.length >= 5) {
-        setUploadError('Maximum 5 images allowed');
+        setUploadError(validationFailure('That’s the limit', 'You can add up to 5 photos at a time.', 'photo'));
         return;
       }
 
@@ -652,7 +660,7 @@ export default function AddRecipeScreen() {
       setUploadedImages(prev => [...prev, ...newImages].slice(0, 5));
     } catch (error) {
       console.error('Failed to select images:', error);
-      setUploadError('Failed to select images. Please try again.');
+      setUploadError(makeFailure('image-processing', { feature: 'photo' }));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   }, [uploadedImages.length]);
@@ -663,13 +671,13 @@ export default function AddRecipeScreen() {
       setUploadError(null);
 
       if (uploadedImages.length >= 5) {
-        setUploadError('Maximum 5 images allowed');
+        setUploadError(validationFailure('That’s the limit', 'You can add up to 5 photos at a time.', 'photo'));
         return;
       }
 
       const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
       if (!permissionResult.granted) {
-        setUploadError('Camera permission is required');
+        setUploadError(makeFailure('permission-denied', { feature: 'photo' }));
         return;
       }
 
@@ -687,7 +695,7 @@ export default function AddRecipeScreen() {
       setUploadedImages(prev => [...prev, result.assets[0].uri].slice(0, 5));
     } catch (error) {
       console.error('Failed to capture image:', error);
-      setUploadError('Failed to capture image. Please try again.');
+      setUploadError(makeFailure('image-processing', { feature: 'photo' }));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   }, [uploadedImages.length]);
@@ -723,8 +731,10 @@ export default function AddRecipeScreen() {
       setUploadText('');
       setUploadedImages([]);
     } catch (error: any) {
-      console.error('Failed to process images:', error);
-      setUploadError(error.message || 'Failed to parse recipe from images. Please try again.');
+      // Was: `error.message || '…'` — the raw exception won whenever it existed.
+      const failure = classifyFailure(error, { feature: 'recipe-import' });
+      reportFailure(failure);
+      setUploadError(failure);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsUploadProcessing(false);
@@ -893,7 +903,7 @@ export default function AddRecipeScreen() {
         const ingredientsForImage = validIngredients.map(ing => ({ name: ing.name, category: ing.category }));
         imageUrl = await generateRecipeImage(name.trim(), description.trim() || `A delicious ${name.trim()} recipe`, ingredientsForImage);
       } catch (error) {
-        console.log('[AddRecipe] Failed to fetch Pexels image, using fallback:', error);
+        swallow(error, 'photo lookup is best-effort; a fallback image is used', 'recipe-image');
       }
     }
 
@@ -2275,48 +2285,10 @@ export default function AddRecipeScreen() {
                       </Pressable>
                     </View>
 
-                    {/* Error banner */}
+                    {/* Failure banner — wording from the catalogue. */}
                     {uploadError && (
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 10,
-                          padding: 12,
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          borderColor: colors.hair,
-                          backgroundColor: designTokens.colors.cream,
-                          marginBottom: 16,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 8,
-                            backgroundColor: 'rgba(228,109,70,0.12)',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <MicOff
-                            size={14}
-                            color={designTokens.colors.olive}
-                            strokeWidth={1.8}
-                          />
-                        </View>
-                        <Text
-                          style={{
-                            flex: 1,
-                            fontFamily: designTokens.font.regular,
-                            fontSize: 13,
-                            color: colors.ink,
-                            lineHeight: 18,
-                          }}
-                        >
-                          {uploadError}
-                        </Text>
+                      <View style={{ marginBottom: 16 }}>
+                        <InlineFailure failure={uploadError} />
                       </View>
                     )}
 

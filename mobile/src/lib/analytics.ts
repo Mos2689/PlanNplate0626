@@ -14,9 +14,31 @@ export type KnownAnalyticsEvent =
   // Lifecycle
   | 'app_installed'
   | 'app_opened'
-  // Onboarding
+  // Onboarding — funnel, dish capture and taste picks. Properties are built
+  // exclusively by lib/onboarding-analytics.ts, which accepts counts and a
+  // derived profile and never a dish name.
+  | 'onboarding_started'
+  | 'onboarding_welcome_viewed'
+  | 'onboarding_welcome_action'
   | 'onboarding_step_viewed'
+  | 'onboarding_step_completed'
+  | 'onboarding_step_back'
+  | 'onboarding_abandoned'
   | 'onboarding_completed'
+  | 'onboarding_dish_capture_started'
+  | 'onboarding_voice_permission_denied'
+  | 'onboarding_voice_recording_stopped'
+  | 'onboarding_voice_transcribe_succeeded'
+  | 'onboarding_voice_transcribe_failed'
+  | 'onboarding_dish_added'
+  | 'onboarding_dish_removed'
+  | 'onboarding_dish_renamed'
+  | 'onboarding_taste_grid_viewed'
+  | 'onboarding_taste_pick_toggled'
+  // Persona — collected in EditProfileModal, which is the only surface that
+  // gathers diet / allergies / cuisine / skill since the old onboarding steps
+  // were removed.
+  | 'persona_updated'
   // Auth
   | 'auth_signup'
   | 'auth_login'
@@ -33,6 +55,18 @@ export type KnownAnalyticsEvent =
   | 'meal_plan_created'
   | 'recipe_added_to_plan'
   | 'grocery_list_generated'
+  // Share to PlanNplate — properties are built exclusively by
+  // lib/share/analytics.ts, which accepts a hostname and never a full URL.
+  | 'recipe_share_target_opened'
+  | 'recipe_share_payload_received'
+  | 'recipe_share_url_detected'
+  | 'recipe_share_import_started'
+  | 'recipe_share_import_succeeded'
+  | 'recipe_share_import_failed'
+  | 'recipe_share_duplicate_detected'
+  | 'recipe_share_cancelled'
+  | 'recipe_share_auth_required'
+  | 'recipe_share_opened_in_app'
   // Generic UI
   | 'ui_button_tapped';
 

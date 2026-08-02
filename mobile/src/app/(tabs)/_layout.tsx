@@ -40,6 +40,12 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // PERF: freeze a tab's subtree while it's off-screen. Without this,
+        // every store update re-rendered all five tab screens even though four
+        // of them aren't visible — the meal plan, grocery and explore screens
+        // are large enough that this alone made tab switches feel heavy.
+        // State is preserved; the screen simply stops re-rendering until focused.
+        freezeOnBlur: true,
         tabBarActiveTintColor: activeColor,
         tabBarInactiveTintColor: inactiveColor,
         tabBarStyle: {
