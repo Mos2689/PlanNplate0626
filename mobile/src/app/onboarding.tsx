@@ -1040,8 +1040,9 @@ export default function OnboardingScreen() {
   const canProceed = useCallback(() => {
     switch (currentStep) {
       case 0:
-        // Step 1 — at least one dish named so we have something to profile.
-        return frequentCooks.length > 0;
+        // Step 1 — optional. Users who can't think of a dish can skip; step 2
+        // falls back to generic suggestions when nothing was named.
+        return true;
       case 1:
         return true; // step 2 suggestions are optional — never block completion
       default:
@@ -2365,9 +2366,9 @@ export default function OnboardingScreen() {
         <>
           <IdentityRibbon firstName={firstName} avatarUrl={avatarUrl} isDark={isDark} />
           <StepHeader
-            prefix="Tell us what you feel like "
-            italic="eating or usually cook."
-            subtitle="We will create the perfect recipe for you."
+            prefix="Name a few dishes "
+            italic="you cook often."
+            subtitle="Just the dish name, like Butter chicken or Greek salad."
             isDark={isDark}
             italicColor={designTokens.colors.brand}
           />
@@ -2521,7 +2522,11 @@ export default function OnboardingScreen() {
     ? firstName
       ? `Plan ${firstName}'s meals`
       : 'Plan my meals'
-    : 'Continue';
+    : // Step 1 is optional: until the user names a dish the button reads "Skip";
+      // once they've added one it becomes "Continue" and saves their picks.
+      currentStep === 0 && frequentCooks.length === 0
+      ? 'Skip'
+      : 'Continue';
 
   return (
     <View style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#FFFFFF' }}>

@@ -15,7 +15,7 @@
 // `parseDishNamesFromTranscript` come back ~1-3s later. `thinking` is the extra
 // phase that covers that wait — everything else maps 1:1 to the prototype.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, TextInput, StyleSheet } from 'react-native';
+import { View, Text, Pressable, TextInput, StyleSheet, Keyboard } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -30,6 +30,7 @@ import {
   Croissant,
   Keyboard as KeyboardIcon,
   Mic,
+  Pencil,
   Salad,
   Soup,
   UtensilsCrossed,
@@ -456,11 +457,12 @@ function DishChip({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 9,
-        paddingLeft: 15,
+        gap: 8,
+        width: '100%',
+        paddingLeft: 16,
         paddingRight: 10,
-        paddingVertical: 9,
-        borderRadius: 22,
+        paddingVertical: 11,
+        borderRadius: 16,
         borderWidth: 1,
         borderColor: editing ? designTokens.colors.brand : colors.chipHair,
         backgroundColor: colors.chip,
@@ -477,18 +479,38 @@ function DishChip({
           placeholder="Dish name"
           placeholderTextColor={colors.ink3}
           style={{
-            minWidth: 90,
+            flex: 1,
             fontFamily: designTokens.font.medium,
-            fontSize: 14,
+            fontSize: 15,
             color: colors.ink,
             padding: 0,
           }}
         />
       ) : (
-        <Pressable onPress={onStartEdit} accessibilityRole="button" accessibilityHint="Rename this dish">
-          <Text style={{ fontFamily: designTokens.font.medium, fontSize: 14, color: colors.ink }}>
-            {dish}
-          </Text>
+        <Text
+          numberOfLines={1}
+          style={{ flex: 1, fontFamily: designTokens.font.medium, fontSize: 15, color: colors.ink }}
+        >
+          {dish}
+        </Text>
+      )}
+      {/* Edit (pencil) — hidden while already editing this row. */}
+      {!editing && (
+        <Pressable
+          onPress={onStartEdit}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${dish}`}
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(84,100,69,0.10)',
+          }}
+        >
+          <Pencil size={14} color={designTokens.colors.brand} strokeWidth={2} />
         </Pressable>
       )}
       <Pressable
@@ -497,15 +519,15 @@ function DishChip({
         accessibilityRole="button"
         accessibilityLabel={`Remove ${dish}`}
         style={{
-          width: 19,
-          height: 19,
+          width: 30,
+          height: 30,
           borderRadius: 10,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: 'rgba(84,100,69,0.13)',
+          backgroundColor: 'rgba(84,100,69,0.10)',
         }}
       >
-        <X size={9} color={designTokens.colors.brand} strokeWidth={3} />
+        <X size={13} color={designTokens.colors.brand} strokeWidth={2.6} />
       </Pressable>
     </Animated.View>
   );
@@ -558,6 +580,8 @@ export function VoiceDishCapture({
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Consecutive failed voice attempts — after 2 we nudge the user to type instead.
+  const voiceFailCountRef = useRef(0);
   const after = useCallback((ms: number, fn: () => void) => {
     timersRef.current.push(setTimeout(fn, ms));
   }, []);
@@ -569,8 +593,12 @@ export function VoiceDishCapture({
   const atMax = dishes.length >= max;
   const listening = phase === 'listening';
   const settled = phase === 'done' && dishes.length > 0;
-  // `raised` collapses the page furniture; `compact` shrinks the mic stage.
-  const raised = phase !== 'idle';
+  // `raised` collapses the page furniture (header + the OR/TYPE IT section) only
+  // while the mic is actively in play. It must NOT stay collapsed in the resting
+  // `settled` state, otherwise the type-it input disappears after the first dish
+  // and taps fall through to the mic behind it — so the user can't add more by
+  // typing. `compact` still shrinks the mic stage once settled.
+  const raised = phase !== 'idle' && !settled;
   const compact = phase === 'thinking' || phase === 'landing' || settled;
 
   // ── Animation drivers ──────────────────────────────────────────────────────
@@ -605,7 +633,6 @@ export function VoiceDishCapture({
   // we leave height unset — pinning a guessed value would clip the content for
   // a frame on devices where it doesn't match.
   const [headH, setHeadH] = useState<number | null>(null);
-  const [altH, setAltH] = useState<number | null>(null);
 
   // Free-running clock for the waveform — the RN equivalent of the prototype's
   // requestAnimationFrame loop, kept on the UI thread.
@@ -744,11 +771,6 @@ export function VoiceDishCapture({
     opacity: headOp.value,
     transform: [{ translateY: interpolate(headP.value, [0, 1], [0, -18]) }],
   }));
-  const altStyle = useAnimatedStyle(() => ({
-    height: altH == null ? undefined : interpolate(altP.value, [0, 1], [altH, 0]),
-    opacity: altOp.value,
-    transform: [{ translateY: interpolate(altP.value, [0, 1], [0, 26]) }],
-  }));
   const stageStyle = useAnimatedStyle(() => ({ height: stageH.value }));
   const micStyle = useAnimatedStyle(() => ({
     width: micShell.value,
@@ -771,10 +793,6 @@ export function VoiceDishCapture({
   const statusLineStyle = useAnimatedStyle(() => ({ opacity: statusFade.value }));
   const thinkStyle = useAnimatedStyle(() => ({ opacity: thinkOp.value }));
   const transcriptStyle = useAnimatedStyle(() => ({ opacity: transcriptOp.value }));
-  const chipsStyle = useAnimatedStyle(() => ({
-    opacity: chipsOp.value,
-    transform: [{ translateY: chipsShift.value }],
-  }));
   const heroStyle = useAnimatedStyle(() => ({
     opacity: heroIn.value * (1 - heroOut.value),
     transform: [
@@ -787,9 +805,24 @@ export function VoiceDishCapture({
   // The recorder lifecycle below is carried over verbatim from onboarding.tsx —
   // each guard fixes a real failure (see the inline notes). Don't simplify it.
   const failVoice = useCallback(
-    (message: string) => {
+    // `countAsNotHeard` is true only when we recorded fine but couldn't make out
+    // a dish. Hard errors (mic/permission/transcribe/no-recording) don't count
+    // toward the "try typing instead" nudge.
+    (message: string, countAsNotHeard = false) => {
       clearTimers();
-      setVoiceError(message);
+      let displayMessage = message;
+      if (countAsNotHeard) {
+        // After 2 "not heard" attempts in a row, stop asking them to re-speak
+        // and open the type field with a clear nudge instead.
+        const failures = voiceFailCountRef.current + 1;
+        voiceFailCountRef.current = failures;
+        if (failures >= 2) {
+          displayMessage = "Still not catching it — try typing it instead.";
+          voiceFailCountRef.current = 0; // reset so the next run starts fresh
+          setTyping(true); // the type input autoFocuses when it mounts
+        }
+      }
+      setVoiceError(displayMessage);
       setTranscript('');
       setHero(null);
       setHeroLeaving(false);
@@ -801,6 +834,7 @@ export function VoiceDishCapture({
 
   const landDishes = useCallback(
     (names: string[], text: string) => {
+      voiceFailCountRef.current = 0; // a good capture clears the failure streak
       setTranscript(text);
       // The card should only promise what will actually fit — the parent caps
       // at `max`, so a 4-dish utterance with one slot left is just one dish.
@@ -848,7 +882,7 @@ export function VoiceDishCapture({
         // Empty, too short, or a Whisper silence-hallucination → "not heard".
         if (splitDishNames(text).length === 0) {
           trackVoiceTranscribeFailed('not_heard', Date.now() - startedAt);
-          failVoice("Didn't quite get that. Try again.");
+          failVoice("Didn't quite get that. Try again.", true);
           return;
         }
         // Whisper transcribes spoken lists without commas ("Butter Chicken
@@ -871,7 +905,7 @@ export function VoiceDishCapture({
         }
         if (names.length === 0) {
           trackVoiceTranscribeFailed('not_heard', Date.now() - startedAt);
-          failVoice("Didn't quite get that. Try again.");
+          failVoice("Didn't quite get that. Try again.", true);
           return;
         }
         trackVoiceTranscribeSucceeded(Date.now() - startedAt, names.length, splitSource);
@@ -994,6 +1028,12 @@ export function VoiceDishCapture({
     if (listening) {
       stopVoice();
     } else if (!atMax) {
+      // Switching to voice: drop any half-typed dish and dismiss the keyboard so
+      // its on-screen dictation can't type into the field. Voice must capture
+      // ONLY what's spoken, not the leftover typed text.
+      setTyping(false);
+      setTypeDraft('');
+      Keyboard.dismiss();
       startVoice();
     }
   }, [atMax, listening, phase, startVoice, stopVoice]);
@@ -1065,13 +1105,16 @@ export function VoiceDishCapture({
         <View onLayout={(e) => setHeadH(e.nativeEvent.layout.height)}>{header}</View>
       </Animated.View>
 
-      {/* ── Stage: mic, status, transcript, chips ──────────────────────────── */}
+      {/* ── Stage: mic, status, transcript, chips ──────────────────────────────
+          Fills & centres while capturing, but once dishes are settled it hugs
+          its content so the OR / TYPE IT card below it stays on screen (lets the
+          user keep adding manually alongside the list). ── */}
       <View
         style={{
-          flex: 1,
+          flex: settled ? undefined : 1,
           minHeight: 0,
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: settled ? 'flex-start' : 'center',
           paddingVertical: 8,
         }}
       >
@@ -1303,34 +1346,6 @@ export function VoiceDishCapture({
           </View>
         </Animated.View>
 
-        {/* Captured dishes */}
-        <Animated.View
-          style={[chipsStyle, { width: '100%', paddingHorizontal: 26, marginTop: 6 }]}
-          pointerEvents={settled ? 'auto' : 'none'}
-        >
-          <View
-            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9, justifyContent: 'center' }}
-          >
-            {dishes.map((dish, i) => (
-              <DishChip
-                key={dish}
-                dish={dish}
-                index={i}
-                colors={colors}
-                editing={editingDish === dish}
-                draft={editDraft}
-                onStartEdit={() => {
-                  setEditingDish(dish);
-                  setEditDraft(dish);
-                }}
-                onChangeDraft={setEditDraft}
-                onCommitEdit={commitEdit}
-                onRemove={() => removeDish(dish)}
-              />
-            ))}
-          </View>
-        </Animated.View>
-
         {/* Hero confirmation card — overlays the stage, then clears */}
         {hero && (
           <View
@@ -1400,12 +1415,11 @@ export function VoiceDishCapture({
         )}
       </View>
 
-      {/* ── OR / TYPE IT / hint — collapses while the mic is in play ───────── */}
-      <Animated.View
-        style={[altStyle, { overflow: 'hidden', paddingHorizontal: 24 }]}
-        pointerEvents={raised ? 'none' : 'auto'}
-      >
-        <View onLayout={(e) => setAltH(e.nativeEvent.layout.height)}>
+      {/* ── OR / TYPE IT / hint — shown whenever the mic isn't actively in play
+          (idle or settled). Plain conditional render so it can never get stuck
+          collapsed by the height animation. ── */}
+      {!raised && (
+        <View style={{ paddingHorizontal: 24 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 }}>
             <View style={{ flex: 1, height: 1, backgroundColor: colors.hair }} />
             <Text
@@ -1560,7 +1574,31 @@ export function VoiceDishCapture({
             </View>
           </View>
         </View>
-      </Animated.View>
+      )}
+
+      {/* Captured dishes — the growing list sits BELOW the OR/TYPE IT card so
+          the mic + manual-add options stay together at the top. */}
+      {dishes.length > 0 && (
+        <View style={{ width: '100%', paddingHorizontal: 24, marginTop: 6, gap: 8 }}>
+          {dishes.map((dish, i) => (
+            <DishChip
+              key={dish}
+              dish={dish}
+              index={i}
+              colors={colors}
+              editing={editingDish === dish}
+              draft={editDraft}
+              onStartEdit={() => {
+                setEditingDish(dish);
+                setEditDraft(dish);
+              }}
+              onChangeDraft={setEditDraft}
+              onCommitEdit={commitEdit}
+              onRemove={() => removeDish(dish)}
+            />
+          ))}
+        </View>
+      )}
     </KeyboardAwareScrollView>
   );
 }

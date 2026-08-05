@@ -357,6 +357,7 @@ export default function RecipesScreen() {
   const recipes = useMealPlanStore((s) => s.recipes);
   const toggleSaveRecipe = useMealPlanStore((s) => s.toggleSaveRecipe);
   const deleteRecipe = useMealPlanStore((s) => s.deleteRecipe);
+  const addRecipesToGroceryList = useMealPlanStore((s) => s.addRecipesToGroceryList);
   // Persisted "keep all" dismissals — keyed by group MEMBER ids so the same set
   // isn't re-flagged next session, but a newly-added similar recipe is.
   const dismissedDuplicateRecipeGroups = useMealPlanStore((s) => s.dismissedDuplicateRecipeGroups);
@@ -382,6 +383,8 @@ export default function RecipesScreen() {
   // ── Local state — identical to inventory ──────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  // Brief confirmation toast (e.g. after quick-adding a recipe to grocery).
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -521,7 +524,8 @@ export default function RecipesScreen() {
         (r) =>
           r.name.toLowerCase().includes(query) ||
           r.description.toLowerCase().includes(query) ||
-          r.tags.some((t) => t.toLowerCase().includes(query)),
+          r.tags.some((t) => t.toLowerCase().includes(query)) ||
+          r.ingredients.some((ing) => ing.name.toLowerCase().includes(query)),
       );
     }
 
@@ -686,6 +690,25 @@ export default function RecipesScreen() {
     [router],
   );
 
+  // Quick-add a recipe's ingredients straight to the grocery list (direct
+  // action — no slot/date to pick — so we confirm with a toast).
+  const handleAddToGrocery = useCallback(
+    (recipeId: string) => {
+      addRecipesToGroceryList([recipeId]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const name = recipes.find((r) => r.id === recipeId)?.name;
+      setToastMsg(name ? `Added ${name} to grocery` : 'Added to grocery');
+    },
+    [addRecipesToGroceryList, recipes],
+  );
+
+  // Auto-dismiss the toast after a short beat.
+  useEffect(() => {
+    if (!toastMsg) return;
+    const t = setTimeout(() => setToastMsg(null), 2400);
+    return () => clearTimeout(t);
+  }, [toastMsg]);
+
   // Grid cell renderer. Hoisted out of the JSX (and off inline per-item arrows)
   // so RecipeGridCard's memo actually holds: the four handlers below are all
   // useCallback-stable, so every prop the card receives keeps its identity
@@ -697,12 +720,13 @@ export default function RecipesScreen() {
         onPress={handleRecipePress}
         onToggleSave={handleToggleSave}
         onAddToPlan={handleAddToPlan}
+        onAddToGrocery={handleAddToGrocery}
         onLongPress={handleOpenSaveSheet}
         isDark={isDark}
         index={index}
       />
     ),
-    [handleRecipePress, handleToggleSave, handleAddToPlan, handleOpenSaveSheet, isDark],
+    [handleRecipePress, handleToggleSave, handleAddToPlan, handleAddToGrocery, handleOpenSaveSheet, isDark],
   );
 
   // Sticky compact header — fades in past the title block.
@@ -954,38 +978,65 @@ export default function RecipesScreen() {
                           color: isDark ? '#a9a498' : colors.ink2,
                         }}
                       >
-                        Add them to your meal plan, or head to Plan My Meals for personalised
-                        suggestions.
+                        Add them to your meal plan or build your grocery list.
                       </Text>
-                      <Pressable
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          router.push('/plan-meals');
-                        }}
-                        style={{
-                          alignSelf: 'flex-start',
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 5,
-                          marginTop: 11,
-                          paddingHorizontal: 13,
-                          paddingVertical: 7,
-                          borderRadius: 999,
-                          backgroundColor: designTokens.colors.brand,
-                        }}
-                      >
-                        <Text
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 11 }}>
+                        <Pressable
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            router.push('/(tabs)');
+                          }}
                           style={{
-                            fontFamily: designTokens.font.medium,
-                            fontSize: 12.5,
-                            color: designTokens.colors.cream,
-                            letterSpacing: -0.05,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 5,
+                            paddingHorizontal: 13,
+                            paddingVertical: 7,
+                            borderRadius: 999,
+                            backgroundColor: designTokens.colors.brand,
                           }}
                         >
-                          Plan My Meals
-                        </Text>
-                        <ArrowRight size={14} color={designTokens.colors.cream} strokeWidth={2} />
-                      </Pressable>
+                          <Text
+                            style={{
+                              fontFamily: designTokens.font.medium,
+                              fontSize: 12.5,
+                              color: designTokens.colors.cream,
+                              letterSpacing: -0.05,
+                            }}
+                          >
+                            Add to meal plan
+                          </Text>
+                          <ArrowRight size={14} color={designTokens.colors.cream} strokeWidth={2} />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            router.push('/(tabs)/grocery');
+                          }}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 5,
+                            paddingHorizontal: 13,
+                            paddingVertical: 7,
+                            borderRadius: 999,
+                            backgroundColor: 'transparent',
+                            borderWidth: 1,
+                            borderColor: isDark ? 'rgba(139,155,120,0.42)' : 'rgba(84,100,69,0.35)',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontFamily: designTokens.font.medium,
+                              fontSize: 12.5,
+                              color: isDark ? '#cdd6c0' : designTokens.colors.brand,
+                              letterSpacing: -0.05,
+                            }}
+                          >
+                            Add to grocery
+                          </Text>
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
                 </Animated.View>
@@ -1947,6 +1998,40 @@ export default function RecipesScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Brief bottom toast (e.g. "Added to grocery") */}
+      {toastMsg && (
+        <Animated.View
+          entering={FadeInDown.springify()}
+          pointerEvents="none"
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 96, alignItems: 'center' }}
+        >
+          <View
+            style={{
+              backgroundColor: '#201C17',
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderRadius: 999,
+              shadowColor: '#000',
+              shadowOpacity: 0.2,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 4,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: designTokens.font.medium,
+                fontSize: 13,
+                color: '#fff',
+                letterSpacing: -0.1,
+              }}
+            >
+              {toastMsg}
+            </Text>
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 }

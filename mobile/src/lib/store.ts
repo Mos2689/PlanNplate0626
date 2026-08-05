@@ -518,6 +518,10 @@ export interface PendingGenerationState {
 export interface GroceryRecipeSource {
   recipeId: string;
   servingMultiplier: number;
+  // Where this source came from, so a "refresh" can re-read the meal plan for
+  // 'meal-plan' sources while keeping ad-hoc 'recipe' picks. Optional for
+  // backward-compat (restored/hydrated sources default to 'recipe').
+  origin?: 'meal-plan' | 'recipe';
 }
 
 export interface GroceryItem {
@@ -836,7 +840,9 @@ interface MealPlanStore {
   updateCurrentSavedListItem: (itemId: string, updates: Partial<GroceryItem>) => void;
   clearGroceryList: () => void;
   clearCheckedItems: () => void;
-  saveGroceryList: (name: string) => void;
+  // Save the current list as a shopping list WITHOUT clearing the live grocery
+  // (the user stays on their working list). Returns false if the 4-list cap is hit.
+  saveGroceryList: (name: string) => boolean;
   saveAndClearCheckedItems: (name: string) => boolean;
   updateSavedGroceryList: (listId: string, name: string) => boolean;
   deleteSavedGroceryList: (listId: string) => void;
@@ -3511,6 +3517,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const groceryRecipeSources: GroceryRecipeSource[] = entries.map((e) => ({
           recipeId: e.recipeId,
           servingMultiplier: e.servingMultiplier,
+          origin: 'meal-plan' as const,
         }));
 
         const groceryItems = Array.from(ingredientMap.values());
@@ -3636,7 +3643,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const merged = Array.from(buildGroceryItemMap(entries, groceryItems).values());
         const nextSources: GroceryRecipeSource[] = [
           ...groceryRecipeSources,
-          ...entries.map((e) => ({ recipeId: e.recipeId, servingMultiplier: e.servingMultiplier })),
+          ...entries.map((e) => ({
+            recipeId: e.recipeId,
+            servingMultiplier: e.servingMultiplier,
+            origin: 'recipe' as const,
+          })),
         ];
         set({
           groceryItems: merged,
@@ -4065,9 +4076,18 @@ export const useMealPlanStore = create<MealPlanStore>()(
       },
 
       clearGroceryList: () => {
-        set({ groceryItems: [], groceryRecipeSources: [] });
+        // Close/discard the entire live list — meal items, recipe sources,
+        // manually-added items and the date range — so the Grocery tab returns
+        // to its build/empty state.
+        set({
+          groceryItems: [],
+          groceryRecipeSources: [],
+          customGroceryItems: [],
+          groceryStartDate: null,
+          groceryEndDate: null,
+        });
 
-        // Sync to database
+        // Sync to database (clears ALL of the user's grocery rows)
         const userId = getCurrentUserId();
         if (userId) {
           db.clearUserGroceryItems(userId);
@@ -4090,6 +4110,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
       saveGroceryList: (name) => {
         const state = get();
 
+        // Check if we're at max capacity (4 lists)
+        if (state.savedGroceryLists.length >= 4) {
+          console.warn('[STORE] Maximum of 4 saved grocery lists reached');
+          return false;
+        }
+
         // Combine meal items and custom items, remove checked items
         const uncheckedMealItems = state.groceryItems.filter(item => !item.isChecked);
         const uncheckedCustomItems = state.customGroceryItems.filter(item => !item.isChecked);
@@ -4099,12 +4125,6 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const allItems = [...uncheckedMealItems, ...uncheckedCustomItems];
         const combinedItems = allItems.map(item => ({ ...item, isChecked: false }));
 
-        // Check if we're at max capacity (4 lists)
-        if (state.savedGroceryLists.length >= 4) {
-          console.warn('[STORE] Maximum of 4 saved grocery lists reached');
-          return;
-        }
-
         const newList: SavedGroceryList = {
           id: uuidv4(), // Use proper UUID for database compatibility
           name,
@@ -4112,6 +4132,8 @@ export const useMealPlanStore = create<MealPlanStore>()(
           createdAt: new Date().toISOString(),
         };
 
+        // NOTE: intentionally does NOT clear the live grocery list — the user
+        // keeps their working list and just banks a copy as a shopping list.
         set((state) => ({
           savedGroceryLists: [...state.savedGroceryLists, newList],
         }));
@@ -4120,8 +4142,9 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const userId = getCurrentUserId();
         if (userId) {
           db.saveSavedGroceryList(userId, newList);
-          console.log('[STORE] Saved grocery list:', newList.name);
+          console.log('[STORE] Saved grocery list (kept live list):', newList.name);
         }
+        return true;
       },
 
       saveAndClearCheckedItems: (name: string) => {

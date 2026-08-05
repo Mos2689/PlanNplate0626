@@ -16,7 +16,7 @@ import { DishImage } from '@/components/DishImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Heart, Plus, Camera } from 'lucide-react-native';
+import { Heart, Camera, ShoppingBasket, CalendarHeart } from 'lucide-react-native';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
 import { isDefaultRecipeImage } from '@/lib/recipe-image';
 import { inspiredBlurhashFor } from '@/lib/inspired-adapters';
@@ -35,6 +35,8 @@ export interface RecipeGridCardProps {
   onToggleSave: (recipeId: string) => void;
   /** Quick-add → opens the add-to-meal-plan picker without opening the recipe. */
   onAddToPlan: (recipeId: string) => void;
+  /** Quick-add → adds this recipe's ingredients straight to the grocery list. */
+  onAddToGrocery: (recipeId: string) => void;
   /** Long-press → "Save to collection" sheet. */
   onLongPress?: (recipe: Recipe) => void;
   isDark: boolean;
@@ -46,6 +48,7 @@ function RecipeGridCardImpl({
   onPress,
   onToggleSave,
   onAddToPlan,
+  onAddToGrocery,
   onLongPress,
   isDark,
   index,
@@ -64,6 +67,10 @@ function RecipeGridCardImpl({
   const handleAddToPlan = useCallback(
     () => onAddToPlan(recipe.id),
     [onAddToPlan, recipe.id],
+  );
+  const handleAddToGrocery = useCallback(
+    () => onAddToGrocery(recipe.id),
+    [onAddToGrocery, recipe.id],
   );
   const handleSave = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -156,31 +163,62 @@ function RecipeGridCardImpl({
               strokeWidth={2}
             />
           </Pressable>
-          {/* Quick add to meal plan — skips opening the recipe first. */}
-          <Pressable
-            onPress={handleAddToPlan}
-            hitSlop={8}
+          {/* Quick-add row (bottom-right): add to grocery + add to meal plan. */}
+          <View
             style={{
               position: 'absolute',
               right: 8,
               bottom: 8,
-              width: 30,
-              height: 30,
-              borderRadius: 15,
-              backgroundColor: designTokens.colors.brand,
+              flexDirection: 'row',
               alignItems: 'center',
-              justifyContent: 'center',
-              shadowColor: '#000',
-              shadowOpacity: 0.25,
-              shadowRadius: 5,
-              shadowOffset: { width: 0, height: 2 },
-              elevation: 3,
+              gap: 8,
             }}
           >
-            <Plus size={17} color="#FFFFFF" strokeWidth={2.4} />
-          </Pressable>
-          {/* Right inset keeps long titles clear of the quick-add button. */}
-          <View style={{ position: 'absolute', left: 10, right: 44, bottom: 10 }}>
+            {/* Add this recipe's ingredients to the grocery list. */}
+            <Pressable
+              onPress={handleAddToGrocery}
+              hitSlop={8}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 15,
+                backgroundColor: designTokens.colors.olive,
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#000',
+                shadowOpacity: 0.25,
+                shadowRadius: 5,
+                shadowOffset: { width: 0, height: 2 },
+                elevation: 3,
+              }}
+              accessibilityLabel={`Add ${recipe.name} to grocery list`}
+            >
+              <ShoppingBasket size={16} color="#FFFFFF" strokeWidth={2.2} />
+            </Pressable>
+            {/* Quick add to meal plan — skips opening the recipe first. */}
+            <Pressable
+              onPress={handleAddToPlan}
+              hitSlop={8}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 15,
+                backgroundColor: designTokens.colors.brand,
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#000',
+                shadowOpacity: 0.25,
+                shadowRadius: 5,
+                shadowOffset: { width: 0, height: 2 },
+                elevation: 3,
+              }}
+              accessibilityLabel={`Add ${recipe.name} to meal plan`}
+            >
+              <CalendarHeart size={16} color="#FFFFFF" strokeWidth={2} />
+            </Pressable>
+          </View>
+          {/* Right inset keeps long titles clear of the two quick-add buttons. */}
+          <View style={{ position: 'absolute', left: 10, right: 84, bottom: 10 }}>
             <Text
               numberOfLines={1}
               style={{

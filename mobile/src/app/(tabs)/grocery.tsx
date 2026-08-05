@@ -1653,7 +1653,7 @@ export default function GroceryScreen() {
   // AUTH-FIRST: users create an account before onboarding, so the old
   // anonymous-guest signup gate for grocery builds has been removed.
   const saveGroceryList = useMealPlanStore((s) => s.saveGroceryList);
-  const saveAndClearCheckedItems = useMealPlanStore((s) => s.saveAndClearCheckedItems);
+  const clearGroceryList = useMealPlanStore((s) => s.clearGroceryList);
   const updateSavedGroceryList = useMealPlanStore((s) => s.updateSavedGroceryList);
   const deleteSavedGroceryList = useMealPlanStore((s) => s.deleteSavedGroceryList);
   const loadSavedGroceryList = useMealPlanStore((s) => s.loadSavedGroceryList);
@@ -1678,6 +1678,9 @@ export default function GroceryScreen() {
   // Manual). The chooser is the persistent entry point once a list exists.
   const [showRecipePicker, setShowRecipePicker] = useState(false);
   const [showSourceChooser, setShowSourceChooser] = useState(false);
+  // Refresh confirm sheet + a brief bottom toast (e.g. after saving a list).
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [showSavedListsModal, setShowSavedListsModal] = useState(false);
   const [showSaveListModal, setShowSaveListModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -1687,6 +1690,13 @@ export default function GroceryScreen() {
   // Visibility of the per-category "In basket" sub-section per the design's collapsible pattern.
   const [basketOpen, setBasketOpen] = useState<Record<string, boolean>>({});
   const colors = getThemeColors(isDark);
+
+  // Auto-dismiss the bottom toast after a short beat.
+  useEffect(() => {
+    if (!toastMsg) return;
+    const t = setTimeout(() => setToastMsg(null), 2400);
+    return () => clearTimeout(t);
+  }, [toastMsg]);
 
   // Shared "source card" used by both the empty-state and the "+" chooser sheet:
   // an icon disc, title + subtitle, and a chevron. `disabled` greys it and
@@ -2429,7 +2439,31 @@ export default function GroceryScreen() {
                   >
                     <X size={18} color={colors.ink} strokeWidth={1.7} />
                   </Pressable>
-                ) : (
+                ) : null}
+                {/* Close (live list only) — clears the current list and returns
+                    to the grocery build screen. Shown whenever a list exists. */}
+                {!isSavedListMode && hasAnyItems && (
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      setShowCloseConfirm(true);
+                    }}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.hair,
+                      backgroundColor: colors.bg,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    accessibilityLabel="Close grocery list"
+                  >
+                    <X size={18} color={colors.ink} strokeWidth={1.7} />
+                  </Pressable>
+                )}
+                {!isSavedListMode && (
                   /* Normal mode: Saved lists */
                   <Pressable
                     onPress={() => {
@@ -2724,7 +2758,117 @@ export default function GroceryScreen() {
 
       </SafeAreaView>
 
+      {/* Close confirm — clears the live list and returns to the build screen */}
+      {showCloseConfirm && (
+        <View
+          className="absolute inset-0 z-50"
+          style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}
+        >
+          <Pressable
+            onPress={() => setShowCloseConfirm(false)}
+            className="absolute inset-0 bg-black/50"
+          />
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 340,
+              backgroundColor: colors.bg,
+              borderRadius: 22,
+              padding: 22,
+              ...elevation.card,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: designTokens.font.semibold,
+                fontSize: 17,
+                color: colors.ink,
+                letterSpacing: -0.3,
+              }}
+            >
+              Close this grocery list?
+            </Text>
+            <Text
+              style={{
+                fontFamily: designTokens.font.regular,
+                fontSize: 14,
+                lineHeight: 20,
+                color: colors.ink2,
+                marginTop: 8,
+              }}
+            >
+              This clears the current list and takes you back to build a new one. Save it first if you want to keep it.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <Pressable
+                onPress={() => setShowCloseConfirm(false)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: colors.hair,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 14.5, color: colors.ink }}>
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setShowCloseConfirm(false);
+                  clearGroceryList();
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  backgroundColor: designTokens.colors.olive,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 14.5, color: '#fff' }}>
+                  Close list
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
 
+      {/* Brief bottom toast (save confirmation, list updated, …) */}
+      {toastMsg && (
+        <Animated.View
+          entering={FadeInDown.springify()}
+          pointerEvents="none"
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 96, alignItems: 'center' }}
+        >
+          <View
+            style={{
+              backgroundColor: '#201C17',
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderRadius: 999,
+              ...elevation.card,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: designTokens.font.medium,
+                fontSize: 13,
+                color: '#fff',
+                letterSpacing: -0.1,
+              }}
+            >
+              {toastMsg}
+            </Text>
+          </View>
+        </Animated.View>
+      )}
 
 
 
@@ -2862,20 +3006,14 @@ export default function GroceryScreen() {
         visible={showSaveListModal}
         onClose={() => setShowSaveListModal(false)}
         onSave={(name) => {
-          const success = saveAndClearCheckedItems(name);
+          // Save a copy as a shopping list but KEEP the live grocery list and
+          // stay on this page (no auto-switch into the saved list). The saved
+          // copy is reachable via the bookmark (Saved lists) button.
+          const success = saveGroceryList(name);
           if (success) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-            // Get the newly created list (it's the last one in the array)
-            const state = useMealPlanStore.getState();
-            const newList = state.savedGroceryLists[state.savedGroceryLists.length - 1];
-            if (newList) {
-              // Load the newly created list
-              loadSavedGroceryList(newList.id);
-            }
-
-            // Close the modal
             setShowSaveListModal(false);
+            setToastMsg(`Saved to “${name}”`);
           } else {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           }

@@ -12,8 +12,8 @@
 // terracotta accent, hairline borders, Geist + Instrument Serif.
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Keyboard, Dimensions, KeyboardAvoidingView, Platform, Modal, InteractionManager } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withSpring, interpolate, Extrapolation } from 'react-native-reanimated';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withSpring, interpolate, Extrapolation, useAnimatedRef } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import {
   Bookmark,
@@ -521,6 +521,7 @@ export default function CuratedMealPlanScreen() {
   const isDark = useColorScheme() === 'dark';
   const colors = getThemeColors(isDark);
   const { scrollY, scrollHandler } = useStickyHeaderScroll();
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
 
   const recipes = useMealPlanStore((s) => s.recipes);
   const mealSlots = useMealPlanStore((s) => s.mealSlots);
@@ -537,7 +538,11 @@ export default function CuratedMealPlanScreen() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const isSearchOpen = useSharedValue(0);
+  // React mirror of isSearchOpen (a shared value can't drive JSX conditionals):
+  // when true the search bar is pinned to the top and browse chrome collapses.
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
+  const insets = useSafeAreaInsets();
 
   // Reset paging whenever the effective filter changes.
   useEffect(() => {
@@ -612,7 +617,14 @@ export default function CuratedMealPlanScreen() {
   // groups: match ANY selected category (OR) AND ALL selected quick filters (AND).
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (q) return INSPIRED_RECIPES.filter((r) => r.name.toLowerCase().includes(q));
+    if (q)
+      // Match on recipe name OR any ingredient name, so searching "chicken"
+      // or "basil" surfaces recipes that use it, not just ones named for it.
+      return INSPIRED_RECIPES.filter(
+        (r) =>
+          r.name.toLowerCase().includes(q) ||
+          r.ingredients.some((ing) => ing.name.toLowerCase().includes(q)),
+      );
     const mealTypes = new Set(
       categories.map(categoryMealType).filter((mt): mt is string => !!mt),
     );
@@ -665,13 +677,17 @@ export default function CuratedMealPlanScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isSearchOpen.value === 1) {
       isSearchOpen.value = withSpring(0, { damping: 16, stiffness: 200 });
+      setSearchExpanded(false);
       setSearchQuery('');
       Keyboard.dismiss();
     } else {
       isSearchOpen.value = withSpring(1, { damping: 16, stiffness: 200 });
+      setSearchExpanded(true);
+      // Jump to the top so the results are visible under the pinned search bar.
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
       setTimeout(() => searchInputRef.current?.focus(), 100);
     }
-  }, [isSearchOpen]);
+  }, [isSearchOpen, scrollRef]);
 
   const screenWidth = Dimensions.get('window').width;
   const maxWidth = screenWidth - 40;
@@ -760,6 +776,7 @@ export default function CuratedMealPlanScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView style={{ flex: 1 }} edges={['top']}>
           <Animated.ScrollView
+            ref={scrollRef}
             onScroll={scrollHandler}
             scrollEventThrottle={16}
             onMomentumScrollEnd={(e) => {
@@ -768,13 +785,14 @@ export default function CuratedMealPlanScreen() {
                 setVisibleCount((c) => (c < filtered.length ? c + PAGE_SIZE : c));
               }
             }}
-            contentContainerStyle={{ paddingTop: 8, paddingBottom: 120 }}
+            contentContainerStyle={{ paddingTop: searchExpanded ? 70 : 8, paddingBottom: 120 }}
             showsVerticalScrollIndicator={false}
           >
             {/* Get Inspired is a top-level tab — no back button. */}
 
-            {/* ── Header: title block (left) + vertical filter (right) ── */}
-            {/* paddingTop 16 + scroll paddingTop 8 = 24 from top, matching the other tabs. */}
+            {/* ── Header: title block. Hidden while the search bar is pinned to
+                the top so the two don't overlap. ── */}
+            {!searchExpanded && (
             <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' }}>
                 <Text
@@ -814,8 +832,10 @@ export default function CuratedMealPlanScreen() {
                 Save what you love. Add it to your plan when you&apos;re ready.
               </Text>
             </View>
+            )}
 
-            {/* ── Trending now (personalised, day-rotating top-10) ── */}
+            {/* ── Trending now — hidden while searching so results surface first ── */}
+            {!searchExpanded && (
             <View style={{ marginTop: 22 }}>
               <SectionHeader title="Trending now" colors={colors} />
               <ScrollView
@@ -829,8 +849,10 @@ export default function CuratedMealPlanScreen() {
                 ))}
               </ScrollView>
             </View>
+            )}
 
-            {/* ── Find what you need (quick filters) ── */}
+            {/* ── Find what you need (quick filters) — hidden while searching ── */}
+            {!searchExpanded && (
             <View style={{ marginTop: 26 }}>
               <SectionHeader title="Find what you need" colors={colors} />
               <View style={{ paddingHorizontal: 20, gap: 12 }}>
@@ -872,8 +894,10 @@ export default function CuratedMealPlanScreen() {
                 </View>
               </View>
             </View>
+            )}
 
-            {/* ── Browse by category (meal type) ── */}
+            {/* ── Browse by category (meal type) — hidden while searching ── */}
+            {!searchExpanded && (
             <View style={{ marginTop: 26 }}>
               <SectionHeader
                 title="Browse by category"
@@ -899,6 +923,7 @@ export default function CuratedMealPlanScreen() {
                 ))}
               </ScrollView>
             </View>
+            )}
 
             {/* ── All recipes (full library, filtered by the selections above) ── */}
             <View
@@ -1042,15 +1067,19 @@ export default function CuratedMealPlanScreen() {
             </View>
           )}
 
-          {/* ── Floating Search Bar ── */}
+          {/* ── Search bar — a floating FAB at the bottom when closed; pinned to
+              the top (full width) once opened so it doesn't drift to the centre
+              when the keyboard appears. ── */}
           <Animated.View
             pointerEvents="box-none"
             style={{
               position: 'absolute',
+              left: 20,
               right: 20,
-              bottom: savedInspired.length > 0 ? 80 : 24,
-              alignItems: 'flex-end',
-              zIndex: 10,
+              top: searchExpanded ? insets.top + 8 : undefined,
+              bottom: searchExpanded ? undefined : savedInspired.length > 0 ? 80 : 24,
+              alignItems: searchExpanded ? 'stretch' : 'flex-end',
+              zIndex: 20,
             }}
           >
             <Animated.View
