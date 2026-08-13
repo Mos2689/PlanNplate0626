@@ -34,23 +34,28 @@ create index if not exists meal_plan_ratings_plan_idx
 
 alter table public.meal_plan_ratings enable row level security;
 
+drop policy if exists "Users can read their own meal_plan_ratings" on public.meal_plan_ratings;
 create policy "Users can read their own meal_plan_ratings"
   on public.meal_plan_ratings
   for select
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can insert their own meal_plan_ratings" on public.meal_plan_ratings;
 create policy "Users can insert their own meal_plan_ratings"
   on public.meal_plan_ratings
   for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can update their own meal_plan_ratings" on public.meal_plan_ratings;
 create policy "Users can update their own meal_plan_ratings"
   on public.meal_plan_ratings
   for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can delete their own meal_plan_ratings" on public.meal_plan_ratings;
 create policy "Users can delete their own meal_plan_ratings"
   on public.meal_plan_ratings
   for delete
   using (auth.uid() = user_id);
+

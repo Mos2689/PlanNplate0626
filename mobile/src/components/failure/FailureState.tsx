@@ -13,6 +13,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { CloudOff, RefreshCw, Utensils } from 'lucide-react-native';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { supportCopy } from '@/lib/support/copy';
 import type { Failure } from '@/lib/failure';
 
 interface FailureStateProps {
@@ -22,6 +23,12 @@ interface FailureStateProps {
   /** Optional secondary escape hatch, e.g. "Return home". */
   secondaryLabel?: string;
   onSecondary?: () => void;
+  /**
+   * The "critical" tier of the error hierarchy. A full-page failure is the one
+   * place a user is most likely to give up entirely, so when a host can offer
+   * it, there is always a way to reach a person from here.
+   */
+  onContactSupport?: () => void;
   isDark?: boolean;
 }
 
@@ -30,6 +37,7 @@ export function FailureState({
   onAction,
   secondaryLabel,
   onSecondary,
+  onContactSupport,
   isDark = false,
 }: FailureStateProps) {
   const colors = getThemeColors(isDark);
@@ -73,6 +81,17 @@ export function FailureState({
           accessibilityLabel={secondaryLabel}
         >
           <Text style={[styles.secondaryText, { color: colors.ink2 }]}>{secondaryLabel}</Text>
+        </Pressable>
+      )}
+
+      {onContactSupport && (
+        <Pressable
+          onPress={onContactSupport}
+          style={styles.support}
+          accessibilityRole="button"
+          accessibilityLabel={supportCopy.prompts.critical}
+        >
+          <Text style={styles.supportText}>{supportCopy.prompts.critical}</Text>
         </Pressable>
       )}
     </View>
@@ -132,5 +151,18 @@ const styles = StyleSheet.create({
   secondaryText: {
     fontFamily: designTokens.font.medium,
     fontSize: 14,
+  },
+  support: {
+    minHeight: 44,
+    paddingHorizontal: 20,
+    marginTop: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  supportText: {
+    fontFamily: designTokens.font.regular,
+    fontSize: 13.5,
+    color: designTokens.colors.ink3,
+    textDecorationLine: 'underline',
   },
 });

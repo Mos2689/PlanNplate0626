@@ -2,7 +2,7 @@
 -- Run this in Supabase Dashboard > SQL Editor (or via `supabase db push` with migration)
 
 -- Enable RLS on storage.objects
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 -- backupimages bucket policies
 CREATE POLICY "backupimages_select" ON storage.objects

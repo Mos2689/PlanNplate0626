@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { useMealPlanStore } from './store';
 
 // CRITICAL (production launch safety): expo-notifications is a NATIVE module.
@@ -34,6 +35,18 @@ if (isNativeNotificationsAvailable) {
   } catch (e) {
     console.warn('[notifications] setNotificationHandler unavailable:', e);
   }
+}
+
+/**
+ * Whether the native notifications module is actually present in this binary.
+ *
+ * Exported so callers outside this file (the support notification router) can
+ * apply the same guard rather than duplicating the detection — and, more
+ * importantly, so they inherit the OTA-safety reasoning above rather than
+ * assuming the module is there.
+ */
+export function areNotificationsAvailable(): boolean {
+  return isNativeNotificationsAvailable;
 }
 
 export async function requestNotificationPermissions() {
@@ -88,6 +101,76 @@ export async function cancelAllNotifications() {
     await Notifications.cancelAllScheduledNotificationsAsync();
   } catch (e) {
     console.warn('[notifications] cancelAllNotifications failed:', e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Remote push registration
+//
+// Everything above this line is LOCAL notifications, which the app has always
+// used. This is the first remote push path, added so a support reply can reach
+// someone who isn't in the app.
+//
+// Email remains the guarantee and push the convenience. That ordering is
+// deliberate: push depends on a token round-trip, a native entitlement and a
+// third-party relay, any of which can be silently wrong in a way we'd only
+// discover from a user saying "nobody ever replied". support-reply sends the
+// email regardless of whether a token exists.
+//
+// NOTE: we do NOT prompt for permission here. Asking someone to enable
+// notifications at the moment they're reporting a bug is the worst possible
+// timing. This registers a token only when permission has ALREADY been granted
+// for the meal reminders.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Store this device's push token, if we're allowed one.
+ *
+ * Safe to call on every app open: the upsert is keyed on the token, so a device
+ * that changes hands re-points to the new account rather than delivering one
+ * person's support replies to another.
+ */
+export async function registerPushToken(): Promise<void> {
+  if (!isNativeNotificationsAvailable) return;
+
+  try {
+    // Never triggers the OS prompt — only proceeds if the user already said
+    // yes for the reminders.
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') return;
+
+    const { useAuthStore } = await import('./auth-store');
+    const auth = useAuthStore.getState();
+    if (!auth.isAuthenticated || !auth.currentUser?.id) return;
+
+    // `projectId` is required by EAS's push service and is not inferable in a
+    // bare build. It lives in app.json under extra.eas.
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId;
+    if (!projectId) {
+      console.warn('[notifications] No EAS projectId — skipping push registration.');
+      return;
+    }
+
+    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    if (!token) return;
+
+    const { supabase } = await import('./supabase');
+    await supabase.from('user_push_tokens').upsert(
+      {
+        token,
+        user_id: auth.currentUser.id,
+        platform: Platform.OS === 'ios' ? 'ios' : 'android',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'token' },
+    );
+  } catch (e) {
+    // A device with no push capability, a network blip, or a build without the
+    // entitlement. None of these are worth telling the user about — the email
+    // path is unaffected.
+    console.warn('[notifications] registerPushToken failed:', e);
   }
 }
 

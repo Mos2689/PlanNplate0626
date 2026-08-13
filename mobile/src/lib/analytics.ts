@@ -67,6 +67,21 @@ export type KnownAnalyticsEvent =
   | 'recipe_share_cancelled'
   | 'recipe_share_auth_required'
   | 'recipe_share_opened_in_app'
+  // Support — properties are built exclusively by lib/support/analytics.ts,
+  // which accepts an intent and a feature key and never the message text.
+  // Length travels as a bucket, never a character count.
+  | 'support_opened'
+  | 'support_composer_opened'
+  | 'support_screenshot_attached'
+  | 'support_submitted'
+  | 'support_submit_failed'
+  | 'support_composer_abandoned'
+  | 'support_thread_opened'
+  | 'support_user_replied'
+  | 'support_notification_opened'
+  | 'contextual_support_shown'
+  | 'faq_opened'
+  | 'faq_contact_clicked'
   // Generic UI
   | 'ui_button_tapped';
 

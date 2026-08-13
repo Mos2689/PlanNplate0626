@@ -242,6 +242,15 @@ export const FEATURE_COPY: Partial<Record<string, FailureCopy>> = {
     body: 'Please contact support and we’ll get you signed in.',
     action: { kind: 'contact-support', label: 'Contact support' },
   },
+  // A restore that finds nothing was previously a bare OS alert with a single
+  // "OK" — a dead end at the exact moment a person who believes they have paid
+  // is told we can't see it. That is the most trust-damaging state in the app,
+  // so it is the one place a direct line to a human is the primary action.
+  'subscription-restore-empty:validation': {
+    title: 'We couldn’t find a subscription',
+    body: 'There’s nothing to restore on this account. If you’re sure you subscribed, tell us and we’ll sort it out.',
+    action: { kind: 'contact-support', label: 'Tell us' },
+  },
   'voice:permission-denied': {
     title: 'Microphone access is off',
     body: 'Turn it on in Settings to add items by voice. You can always type them instead.',

@@ -9,7 +9,13 @@
 import { create } from 'zustand';
 import { classifyFailure, type ClassifyContext } from './classify';
 import { isOnline } from './connectivity';
-import { reportAbandon, reportFailure, reportRecovery } from './diagnostics';
+import {
+  consecutiveFailures,
+  failureKey,
+  reportAbandon,
+  reportFailure,
+  reportRecovery,
+} from './diagnostics';
 import { copyFor } from './copy';
 import type { Failure } from './types';
 
@@ -91,7 +97,15 @@ export function presentFailure(
       : failure;
 
   reportFailure(refined);
-  useFailureStore.getState().show(refined, onRetry);
+
+  // Count AFTER reporting, so the occurrence just reported is included. This is
+  // what drives the "persistent" tier: the surfaces offer a way to reach a
+  // person from the second occurrence of the same problem onward, never the
+  // first. Most failures are transient and the retry works — offering help
+  // immediately would make the app feel fragile rather than helpful.
+  const attempt = consecutiveFailures(failureKey(refined));
+
+  useFailureStore.getState().show({ ...refined, attempt }, onRetry);
 }
 
 /**

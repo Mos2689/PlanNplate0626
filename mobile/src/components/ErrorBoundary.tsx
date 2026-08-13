@@ -17,6 +17,7 @@ import * as Clipboard from 'expo-clipboard';
 import { designTokens } from '@/lib/design-tokens';
 import { FailureState } from '@/components/failure';
 import { makeFailure, reportFailure, type Failure } from '@/lib/failure';
+import { openSupportComposer } from '@/lib/support/store';
 
 interface Props {
   children: ReactNode;
@@ -83,6 +84,26 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ failure: null, error: null, errorInfo: null, copied: false });
   };
 
+  /**
+   * Reach a person after a render crash.
+   *
+   * Order matters. This boundary wraps the whole app INCLUDING the globally
+   * mounted SupportComposer, so while the fallback is showing there is no tree
+   * for the sheet to render into — opening it first would set the store and
+   * display nothing. Clearing the boundary restores the children, and the
+   * composer mounts on the next frame.
+   *
+   * If the underlying screen crashes again immediately the user lands back
+   * here, which is no worse than before, and "Return home" is still there.
+   */
+  private handleContactSupport = () => {
+    const feature = this.state.failure?.feature ?? 'app-shell';
+    this.handleReset();
+    setTimeout(() => {
+      openSupportComposer({ intent: 'bug', feature, entry: 'failure' });
+    }, 0);
+  };
+
   public render() {
     const { failure, error, errorInfo, copied } = this.state;
     if (!failure) return this.props.children;
@@ -94,6 +115,7 @@ export class ErrorBoundary extends Component<Props, State> {
           onAction={this.handleReset}
           secondaryLabel={this.props.onGoHome ? 'Return home' : undefined}
           onSecondary={this.props.onGoHome}
+          onContactSupport={this.handleContactSupport}
         />
 
         {/* Diagnostics are DEV-only. In production they're reported, not shown —

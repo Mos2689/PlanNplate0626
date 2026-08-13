@@ -42,6 +42,8 @@ import { useMealPlanStore, MONTHLY_FEATURE_LIMITS, type GroceryItem, type Ingred
 import { classifyFailure, makeFailure, reportFailure, validationFailure, type Failure, reportAndPresent } from '@/lib/failure';
 import { InlineFailure } from '@/components/failure';
 import { track } from '@/lib/analytics';
+import { SupportPrompt } from '@/components/support/SupportPrompt';
+import { supportCopy } from '@/lib/support/copy';
 import { useAuthStore } from '@/lib/auth-store';
 import { useIsAccountPaused, useSubscriptionStore, useHasPremiumAccess, useIsPremiumResolved } from '@/lib/subscription-store';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -1686,6 +1688,9 @@ export default function GroceryScreen() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  // True from the moment the user asks for a list until items appear. Drives
+  // the "something missing?" prompt when generation comes back empty.
+  const [justGenerated, setJustGenerated] = useState(false);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateIngredientGroup[]>([]);
   // Visibility of the per-category "In basket" sub-section per the design's collapsible pattern.
   const [basketOpen, setBasketOpen] = useState<Record<string, boolean>>({});
@@ -1949,7 +1954,22 @@ export default function GroceryScreen() {
     generateGroceryList(startDate, endDate);
     setGroceryDateRange(startDate, endDate);
     track('grocery_list_generated', { source: 'meal_plan', start_date: startDate, end_date: endDate });
+    // Arm the contextual support prompt. Generation is synchronous through the
+    // store, so the result is checked on the next render (see `generatedEmpty`
+    // below) rather than here — the items haven't landed in state yet.
+    setJustGenerated(true);
   }, [generateGroceryList, setGroceryDateRange, isSavedListMode, unloadSavedGroceryList]);
+
+  // A generation the user explicitly asked for that produced nothing. This is
+  // the frustration moment worth offering help at — unlike the ordinary "no
+  // list yet" empty state, which is simply where everyone starts.
+  const generatedEmpty = justGenerated && groceryItems.length === 0;
+
+  // Disarm as soon as items appear, so the prompt can't linger into a
+  // successful list.
+  useEffect(() => {
+    if (justGenerated && groceryItems.length > 0) setJustGenerated(false);
+  }, [justGenerated, groceryItems.length]);
 
   const handleCombineDuplicates = useCallback(
     (groupKey: string, selectedIndices: number[], userQuantity: string, userUnit: string) => {
@@ -2708,6 +2728,18 @@ export default function GroceryScreen() {
                 >
                   Let's build your grocery list in a way that works for you.
                 </Text>
+
+                {/* Only after a generation the user asked for came back with
+                    nothing. The plain "no list yet" state stays silent —
+                    offering help to someone who simply hasn't started yet
+                    implies the product expects to fail them. */}
+                {generatedEmpty && (
+                  <SupportPrompt
+                    message={supportCopy.prompts.groceryEmpty}
+                    feature="grocery"
+                    align="center"
+                  />
+                )}
               </View>
 
               {/* Three source cards */}

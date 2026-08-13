@@ -248,7 +248,9 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
           { text: 'OK', onPress: () => closeSheet() },
         ]);
       } else {
-        Alert.alert("No Purchases Found", "We couldn't find any previous purchases to restore.");
+        // Was a bare Alert with a single OK and no way forward. Now it offers
+        // the one thing that actually resolves it: a person.
+        presentFailure(makeFailure('validation', { feature: 'subscription-restore-empty' }));
       }
     } else {
       presentFailure(

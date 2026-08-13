@@ -33,22 +33,23 @@ create index if not exists share_import_tokens_user_idx
 
 alter table public.share_import_tokens enable row level security;
 
--- A user may mint and revoke their own credentials, and nothing else. There is
--- deliberately no SELECT policy on the hash for other users, and no policy at
--- all that would let one account see or revoke another's.
+drop policy if exists "own tokens are readable" on public.share_import_tokens;
 create policy "own tokens are readable"
   on public.share_import_tokens for select
   using (auth.uid() = user_id);
 
+drop policy if exists "own tokens can be minted" on public.share_import_tokens;
 create policy "own tokens can be minted"
   on public.share_import_tokens for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "own tokens can be revoked" on public.share_import_tokens;
 create policy "own tokens can be revoked"
   on public.share_import_tokens for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+drop policy if exists "own tokens can be deleted" on public.share_import_tokens;
 create policy "own tokens can be deleted"
   on public.share_import_tokens for delete
   using (auth.uid() = user_id);

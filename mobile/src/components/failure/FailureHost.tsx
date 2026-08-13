@@ -19,6 +19,8 @@ import {
   useFailureStore,
   type Failure,
 } from '@/lib/failure';
+import { openSupportComposer } from '@/lib/support/store';
+import { supportCopy } from '@/lib/support/copy';
 
 interface FailureHostProps {
   isDark?: boolean;
@@ -45,6 +47,21 @@ export function FailureHost({ isDark = false }: FailureHostProps) {
     async (failure: Failure, dismiss: () => void) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       dismiss();
+
+      // `contact-support` has been in FailureActionKind — and rendered by
+      // FEATURE_COPY['auth-email:not-configured'] — since the failure system
+      // was written, with nothing behind it. Every existing and future copy
+      // entry that chooses this action now reaches a person.
+      if (failure.action.kind === 'contact-support') {
+        resolveFailure(failure, 'action');
+        openSupportComposer({
+          intent: 'bug',
+          feature: failure.feature,
+          entry: 'failure',
+        });
+        return;
+      }
+
       if (retryHandler) {
         resolveFailure(failure, 'retry');
         await retryHandler();
@@ -54,6 +71,25 @@ export function FailureHost({ isDark = false }: FailureHostProps) {
     },
     [retryHandler],
   );
+
+  // The "persistent" tier. On the second occurrence of the same problem the
+  // surface grows a second, quieter action alongside the retry — because at
+  // that point "try again" has already been wrong once.
+  const contactSupport = useCallback(
+    (failure: Failure, dismiss: () => void) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      dismiss();
+      openSupportComposer({
+        intent: 'bug',
+        feature: failure.feature,
+        entry: 'failure',
+      });
+    },
+    [],
+  );
+
+  const isPersistent = (failure: Failure) =>
+    (failure.attempt ?? 1) >= 2 && failure.action.kind !== 'contact-support';
 
   return (
     <>
@@ -95,6 +131,24 @@ export function FailureHost({ isDark = false }: FailureHostProps) {
             <Text style={styles.bannerBody} numberOfLines={2}>
               {banner.body}
             </Text>
+            {/* Persistent tier: the same thing has now failed twice, so offer
+                a person as well as another attempt. */}
+            {isPersistent(banner) && (
+              <Pressable
+                onPress={() => contactSupport(banner, dismissBanner)}
+                hitSlop={10}
+                style={styles.bannerSupport}
+                accessibilityRole="button"
+                accessibilityLabel={`${supportCopy.prompts.persistent} ${supportCopy.prompts.persistentAction}`}
+              >
+                <Text style={styles.bannerSupportText}>
+                  {supportCopy.prompts.persistent}{' '}
+                  <Text style={styles.bannerSupportAction}>
+                    {supportCopy.prompts.persistentAction}
+                  </Text>
+                </Text>
+              </Pressable>
+            )}
           </View>
 
           {banner.action.kind !== 'dismiss' && (
@@ -175,11 +229,18 @@ export function FailureHost({ isDark = false }: FailureHostProps) {
           title={dialog.title}
           message={dialog.body}
           confirmLabel={dialog.action.label}
-          cancelLabel="Not now"
+          // On a repeat failure the escape hatch becomes "tell us" rather than
+          // "not now" — a blocking dialog the user has already seen once is
+          // exactly where a dead end does the most damage.
+          cancelLabel={isPersistent(dialog) ? supportCopy.prompts.critical : 'Not now'}
           confirmColor={designTokens.colors.brand}
           isDark={isDark}
           onConfirm={() => runAction(dialog, dismissDialog)}
-          onCancel={dismissDialog}
+          onCancel={
+            isPersistent(dialog)
+              ? () => contactSupport(dialog, dismissDialog)
+              : dismissDialog
+          }
         />
       )}
     </>
@@ -253,6 +314,21 @@ const styles = StyleSheet.create({
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bannerSupport: {
+    marginTop: 5,
+    minHeight: 30,
+    justifyContent: 'center',
+  },
+  bannerSupportText: {
+    fontFamily: designTokens.font.regular,
+    fontSize: 12,
+    color: designTokens.colors.ink2,
+  },
+  bannerSupportAction: {
+    fontFamily: designTokens.font.semibold,
+    color: designTokens.colors.noticeDeep,
+    textDecorationLine: 'underline',
   },
 
   toast: {

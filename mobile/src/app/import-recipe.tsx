@@ -41,7 +41,9 @@ import {
 import { ingestPastedUrl } from '@/lib/share/url-ingest';
 import { reasonForIngest, shareFailure } from '@/lib/share/outcome';
 import { isOpenAIConfigured } from '@/lib/openai';
-import { presentFailure, reportAndPresent } from '@/lib/failure';
+import { copyFor, presentFailure, reportAndPresent } from '@/lib/failure';
+import { SupportPrompt } from '@/components/support/SupportPrompt';
+import { supportCopy } from '@/lib/support/copy';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { useRecipeFeatureGate } from '@/hooks/useRecipeFeatureGate';
 import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
@@ -64,6 +66,12 @@ export default function ImportRecipeScreen() {
 
   const isConfigured = isOpenAIConfigured();
 
+  // Counts failed imports within this visit to the screen. The contextual
+  // prompt appears from the SECOND one onward: the first failure is usually a
+  // stubborn site the retry or the paste path solves, and offering help
+  // immediately would read as the feature admitting defeat.
+  const [importFailures, setImportFailures] = useState(0);
+
   // URL extraction mutation — preserved verbatim.
   const urlMutation = useMutation({
     mutationFn: (url: string) => extractRecipeFromUrl(url),
@@ -78,6 +86,7 @@ export default function ImportRecipeScreen() {
     },
     onError: (error, url) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setImportFailures((n) => n + 1);
       reportAndPresent(error, { feature: 'recipe-import' }, () => urlMutation.mutate(url));
     },
   });
@@ -96,6 +105,7 @@ export default function ImportRecipeScreen() {
     },
     onError: (error, text) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setImportFailures((n) => n + 1);
       reportAndPresent(error, { feature: 'recipe-import' }, () => textMutation.mutate(text));
     },
   });
@@ -584,9 +594,23 @@ export default function ImportRecipeScreen() {
                       color: isDark ? '#ddd' : designTokens.colors.ink2,
                     }}
                   >
-                    {error?.message || 'Failed to extract recipe. Please try again.'}
+                    {/* Was `error?.message` — a raw exception string rendered
+                        straight to the user, which is the exact leak
+                        lib/failure was built to close. The wording now comes
+                        from the copy catalogue, keyed by category, and the
+                        cause stays in diagnostics where it belongs. */}
+                    {copyFor('import-failed', 'recipe-import').body}
                   </Text>
                 </View>
+
+                {/* Second failure in this visit: the retry has already been
+                    wrong once, so offer a person alongside it. */}
+                {importFailures >= 2 && (
+                  <SupportPrompt
+                    message={supportCopy.prompts.recipeImport}
+                    feature="recipe-import"
+                  />
+                )}
               </Animated.View>
             )}
           </ScrollView>

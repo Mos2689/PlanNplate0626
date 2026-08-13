@@ -60,9 +60,50 @@ export function recentFailures(): readonly LogEntry[] {
 }
 
 let currentScreen = 'unknown';
+let previousScreen = 'unknown';
 /** Called from the root layout's segment tracking so failures know where they happened. */
 export function setCurrentScreen(screen: string) {
+  if (screen === currentScreen) return;
+  previousScreen = currentScreen;
   currentScreen = screen;
+}
+
+/** Where the user is now. Read by the support diagnostics collector. */
+export function currentScreenName(): string {
+  return currentScreen;
+}
+
+/**
+ * Where the user was immediately before.
+ *
+ * Worth more than the current screen for support: a user reports "it broke"
+ * from wherever they landed, and the screen they came FROM is usually where
+ * the problem actually is.
+ */
+export function previousScreenName(): string {
+  return previousScreen;
+}
+
+/**
+ * How many of the last `window` failures share this fingerprint.
+ *
+ * Drives the "persistent" tier of the error hierarchy: support is offered on
+ * the SECOND occurrence of the same problem, never the first, because most
+ * failures are transient and the retry works. Offering help immediately would
+ * make the app feel fragile.
+ */
+export function consecutiveFailures(fingerprintKey: string, window = 6): number {
+  let count = 0;
+  for (let i = ring.length - 1; i >= 0 && ring.length - i <= window; i -= 1) {
+    const entry = ring[i];
+    if (`${entry.feature}:${entry.category}` === fingerprintKey) count += 1;
+  }
+  return count;
+}
+
+/** The coarse grouping key used by `consecutiveFailures`. */
+export function failureKey(failure: Pick<Failure, 'feature' | 'category'>): string {
+  return `${failure.feature}:${failure.category}`;
 }
 
 /**

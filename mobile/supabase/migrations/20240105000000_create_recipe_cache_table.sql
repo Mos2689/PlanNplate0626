@@ -10,6 +10,12 @@ CREATE TABLE IF NOT EXISTS recipe_cache (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Ensure columns exist if table was previously created with different schema
+ALTER TABLE recipe_cache ADD COLUMN IF NOT EXISTS preferences_hash TEXT;
+ALTER TABLE recipe_cache ADD COLUMN IF NOT EXISTS meal_type TEXT;
+ALTER TABLE recipe_cache ADD COLUMN IF NOT EXISTS recipe JSONB;
+ALTER TABLE recipe_cache ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+
 -- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_recipe_cache_preferences_hash ON recipe_cache(preferences_hash);
 CREATE INDEX IF NOT EXISTS idx_recipe_cache_meal_type ON recipe_cache(meal_type);

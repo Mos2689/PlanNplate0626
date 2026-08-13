@@ -40,6 +40,7 @@ export { backoffDelayMs, isRetryable, maxAttemptsFor } from './policy';
 export { withRetry, withTimeout, type RetryOptions } from './retry';
 
 export {
+  connectionType,
   isOnline,
   startConnectivityMonitoring,
   stopConnectivityMonitoring,
@@ -48,6 +49,10 @@ export {
 } from './connectivity';
 
 export {
+  consecutiveFailures,
+  currentScreenName,
+  failureKey,
+  previousScreenName,
   recentFailures,
   reportAbandon,
   reportFailure,

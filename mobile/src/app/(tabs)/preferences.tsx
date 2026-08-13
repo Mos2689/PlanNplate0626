@@ -35,6 +35,7 @@ import {
   User,
   Share2,
   Scale,
+  LifeBuoy,
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -49,6 +50,7 @@ import { t } from '@/lib/platform-tokens';
 import { resolveMeasurementSystem } from '@/lib/unit-conversion';
 import { getAccountEmailLabel } from '@/lib/account-identity';
 import { AccountManagementModal } from '@/components/AccountManagementModal';
+import { useSupportUnread } from '@/lib/support/unread';
 import { UserAvatarDisplay } from '@/components/ProfileSetupModal';
 import { EditProfileModal } from '@/components/EditProfileModal';
 import { useBehaviorInsights } from '@/hooks/useBehaviorInsights';
@@ -305,9 +307,15 @@ interface SettingsRowProps {
   last?: boolean;
   onPress: () => void;
   isDark: boolean;
+  /**
+   * Small dot before the chevron. Used by Help & support when a reply is
+   * waiting. A dot rather than a count: the number of unanswered support
+   * conversations is not a figure anyone needs.
+   */
+  showDot?: boolean;
 }
 
-function SettingsRow({ icon, label, summary, last, onPress, isDark }: SettingsRowProps) {
+function SettingsRow({ icon, label, summary, last, onPress, isDark, showDot }: SettingsRowProps) {
   const colors = getThemeColors(isDark);
   return (
     <Pressable
@@ -360,6 +368,18 @@ function SettingsRow({ icon, label, summary, last, onPress, isDark }: SettingsRo
           </Text>
         ) : null}
       </View>
+      {showDot && (
+        <View
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: designTokens.colors.olive,
+            marginRight: 4,
+          }}
+          importantForAccessibility="no"
+        />
+      )}
       <ChevronRight size={14} color={designTokens.colors.ink3} strokeWidth={1.7} />
     </Pressable>
   );
@@ -423,6 +443,10 @@ export default function ProfileScreen() {
   const userAvatar = useUserAvatar();
   const deleteAccount = useSubscriptionStore((s) => s.deleteAccount);
   const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
+
+  // Drives the dot on the Help & support row. Refreshed on focus, so a reply
+  // that arrived while the app was backgrounded shows on return.
+  const supportUnread = useSupportUnread();
 
   // ── Local state (preserved) ────────────────────────────────────
   const [modalType, setModalType] = useState<'delete' | null>(null);
@@ -1963,6 +1987,21 @@ export default function ProfileScreen() {
                 icon={<CreditCard size={14} color={designTokens.colors.ink2} strokeWidth={1.7} />}
                 label="Manage subscription"
                 onPress={handleManageSubscription}
+                isDark={isDark}
+              />
+
+              {/* Sits above Privacy and Terms because it's the one row here
+                  someone arrives looking for. It is NOT the main way support
+                  is reached — contextual prompts at the moment of failure are
+                  — but it's the one people go hunting for. */}
+              <SettingsRow
+                icon={<LifeBuoy size={14} color={designTokens.colors.ink2} strokeWidth={1.7} />}
+                label="Help & support"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push('/help');
+                }}
+                showDot={supportUnread > 0}
                 isDark={isDark}
               />
 

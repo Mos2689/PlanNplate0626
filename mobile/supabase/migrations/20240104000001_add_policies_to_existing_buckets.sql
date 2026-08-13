@@ -3,7 +3,7 @@
 -- This only adds policies to your existing buckets: backupimages, Recipe Images, Public assets
 
 -- Enable Row Level Security on storage.objects (if not already enabled)
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- backupimages bucket policies

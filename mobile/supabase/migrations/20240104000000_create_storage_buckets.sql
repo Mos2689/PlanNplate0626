@@ -9,8 +9,8 @@ VALUES
   ('uploads', 'uploads', false, 52428800, ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'])
 ON CONFLICT (id) DO NOTHING;
 
--- Enable Row Level Security on storage.objects
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+-- Enable Row Level Security on storage.objects (already enabled by Supabase)
+-- ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for avatars bucket
 -- Users can only access their own avatar
@@ -94,6 +94,6 @@ CREATE POLICY "Users can delete own uploads" ON storage.objects
     (storage.foldername(name))[1] = auth.uid()::text
   );
 
--- Create indexes for storage queries
-CREATE INDEX IF NOT EXISTS idx_storage_objects_bucket_id ON storage.objects(bucket_id);
-CREATE INDEX IF NOT EXISTS idx_storage_objects_name ON storage.objects(name);
+-- Create indexes for storage queries (already indexed by Supabase)
+-- CREATE INDEX IF NOT EXISTS idx_storage_objects_bucket_id ON storage.objects(bucket_id);
+-- CREATE INDEX IF NOT EXISTS idx_storage_objects_name ON storage.objects(name);

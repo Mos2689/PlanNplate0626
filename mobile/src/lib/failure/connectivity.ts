@@ -20,6 +20,12 @@ interface ConnectivityState {
   isInternetReachable: boolean | null;
   /** True once NetInfo has reported at least once — avoids a false "offline" flash on boot. */
   hasResolved: boolean;
+  /**
+   * 'wifi' | 'cellular' | 'none' | … Retained for support diagnostics: "failed
+   * on cellular, works on wifi" is one of the few network details that
+   * genuinely changes what an agent looks at first.
+   */
+  connectionType: string;
   setState: (s: NetInfoState) => void;
 }
 
@@ -29,6 +35,7 @@ export const useConnectivity = create<ConnectivityState>((set) => ({
   isOnline: true,
   isInternetReachable: null,
   hasResolved: false,
+  connectionType: 'unknown',
   setState: (s) =>
     set({
       // `isInternetReachable` is null while undetermined; only treat the device
@@ -36,6 +43,7 @@ export const useConnectivity = create<ConnectivityState>((set) => ({
       isOnline: Boolean(s.isConnected) && s.isInternetReachable !== false,
       isInternetReachable: s.isInternetReachable,
       hasResolved: true,
+      connectionType: s.type ?? 'unknown',
     }),
 }));
 
@@ -60,6 +68,11 @@ export function stopConnectivityMonitoring(): void {
 /** Non-reactive read, for stores and helpers outside React. */
 export function isOnline(): boolean {
   return useConnectivity.getState().isOnline;
+}
+
+/** Non-reactive read of the current transport, for support diagnostics. */
+export function connectionType(): string {
+  return useConnectivity.getState().connectionType;
 }
 
 /**

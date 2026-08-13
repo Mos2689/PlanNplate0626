@@ -30,9 +30,11 @@ import { InstrumentSerif_400Regular_Italic } from '@expo-google-fonts/instrument
 import { initializeMetaSDK } from '@/lib/meta-sdk';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { FailureHost } from '@/components/failure';
+import { SupportComposer } from '@/components/support/SupportComposer';
 import { setCurrentScreen, startConnectivityMonitoring } from '@/lib/failure';
 import { useShareTarget } from '@/hooks/useShareTarget';
-import { scheduleInactivityNotifications, scheduleMealPlanNotifications, cancelAllNotifications, requestNotificationPermissions } from '@/lib/notifications';
+import { useSupportNotifications } from '@/hooks/useSupportNotifications';
+import { scheduleInactivityNotifications, scheduleMealPlanNotifications, cancelAllNotifications, requestNotificationPermissions, registerPushToken } from '@/lib/notifications';
 
 
 
@@ -144,6 +146,10 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   // gates. Mounted here for the same reason the deep-link effect below is: it
   // has to survive every screen the user might be on when a share arrives.
   useShareTarget();
+  // Routes a tapped support-reply notification to /help/<threadId>, in all
+  // three launch states. Mounted here for the same reason useShareTarget is:
+  // the notification can arrive on any screen.
+  useSupportNotifications();
   const router = useRouter();
   const segments = useSegments();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -290,7 +296,12 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     // app can be backgrounded, which is the only place the permission is used.
     // The AppState listener below is registered synchronously, unchanged.
     const permissionTask = InteractionManager.runAfterInteractions(() => {
-      requestNotificationPermissions().catch(() => {});
+      requestNotificationPermissions()
+        // Register the push token straight after, so a support reply can reach
+        // the user when the app is closed. registerPushToken never prompts on
+        // its own — it no-ops unless permission was already granted above.
+        .then(() => registerPushToken())
+        .catch(() => {});
     });
 
     const handleAppStateChange = (status: AppStateStatus) => {
@@ -521,6 +532,8 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         />
         <Stack.Screen name="plan-meals" options={{ headerShown: false }} />
         <Stack.Screen name="privacy" options={{ headerShown: false }} />
+        <Stack.Screen name="help/index" options={{ headerShown: false }} />
+        <Stack.Screen name="help/[threadId]" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
       {/* Global PaywallSheet — mounted at the root so any caller from
@@ -535,6 +548,11 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           useReviewStore.getState().maybePrompt(). Self-gates on
           already-reviewed / snooze / don't-ask-again. */}
       <ReviewPromptModal isDark={colorScheme === 'dark'} />
+      {/* Global support composer — raised from anywhere via
+          openSupportComposer({ intent, feature }). Mounted BEFORE FailureHost
+          so a failure toast can still appear over the sheet: the two surfaces
+          co-operate (a failed send re-presents through FailureHost). */}
+      <SupportComposer />
       {/* Global failure surfaces — toast / banner / dialog / offline banner.
           Same pattern as PaywallSheet above: mounted once, driven from
           anywhere via presentFailure(). Rendered last so it stacks on top. */}
