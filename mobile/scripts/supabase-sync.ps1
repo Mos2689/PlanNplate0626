@@ -2,7 +2,9 @@
 param (
     [string]$ProjectRef = "",
     [switch]$DeployFunctions,
+    [string[]]$Functions = @(),
     [switch]$PushDb,
+    [switch]$DryRun,
     [switch]$GenTypes
 )
 
@@ -23,18 +25,36 @@ if ($ProjectRef -ne "") {
 
 # 2. Push Database Migrations
 if ($PushDb) {
-    Write-Host "Pushing database migrations..." -ForegroundColor Yellow
-    npx supabase db push
+    if ($DryRun) {
+        Write-Host "Pushing database migrations (DRY RUN)..." -ForegroundColor Yellow
+        npx supabase db push --dry-run
+    } else {
+        Write-Host "Pushing database migrations..." -ForegroundColor Yellow
+        npx supabase db push
+    }
 }
 
 # 3. Deploy Edge Functions
 if ($DeployFunctions) {
     Write-Host "Deploying Edge Functions..." -ForegroundColor Yellow
-    # Detect functions in the functions directory
-    $functions = Get-ChildItem -Directory -Path "supabase/functions" | Where-Object { $_.Name -notmatch "^_" }
-    foreach ($func in $functions) {
-        Write-Host "Deploying function: $($func.Name)..."
-        npx supabase functions deploy $func.Name
+    $functionsToDeploy = @()
+    if ($Functions.Count -gt 0) {
+        foreach ($f in $Functions) {
+            if ($f -like "*,*") {
+                $functionsToDeploy += $f -split ","
+            } else {
+                $functionsToDeploy += $f
+            }
+        }
+        $functionsToDeploy = $functionsToDeploy | ForEach-Object { $_.Trim() }
+    } else {
+        # Detect functions in the functions directory
+        $functionsToDeploy = Get-ChildItem -Directory -Path "supabase/functions" | Where-Object { $_.Name -notmatch "^_" } | ForEach-Object { $_.Name }
+    }
+    
+    foreach ($func in $functionsToDeploy) {
+        Write-Host "Deploying function: $func..."
+        npx supabase functions deploy $func
     }
 }
 

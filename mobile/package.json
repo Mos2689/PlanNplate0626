@@ -16,7 +16,10 @@
     "postinstall": "patch-package",
     "supabase:link": "npx supabase link",
     "supabase:sync": "powershell -ExecutionPolicy Bypass -File scripts/supabase-sync.ps1",
-    "supabase:deploy": "npm run supabase:sync -- -DeployFunctions -PushDb -GenTypes"
+    "supabase:deploy": "npm run supabase:sync -- -DeployFunctions -PushDb -GenTypes",
+    "supabase:deploy:safe": "npm run supabase:sync -- -DeployFunctions -Functions support-reply,support-submit",
+    "supabase:db:dryrun": "npm run supabase:sync -- -PushDb -DryRun",
+    "supabase:db:push": "npm run supabase:sync -- -PushDb"
   },
   "dependencies": {
     "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
