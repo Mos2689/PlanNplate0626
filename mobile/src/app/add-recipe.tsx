@@ -15,7 +15,6 @@ import {
   MicOff,
   Sparkles,
   Upload,
-  FileText,
   Camera,
   Image as ImageIcon,
   // Premium icon swaps for the redesign
@@ -414,7 +413,6 @@ export default function AddRecipeScreen() {
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadText, setUploadText] = useState('');
   const [isUploadProcessing, setIsUploadProcessing] = useState(false);
   const [uploadError, setUploadError] = useState<Failure | null>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]); // Multiple images (up to 5)
@@ -603,35 +601,6 @@ export default function AddRecipeScreen() {
     }
   }, []);
 
-  // Handle text upload processing
-  const handleProcessText = useCallback(async () => {
-    if (!uploadText.trim()) {
-      setUploadError(validationFailure('Nothing to read yet', 'Paste the recipe text and we’ll take it from there.', 'recipe-import'));
-      return;
-    }
-
-    try {
-      setUploadError(null);
-      setIsUploadProcessing(true);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-      const parsedRecipe = await parseRecipeFromText(uploadText);
-      // Typed recipe — no source photo, so use the Pexels fallback on Save.
-      setFoodPhotoUri(null);
-      fillFormWithRecipe(parsedRecipe);
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowUploadModal(false);
-      setUploadText('');
-    } catch (error) {
-      console.error('Failed to process text:', error);
-      setUploadError(makeFailure('ai-parsing', { feature: 'recipe-import' }));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
-      setIsUploadProcessing(false);
-    }
-  }, [uploadText, fillFormWithRecipe]);
-
   // Handle image upload (add to collection, up to 5)
   const handleImageUpload = useCallback(async () => {
     try {
@@ -728,7 +697,6 @@ export default function AddRecipeScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowUploadModal(false);
-      setUploadText('');
       setUploadedImages([]);
     } catch (error: any) {
       // Was: `error.message || '…'` — the raw exception won whenever it existed.
@@ -743,7 +711,6 @@ export default function AddRecipeScreen() {
 
   const cancelUpload = useCallback(() => {
     setShowUploadModal(false);
-    setUploadText('');
     setUploadError(null);
     setIsUploadProcessing(false);
     setUploadedImages([]);
@@ -2545,106 +2512,6 @@ export default function AddRecipeScreen() {
                       </View>
                     )}
 
-                    {/* Divider */}
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 12,
-                        marginBottom: 14,
-                      }}
-                    >
-                      <View
-                        style={{
-                          flex: 1,
-                          height: 1,
-                          backgroundColor: designTokens.colors.hair2,
-                        }}
-                      />
-                      <Text
-                        style={{
-                          fontFamily: designTokens.font.medium,
-                          fontSize: 11,
-                          letterSpacing: 0.66,
-                          textTransform: 'uppercase',
-                          color: designTokens.colors.ink3,
-                        }}
-                      >
-                        or paste text
-                      </Text>
-                      <View
-                        style={{
-                          flex: 1,
-                          height: 1,
-                          backgroundColor: designTokens.colors.hair2,
-                        }}
-                      />
-                    </View>
-
-                    {/* Text input */}
-                    <View style={[fieldShellStyle, { minHeight: 140, marginBottom: 14 }]}>
-                      <TextInput
-                        value={uploadText}
-                        onChangeText={(text) => setUploadText(text.slice(0, 2000))}
-                        placeholder="Paste your recipe here — ingredients, steps, anything we can read."
-                        placeholderTextColor={designTokens.colors.ink3}
-                        multiline
-                        numberOfLines={5}
-                        maxLength={2000}
-                        style={[fieldTextStyle, { minHeight: 120, textAlignVertical: 'top' }]}
-                        returnKeyType="done"
-                        blurOnSubmit={true}
-                        onSubmitEditing={Keyboard.dismiss}
-                      />
-                      <Text
-                        style={{
-                          fontFamily: designTokens.font.regular,
-                          fontSize: 11,
-                          color: designTokens.colors.ink3,
-                          textAlign: 'right',
-                          marginTop: 6,
-                        }}
-                      >
-                        {uploadText.length}/2000
-                      </Text>
-                    </View>
-
-                    {/* Process text button */}
-                    <Pressable
-                      onPress={() => {
-                        Keyboard.dismiss();
-                        handleProcessText();
-                      }}
-                      disabled={!uploadText.trim()}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8,
-                        paddingVertical: 13,
-                        borderRadius: 14,
-                        backgroundColor: uploadText.trim()
-                          ? designTokens.colors.brand
-                          : designTokens.colors.hair2,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <FileText
-                        size={16}
-                        color={uploadText.trim() ? '#fff' : designTokens.colors.ink3}
-                        strokeWidth={1.8}
-                      />
-                      <Text
-                        style={{
-                          fontFamily: designTokens.font.semibold,
-                          fontSize: 14.5,
-                          color: uploadText.trim() ? '#fff' : designTokens.colors.ink3,
-                          letterSpacing: -0.145,
-                        }}
-                      >
-                        Extract recipe from text
-                      </Text>
-                    </Pressable>
                   </ScrollView>
                 )}
               </Pressable>

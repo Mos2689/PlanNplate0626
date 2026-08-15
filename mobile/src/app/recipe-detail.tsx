@@ -77,7 +77,6 @@ import { uploadFile } from '@/lib/upload';
 import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
 import { SaveToCollectionSheet } from '@/components/SaveToCollectionSheet';
 import { TagPicker } from '@/components/TagPicker';
-import { isDefaultRecipeImage } from '@/lib/recipe-image';
 import { detectAllergens } from '@/lib/allergy-checker';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -125,6 +124,9 @@ export default function RecipeDetailScreen() {
   const [viewServings, setViewServings] = useState<number | null>(null);
   const [checkedIngredients, setCheckedIngredients] = useState<Set<string>>(new Set());
   const [cookModeOpen, setCookModeOpen] = useState(false);
+  // "Start cooking" no longer opens the step modal — it just keeps the screen
+  // awake on this recipe page so it won't auto-lock/dim while cooking.
+  const [cookingAwake, setCookingAwake] = useState(false);
   const [cookStep, setCookStep] = useState(0);
   const [imageOpen, setImageOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -375,12 +377,10 @@ export default function RecipeDetailScreen() {
     }
   }, [recipe, adjustedIngredients, measurementSystem]);
 
-  const handleOpenCookMode = useCallback(() => {
-    if (!recipe || recipe.instructions.length === 0) return;
+  const handleToggleCookingAwake = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setCookStep(0);
-    setCookModeOpen(true);
-  }, [recipe]);
+    setCookingAwake((on) => !on);
+  }, []);
 
   const handleCookNext = useCallback(() => {
     if (!recipe) return;
@@ -774,41 +774,6 @@ export default function RecipeDetailScreen() {
             </View>
           </View>
 
-          {/* Default-image nudge — shown ONLY on the app's stock placeholder
-              photo (never on a real Pexels/uploaded/curated image), and only
-              for editable recipes. Tapping opens the editor so the user can
-              set a proper photo. */}
-          {!isLibraryView && isDefaultRecipeImage(recipe.imageUrl) && (
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                handleEditPress();
-              }}
-              hitSlop={8}
-              style={{
-                position: 'absolute',
-                bottom: 16,
-                right: 16,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 999,
-                backgroundColor: designTokens.colors.brand,
-              }}
-            >
-              <Camera size={14} color={designTokens.colors.cream} strokeWidth={1.9} />
-              <Text style={{
-                fontFamily: designTokens.font.medium,
-                fontSize: 12,
-                color: designTokens.colors.cream,
-                letterSpacing: -0.06,
-              }}>
-                Update your recipe image
-              </Text>
-            </Pressable>
-          )}
         </Pressable>
 
         {/* Content */}
@@ -1352,7 +1317,7 @@ export default function RecipeDetailScreen() {
               </Text>
               {!fromMealPlan && recipe.instructions.length > 0 && (
                 <Pressable
-                  onPress={handleOpenCookMode}
+                  onPress={handleToggleCookingAwake}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -1361,7 +1326,12 @@ export default function RecipeDetailScreen() {
                     height: 30,
                     borderRadius: 15,
                     borderWidth: 1,
-                    borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
+                    borderColor: cookingAwake
+                      ? designTokens.colors.brand
+                      : (isDark ? '#2a2a2a' : designTokens.colors.hair),
+                    backgroundColor: cookingAwake
+                      ? (isDark ? 'rgba(84,100,69,0.22)' : '#EAEEE3')
+                      : 'transparent',
                   }}
                 >
                   <ChefHat size={13} color={designTokens.colors.brand} strokeWidth={1.8} />
@@ -1372,7 +1342,7 @@ export default function RecipeDetailScreen() {
                       color: isDark ? '#fff' : designTokens.colors.ink,
                     }}
                   >
-                    Start cooking
+                    {cookingAwake ? 'Screen staying on' : 'Start cooking'}
                   </Text>
                 </Pressable>
               )}
@@ -1481,6 +1451,9 @@ export default function RecipeDetailScreen() {
         </SafeAreaView>
       </Animated.View>
 
+      {/* Keep the screen awake while "cooking mode" is active on this page. */}
+      {cookingAwake && <CookModeAwakeGuard />}
+
       {/* Bottom CTA — "Start cooking" when the recipe is already in the plan
           (opened from a meal-plan slot), otherwise "Add to meal plan". */}
       <View style={{
@@ -1496,7 +1469,7 @@ export default function RecipeDetailScreen() {
         borderTopColor: isDark ? '#2a2a2a' : designTokens.colors.hair2,
       }}>
         <Pressable
-          onPress={fromMealPlan ? handleOpenCookMode : handleAddToMealPlan}
+          onPress={fromMealPlan ? handleToggleCookingAwake : handleAddToMealPlan}
           style={{
             flexDirection: 'row',
             alignItems: 'center',
@@ -1504,7 +1477,9 @@ export default function RecipeDetailScreen() {
             gap: 8,
             paddingVertical: 15,
             borderRadius: 999,
-            backgroundColor: designTokens.colors.brand,
+            backgroundColor: fromMealPlan && cookingAwake
+              ? designTokens.colors.brandDeep
+              : designTokens.colors.brand,
           }}
         >
           {fromMealPlan ? (
@@ -1515,7 +1490,7 @@ export default function RecipeDetailScreen() {
                 fontSize: 15,
                 color: designTokens.colors.cream,
               }}>
-                Start cooking
+                {cookingAwake ? 'Screen staying on — tap to stop' : 'Start cooking'}
               </Text>
             </>
           ) : (
@@ -2148,6 +2123,7 @@ export default function RecipeDetailScreen() {
             transition={200}
             recyclingKey={recipe.id}
             priority="high"
+            placeholderLabel
           />
           <SafeAreaView
             edges={['top']}

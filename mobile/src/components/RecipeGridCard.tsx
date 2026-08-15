@@ -16,9 +16,8 @@ import { DishImage } from '@/components/DishImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Heart, Camera, ShoppingBasket, CalendarHeart } from 'lucide-react-native';
+import { Heart, ShoppingBasket, CalendarHeart } from 'lucide-react-native';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
-import { isDefaultRecipeImage } from '@/lib/recipe-image';
 import { inspiredBlurhashFor } from '@/lib/inspired-adapters';
 import type { Recipe } from '@/lib/store';
 
@@ -109,38 +108,6 @@ function RecipeGridCardImpl({
             style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: '38%' }}
             pointerEvents="none"
           />
-          {/* Default-image nudge — label only, shown on the stock placeholder
-              photo (never a real photo). Tapping the card opens the recipe
-              where the photo can be updated. */}
-          {isDefaultRecipeImage(recipe.imageUrl) && (
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                top: 8,
-                left: 8,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 999,
-                backgroundColor: designTokens.colors.brand,
-              }}
-            >
-              <Camera size={11} color={designTokens.colors.cream} strokeWidth={2} />
-              <Text
-                style={{
-                  fontFamily: designTokens.font.medium,
-                  fontSize: 10,
-                  color: designTokens.colors.cream,
-                  letterSpacing: -0.05,
-                }}
-              >
-                Update image
-              </Text>
-            </View>
-          )}
           <Pressable
             onPress={handleSave}
             hitSlop={8}

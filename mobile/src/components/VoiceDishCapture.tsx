@@ -579,6 +579,10 @@ export function VoiceDishCapture({
   const [editDraft, setEditDraft] = useState('');
 
   const recordingRef = useRef<Audio.Recording | null>(null);
+  // Guards against a double-tap / rapid re-render launching two createAsync
+  // calls before the first has written recordingRef — that race also trips
+  // "Only one Recording object can be prepared at a given time."
+  const startingRef = useRef(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   // Consecutive failed voice attempts — after 2 we nudge the user to type instead.
   const voiceFailCountRef = useRef(0);
@@ -765,6 +769,18 @@ export function VoiceDishCapture({
 
   useEffect(() => () => clearTimers(), [clearTimers]);
 
+  // expo-av allows only ONE prepared Recording globally. If this component
+  // unmounts while a recording is active/prepared (step swap, mid-record
+  // navigation), the native recorder is orphaned and the NEXT mount's
+  // createAsync throws "Only one Recording object can be prepared at a given
+  // time." Unload it on unmount so nothing is ever left behind.
+  useEffect(() => () => {
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    rec?.stopAndUnloadAsync().catch(() => {});
+    Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
+  }, []);
+
   // ── Animated styles ────────────────────────────────────────────────────────
   const headStyle = useAnimatedStyle(() => ({
     height: headH == null ? undefined : interpolate(headP.value, [0, 1], [headH, 0]),
@@ -920,6 +936,10 @@ export function VoiceDishCapture({
   );
 
   const startVoice = useCallback(async () => {
+    // Re-entrancy guard: a second call while the first is still preparing would
+    // run createAsync twice (the ref isn't written until after the await).
+    if (startingRef.current) return;
+    startingRef.current = true;
     try {
       setVoiceError(null);
       setElapsed(0);
@@ -985,6 +1005,8 @@ export function VoiceDishCapture({
         }
         recordingRef.current = null;
       }
+    } finally {
+      startingRef.current = false;
     }
   }, [dishes.length, level]);
 

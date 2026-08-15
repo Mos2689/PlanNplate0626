@@ -397,15 +397,26 @@ export default function RecipesScreen() {
   const [renameDraft, setRenameDraft] = useState('');
   const [pickerCollectionId, setPickerCollectionId] = useState<string | null>(null);
 
-  // Deduplicate recipes by name (keep the first occurrence) — identical
+  // De-duplicate by recipe ID only — NOT by name.
+  //
+  // The store intentionally keeps distinct recipes that happen to share a name
+  // (see findExistingRecipe in recipe-identity.ts: it never merges on name
+  // alone, because two different dishes can be called "Egg Curry"). Collapsing
+  // the grid by name here silently hid those legitimate second copies — they'd
+  // still surface in the duplicate-detection banner below but never appear in
+  // "All Recipes", so the user couldn't open or manage them.
+  //
+  // Name-based duplicates are the job of the duplicate banner/modal, which lets
+  // the user explicitly keep or discard. Here we only guard against a genuinely
+  // repeated id (e.g. the brief temp-id → db-id swap in addRecipe) so the
+  // FlatList never sees two rows with the same key.
   const uniqueRecipes = useMemo(() => {
-    const seenNames = new Set<string>();
+    const seenIds = new Set<string>();
     return recipes.filter((r) => {
-      const normalizedName = r.name.toLowerCase().trim();
-      if (seenNames.has(normalizedName)) {
+      if (seenIds.has(r.id)) {
         return false;
       }
-      seenNames.add(normalizedName);
+      seenIds.add(r.id);
       return true;
     });
   }, [recipes]);

@@ -25,6 +25,8 @@ import { View } from 'react-native';
 import type { ImageStyle, StyleProp } from 'react-native';
 import { Image, type ImageContentFit } from 'expo-image';
 import { previewImageUrl, recipeImageUrl } from '@/lib/supabase-image';
+import { isDefaultRecipeImage } from '@/lib/recipe-image';
+import { RecipePlaceholder } from './RecipePlaceholder';
 
 interface DishImageProps {
   /** Source URL (Supabase storage or any other host). Empty/null renders the placeholder only. */
@@ -48,6 +50,13 @@ interface DishImageProps {
   recyclingKey?: string;
   /** Raise for above-the-fold heroes so they win the download queue. */
   priority?: 'low' | 'normal' | 'high';
+  /**
+   * When the slot falls back to the branded placeholder (no real photo yet),
+   * also show its "Update recipe image / Personalise your recipe" caption.
+   * Only for large surfaces without their own update-image pill — i.e. the
+   * full-screen viewer. Grid cards and the detail hero leave it off.
+   */
+  placeholderLabel?: boolean;
 }
 
 // Warm neutral tones drawn from the app's cream/sage palette. Deliberately low
@@ -83,7 +92,11 @@ export function DishImage({
   transition = 250,
   recyclingKey,
   priority = 'normal',
+  placeholderLabel = false,
 }: DishImageProps) {
+  // Empty URL or the shared stock photo == "no real image yet". Short-circuit
+  // to the branded line-art placeholder and never fetch the old salad bowl.
+  const isPlaceholder = isDefaultRecipeImage(url);
   const sized = url ? recipeImageUrl(url, { width }) : undefined;
   const tone = useMemo(() => toneFor(recyclingKey ?? url ?? undefined), [recyclingKey, url]);
 
@@ -131,10 +144,11 @@ export function DishImage({
     setFailed(true);
   }, [useRawFallback, sized, url]);
 
-  // Nothing to show, or every attempt failed: the tone tile IS the final state.
-  // Same dimensions, radius and layout as the image, so the card never resizes.
-  if (!url || !sized || failed) {
-    return <View style={[{ backgroundColor: tone }, style as object]} />;
+  // No real photo (empty / stock placeholder), or every load attempt failed:
+  // the branded line-art placeholder IS the final state. Same dimensions and
+  // layout as the image, so the card never resizes.
+  if (isPlaceholder || !url || !sized || failed) {
+    return <RecipePlaceholder style={style} showLabel={placeholderLabel} />;
   }
 
   const sourceUri = useRawFallback ? url : sized;
