@@ -2,7 +2,7 @@
   "expo": {
     "name": "PlanNplate",
     "slug": "plannplate",
-    "version": "1.0.36",
+    "version": "1.0.37",
     "scheme": "plannplate",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vibecode.planplate.8ctfq2",
-      "buildNumber": "61",
+      "buildNumber": "62",
       "infoPlist": {
         "NSCameraUsageDescription": "PlanNplate uses the camera to capture photos inside the app before you publish them.",
         "NSPhotoLibraryUsageDescription": "PlanNplate accesses your photo library to let you choose media that appears in the app.",
@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "ycom.plannplate.app",
-      "versionCode": 61,
+      "versionCode": 62,
       "edgeToEdgeEnabled": true,
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
