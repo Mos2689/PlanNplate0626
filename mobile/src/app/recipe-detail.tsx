@@ -553,6 +553,38 @@ export default function RecipeDetailScreen() {
     }
   }, []);
 
+  // Tap-to-add straight from the hero placeholder: pick → upload → persist
+  // immediately (unlike handlePickImage, which stages into the edit modal).
+  const handleAddHeroPhoto = useCallback(async () => {
+    if (!recipe) return;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const asset = result.assets[0];
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      try {
+        const uploadResult = await uploadFile(
+          asset.uri,
+          asset.fileName ?? `recipe-${Date.now()}.jpg`,
+          asset.mimeType ?? 'image/jpeg'
+        );
+        updateRecipe(recipe.id, { imageUrl: uploadResult.url });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (uploadError) {
+        console.error('Failed to upload hero image:', uploadError);
+        // Fall back to the local URI so the user still sees their photo.
+        updateRecipe(recipe.id, { imageUrl: asset.uri });
+      }
+    } catch (error) {
+      console.error('Error picking hero image:', error);
+    }
+  }, [recipe, updateRecipe]);
+
   const handleTakePhoto = useCallback(async () => {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -683,6 +715,7 @@ export default function RecipeDetailScreen() {
             transition={250}
             recyclingKey={recipe.id}
             priority="high"
+            onAddPhoto={handleAddHeroPhoto}
           />
           {/* Subtle top gradient for icon legibility + bottom fade into content */}
           <LinearGradient

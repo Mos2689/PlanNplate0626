@@ -10,6 +10,7 @@ import { convertToBaseUnit, formatFromBaseUnit, canCombineIngredients, getCanoni
 import { getAverageWeightWithConfidence, shouldConvertCountToWeight, getContainerVolumeML, getLiquidDensityGPerMl } from './average-weight-lookup-au';
 import { validateIngredient, validateIngredients, splitCompoundIngredient } from './ingredient-validator';
 import { generateRecipesOptimized } from './optimized-recipe-generation';
+import { mealSlotKindOf } from './recipe-categories';
 import type { InspiredRecipe } from './inspired-recipe-library';
 import { generateRecipeImage, type MealType, type GeneratedRecipeResponse } from './openai';
 import {
@@ -943,7 +944,15 @@ interface MealPlanStore {
     // regardless of the toggle.
     optimizeGrocery?: boolean;
     optimizeSeedRecipes?: import("./grocery-optimization").IngredientBearer[];
-    specialInstructions?: { exclude: string[]; include: string[]; diets: string[] };
+    specialInstructions?: {
+      exclude: string[];
+      include: string[];
+      diets: string[];
+      // Optional so existing callers passing the 3-field shape stay valid.
+      reduce?: string[];
+      cuisines?: string[];
+      rawText?: string;
+    };
   }) => void;
   // User-initiated cancel of an in-flight plan generation. Stops the engine
   // cooperatively (no more recipes are placed) and clears the progress banner.
@@ -1887,6 +1896,17 @@ export const useMealPlanStore = create<MealPlanStore>()(
         // params, strict validation) reads this, so tuning actually governs the
         // selection — not just the prompt text.
         const preferences = { ...get().preferences, ...(planOverrides ?? {}) };
+        // Fold any cuisines named in the special-instructions box into this
+        // plan's cuisine preferences, so BOTH the deterministic library matcher
+        // and the OpenAI prompt honour "only Indian" etc. via the existing path.
+        if (planSpecialInstructions?.cuisines?.length) {
+          preferences.cuisinePreferences = Array.from(
+            new Set([
+              ...(preferences.cuisinePreferences ?? []),
+              ...planSpecialInstructions.cuisines,
+            ]),
+          );
+        }
         // 14-day cooked history (for the "Variety" priority): names of recipes
         // cooked in the prior 14 days, so the inspired-library source avoids
         // re-suggesting them. Saved recipes are exempt — the user opted them in
@@ -2224,7 +2244,27 @@ export const useMealPlanStore = create<MealPlanStore>()(
               planIntensity: pendingPlanIntensity,
             });
             get().clearPendingSkipEffect();
-            const finalInstructions = [enrichedInstructions, tasteSignals]
+            // The user's raw special-instructions text is passed VERBATIM to the
+            // recipe prompt (buildSingleRecipePrompt treats customCookingInstructions
+            // as a RULE #2 "SPECIAL REQUEST" that overrides preferences but never
+            // allergies). This lets nuanced asks the structured parser can't model
+            // — "less oil", "only barramundi & salmon", cuisine — actually shape
+            // the generated recipes (and therefore the grocery list). "reduce"
+            // items get an explicit "less, don't omit" nudge so they aren't
+            // dropped entirely.
+            const specialDirectiveParts: string[] = [];
+            if (planSpecialInstructions?.rawText?.trim()) {
+              specialDirectiveParts.push(
+                `User's exact request (follow strictly; overrides preferences, never allergies): "${planSpecialInstructions.rawText.trim()}".`,
+              );
+            }
+            if (planSpecialInstructions?.reduce?.length) {
+              specialDirectiveParts.push(
+                `Use noticeably less ${planSpecialInstructions.reduce.join(', ')} — reduce, do not omit.`,
+              );
+            }
+            const specialDirective = specialDirectiveParts.join(' ');
+            const finalInstructions = [enrichedInstructions, tasteSignals, specialDirective]
               .filter((s) => s && s.trim().length > 0)
               .join('\n\n');
 
@@ -2264,11 +2304,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
               // is read from its tags: lunch/dinner (or untagged) → a batch MAIN
               // (cooked in a lunch slot, since batch cooks at lunch); breakfast →
               // a breakfast slot. Snacks have no batch slot and are skipped. Each
-              // favourite is used at most once.
-              const favMealTypeOf = (recipe: Recipe): MealType | null =>
-                (['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).find((mt) =>
-                  (recipe.tags || []).map((t) => t.toLowerCase()).includes(mt),
-                ) ?? null;
+              // favourite is used at most once. Meal category is read via the
+              // shared taxonomy (mealSlotKindOf) so it tolerates every tag format
+              // ('Lunch/Dinner', 'lunch', 'dinner', 'main', …) and lets mains win
+              // over a stale breakfast/snack tag — never the slot a recipe once
+              // sat in.
               const favRecipes: Recipe[] = [];
               const seenFav = new Set<string>();
               for (const id of presetFavoriteIds ?? []) {
@@ -2279,12 +2319,15 @@ export const useMealPlanStore = create<MealPlanStore>()(
               }
               const mainFavs = favRecipes
                 .filter((r) => {
-                  const mt = favMealTypeOf(r);
-                  return mt === 'lunch' || mt === 'dinner' || mt === null;
+                  const kind = mealSlotKindOf(r);
+                  // A main, or untagged (treated as a main). Never breakfast, and
+                  // never a snack/drink/dessert/side ('other') — those have no
+                  // cooked main slot.
+                  return kind === 'main' || kind === 'untagged';
                 })
                 .slice(0, totalMains);
               const breakfastFavs = breakfastCooked
-                ? favRecipes.filter((r) => favMealTypeOf(r) === 'breakfast').slice(0, days)
+                ? favRecipes.filter((r) => mealSlotKindOf(r) === 'breakfast').slice(0, days)
                 : [];
 
               const mainsToGenerate = Math.max(0, totalMains - mainFavs.length);
@@ -2329,6 +2372,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
                         excludeIngredients: planSpecialInstructions?.exclude,
                         includeIngredients: planSpecialInstructions?.include,
                         dietFilters: planSpecialInstructions?.diets,
+                        hasSpecialRequest: !!planSpecialInstructions?.rawText?.trim(),
                         shouldCancel: () => generationCancelRequested,
                       },
                       {
@@ -2564,6 +2608,7 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 excludeIngredients: planSpecialInstructions?.exclude,
                 includeIngredients: planSpecialInstructions?.include,
                 dietFilters: planSpecialInstructions?.diets,
+                hasSpecialRequest: !!planSpecialInstructions?.rawText?.trim(),
                 shouldCancel: () => generationCancelRequested,
               },
               {
@@ -2617,19 +2662,6 @@ export const useMealPlanStore = create<MealPlanStore>()(
             // a dinner is the one a leftover reheats.
             try {
               if (presetFavoriteIds && presetFavoriteIds.length) {
-                const MEAL_ORDER: Array<'breakfast' | 'lunch' | 'dinner' | 'snack'> = [
-                  'breakfast',
-                  'lunch',
-                  'dinner',
-                  'snack',
-                ];
-                // The meal type a recipe belongs to, read from its tags.
-                const mealTypeOf = (
-                  recipe: Recipe,
-                ): 'breakfast' | 'lunch' | 'dinner' | 'snack' | null => {
-                  const tags = (recipe.tags || []).map((t) => t.toLowerCase());
-                  return MEAL_ORDER.find((mt) => tags.includes(mt)) ?? null;
-                };
                 const windowStartKey = formatDateKey(startDate);
                 const windowEnd = new Date(startDate);
                 windowEnd.setDate(windowEnd.getDate() + days);
@@ -2651,24 +2683,23 @@ export const useMealPlanStore = create<MealPlanStore>()(
                     console.log(`[BG-GEN] favourite ${favId} not in library — skipped`);
                     continue;
                   }
-                  const recipeMt = mealTypeOf(fav);
-                  // Candidate slot types (in preference order): a breakfast
-                  // favourite only fits a breakfast slot; everything else (lunch /
-                  // dinner / untagged) fits any cooked main, preferring its own.
+                  // Slot fit read via the shared taxonomy — tolerant of every tag
+                  // format, mains winning over a stale breakfast tag. A breakfast
+                  // favourite only fits a breakfast slot; a main (or untagged) fits
+                  // any cooked main slot; a snack/drink/dessert/side ('other') has
+                  // no cooked slot and is skipped.
+                  const kind = mealSlotKindOf(fav);
                   let candidates: Array<'breakfast' | 'lunch' | 'dinner'>;
-                  if (recipeMt === 'breakfast') {
+                  if (kind === 'breakfast') {
                     candidates = selectedMealTypes.includes('breakfast') ? ['breakfast'] : [];
-                  } else if (recipeMt === 'snack') {
+                  } else if (kind === 'other') {
                     candidates = [];
                   } else {
-                    candidates =
-                      recipeMt && cookedMains.includes(recipeMt)
-                        ? [recipeMt, ...cookedMains.filter((m) => m !== recipeMt)]
-                        : [...cookedMains];
+                    candidates = [...cookedMains];
                   }
                   if (candidates.length === 0) {
                     console.log(
-                      `[BG-GEN] favourite "${fav.name}" (${recipeMt ?? 'untagged'}) — no matching cooked meal type — skipped`,
+                      `[BG-GEN] favourite "${fav.name}" (${kind}) — no matching cooked meal type — skipped`,
                     );
                     continue;
                   }

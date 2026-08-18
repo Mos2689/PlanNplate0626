@@ -29,13 +29,9 @@ import {
 } from 'react-native';
 import {
   X,
-  AlertTriangle,
-  CirclePlus,
-  CircleMinus,
   Check,
   RotateCcw,
   Apple,
-  ChefHat,
   Compass,
   // Brand rule (per the plan-meals header comment): "No Sparkles." The
   // commit CTA uses Check — the same affirmation icon the screen
@@ -48,10 +44,6 @@ import type { UserPreferences } from '@/lib/store';
 import {
   DIETARY_OPTIONS,
   CUISINE_OPTIONS,
-  ALLERGY_OPTIONS,
-  SKILL_LEVELS,
-  PREP_TIME_OPTIONS,
-  ADVENTURE_LEVELS,
 } from '@/lib/preference-options';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -249,68 +241,6 @@ function Chip({
   );
 }
 
-// ─── Reusable pill row (single-select, equal-width) ────────────────────────
-function PillRow<T extends string | number>({
-  options,
-  value,
-  onChange,
-  isDark,
-  tone = 'sage',
-}: {
-  options: Array<{ key: T; label: string }>;
-  value: T | undefined;
-  onChange: (v: T) => void;
-  isDark: boolean;
-  tone?: 'sage' | 'olive';
-}) {
-  const s = useTuneStyles(isDark);
-  const accent = tone === 'olive' ? designTokens.colors.olive : designTokens.colors.brand;
-  return (
-    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-      {options.map((opt) => {
-        const selected = value === opt.key;
-        return (
-          <Pressable
-            key={String(opt.key)}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onChange(opt.key);
-            }}
-            style={{ flex: 1, minWidth: 64 }}
-          >
-            {({ pressed }) => (
-              <View
-                style={{
-                  paddingVertical: 9,
-                  paddingHorizontal: 10,
-                  borderRadius: 12,
-                  borderWidth: selected ? 0 : 1,
-                  borderColor: s.cardBorder,
-                  backgroundColor: selected ? accent : s.cardBg,
-                  alignItems: 'center',
-                  transform: [{ scale: pressed ? 0.98 : 1 }],
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.medium,
-                    fontSize: 12.5,
-                    color: selected ? designTokens.colors.cream : s.ink,
-                    letterSpacing: -0.1,
-                  }}
-                  numberOfLines={1}
-                >
-                  {opt.label}
-                </Text>
-              </View>
-            )}
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 // ─── Main component ────────────────────────────────────────────────────────
 export function PlanTuneSheet({
   visible,
@@ -331,13 +261,11 @@ export function PlanTuneSheet({
     ...overrides,
   }));
   const [noteDraft, setNoteDraft] = useState<string>(oneTimeNote);
-  const [allergyTouched, setAllergyTouched] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setDraft({ ...basePreferences, ...overrides });
       setNoteDraft(oneTimeNote);
-      setAllergyTouched(false);
     }
     // We only want to re-seed on open, not on every prop tick — that
     // would clobber the user's in-flight edits if the parent re-renders.
@@ -377,7 +305,6 @@ export function PlanTuneSheet({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setDraft({ ...basePreferences });
     setNoteDraft('');
-    setAllergyTouched(false);
   };
 
   const handleCommit = () => {
@@ -508,45 +435,6 @@ export function PlanTuneSheet({
               </Pressable>
             </View>
 
-            {/* Allergy notice — appears the moment the allergy section is touched */}
-            {allergyTouched && (
-              <View
-                style={{
-                  marginHorizontal: 22,
-                  marginBottom: 12,
-                  padding: 12,
-                  borderRadius: 14,
-                  flexDirection: 'row',
-                  alignItems: 'flex-start',
-                  gap: 10,
-                  backgroundColor: 'rgba(228,109,70,0.08)',
-                  borderWidth: 1,
-                  borderColor: 'rgba(228,109,70,0.35)',
-                }}
-              >
-                <AlertTriangle
-                  size={16}
-                  color={designTokens.colors.olive}
-                  strokeWidth={1.9}
-                  style={{ marginTop: 1 }}
-                />
-                <Text
-                  style={{
-                    flex: 1,
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 12.5,
-                    lineHeight: 17,
-                    color: s.ink2,
-                  }}
-                >
-                  Allergies edited here apply to this plan only.{' '}
-                  <Text style={{ fontFamily: designTokens.font.semibold, color: s.ink }}>
-                    Your saved allergy profile stays unchanged.
-                  </Text>
-                </Text>
-              </View>
-            )}
-
             {/* Scroll body */}
             <ScrollView
               style={{ paddingHorizontal: 18 }}
@@ -554,85 +442,8 @@ export function PlanTuneSheet({
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              {/* ── COOKING ───────────────────────────────────────────── */}
-              <SectionCard title="Cooking" hint="Servings, skill, and how long" Icon={ChefHat} isDark={isDark}>
-                {/* Serving size stepper */}
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: 14,
-                  }}
-                >
-                  <Text style={{ fontFamily: designTokens.font.medium, fontSize: 13, color: s.ink2 }}>
-                    Serving size
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <Pressable
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setDraftField('servingSize', Math.max(1, draft.servingSize - 1));
-                      }}
-                      hitSlop={8}
-                    >
-                      <CircleMinus size={26} color={s.ink2} strokeWidth={1.6} />
-                    </Pressable>
-                    <Text
-                      style={{
-                        fontFamily: designTokens.font.semibold,
-                        fontSize: 18,
-                        color: s.ink,
-                        minWidth: 22,
-                        textAlign: 'center',
-                      }}
-                    >
-                      {draft.servingSize}
-                    </Text>
-                    <Pressable
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setDraftField('servingSize', Math.min(12, draft.servingSize + 1));
-                      }}
-                      hitSlop={8}
-                    >
-                      <CirclePlus size={26} color={s.ink2} strokeWidth={1.6} />
-                    </Pressable>
-                  </View>
-                </View>
-
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginBottom: 8 }}>
-                  Skill
-                </Text>
-                <PillRow
-                  options={SKILL_LEVELS.map((l) => ({ key: l.key, label: l.label }))}
-                  value={draft.cookingSkillLevel}
-                  onChange={(v) => setDraftField('cookingSkillLevel', v as any)}
-                  isDark={isDark}
-                />
-
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginTop: 14, marginBottom: 8 }}>
-                  Prep time
-                </Text>
-                <PillRow
-                  options={PREP_TIME_OPTIONS.map((l) => ({ key: l.key, label: l.label }))}
-                  value={draft.mealPrepTime}
-                  onChange={(v) => setDraftField('mealPrepTime', v as any)}
-                  isDark={isDark}
-                />
-              </SectionCard>
-
-              {/* ── DIET & SAFETY ─────────────────────────────────────── */}
-              <SectionCard
-                title="Diet & safety"
-                hint="What goes in — and what doesn't"
-                Icon={Apple}
-                iconTone="olive"
-                isDark={isDark}
-              >
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginBottom: 8 }}>
-                  Dietary restrictions
-                </Text>
+              {/* ── DIET ──────────────────────────────────────────────── */}
+              <SectionCard title="Diet" Icon={Apple} iconTone="olive" isDark={isDark}>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {DIETARY_OPTIONS.map((d) => (
                     <Chip
@@ -644,37 +455,10 @@ export function PlanTuneSheet({
                     />
                   ))}
                 </View>
-
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginTop: 14, marginBottom: 8 }}>
-                  Allergies
-                </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {ALLERGY_OPTIONS.map((a) => (
-                    <Chip
-                      key={a}
-                      label={a}
-                      tone="olive"
-                      selected={(draft.allergies ?? []).includes(a)}
-                      onPress={() => {
-                        setAllergyTouched(true);
-                        toggleStringInList('allergies', a);
-                      }}
-                      isDark={isDark}
-                    />
-                  ))}
-                </View>
               </SectionCard>
 
               {/* ── TASTES ────────────────────────────────────────────── */}
-              <SectionCard
-                title="Tastes"
-                hint="Cuisines and how adventurous"
-                Icon={Compass}
-                isDark={isDark}
-              >
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginBottom: 8 }}>
-                  Preferred cuisines
-                </Text>
+              <SectionCard title="Tastes" Icon={Compass} isDark={isDark}>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {CUISINE_OPTIONS.map((c) => (
                     <Chip
@@ -685,50 +469,6 @@ export function PlanTuneSheet({
                       isDark={isDark}
                     />
                   ))}
-                </View>
-
-                <Text style={{ fontFamily: designTokens.font.medium, fontSize: 12, color: s.ink3, marginTop: 14, marginBottom: 8 }}>
-                  Adventure level
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                  {ADVENTURE_LEVELS.map((level) => {
-                    const active = (draft.adventureLevel ?? 3) >= level;
-                    return (
-                      <Pressable
-                        key={level}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setDraftField('adventureLevel', level as any);
-                        }}
-                        hitSlop={6}
-                        style={{ padding: 2 }}
-                      >
-                        <View
-                          style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: 999,
-                            backgroundColor: active ? designTokens.colors.brand : 'transparent',
-                            borderWidth: 1.5,
-                            borderColor: active ? designTokens.colors.brand : s.cardBorder,
-                          }}
-                        />
-                      </Pressable>
-                    );
-                  })}
-                  <Text style={{ marginLeft: 6, fontFamily: designTokens.font.regular, fontSize: 12, color: s.ink3 }}>
-                    {draft.adventureLevel === 1
-                      ? 'Familiar'
-                      : draft.adventureLevel === 2
-                        ? 'Comfortable'
-                        : draft.adventureLevel === 3
-                          ? 'Curious'
-                          : draft.adventureLevel === 4
-                            ? 'Adventurous'
-                            : draft.adventureLevel === 5
-                              ? 'Daring'
-                              : 'Curious'}
-                  </Text>
                 </View>
               </SectionCard>
 

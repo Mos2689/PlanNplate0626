@@ -86,6 +86,9 @@ interface BatchGenerationOptions {
   excludeIngredients?: string[];
   includeIngredients?: string[];
   dietFilters?: string[];
+  /** True when the user typed a special instruction — lets it override the
+   *  tune-sheet diet + cuisine PREFERENCES in validation (never allergies). */
+  hasSpecialRequest?: boolean;
   /**
    * Cooperative cancel — checked between slots (and before each OpenAI call).
    * When it returns true the engine stops generating and returns what it has,
@@ -187,10 +190,46 @@ function areRecipeNamesTooSimilar(name1: string, name2: string, threshold = 0.6)
  * `allowOverride` is true only when the slot was deliberately assigned a fridge
  * ingredient the user chose (those intentionally override preferences).
  */
+// Hard check for the special-instructions EXCLUDE list ("no garlic", "no
+// pork"). Returns the first excluded term found in the recipe's name,
+// description, or ingredient names, else null. Matches whole words and a simple
+// plural ("prawn" → "prawns"). This is the guardrail that replaced the dropped
+// diet preference, so it is enforced even for override recipes.
+function findExcludedIngredient(
+  recipe: GeneratedRecipeResponse,
+  excludeIngredients?: string[],
+): string | null {
+  if (!excludeIngredients?.length) return null;
+  const hay = [
+    recipe.name,
+    recipe.description,
+    ...(recipe.ingredients || []).map((i) => i.name),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  for (const raw of excludeIngredients) {
+    const term = (raw || '').toLowerCase().trim();
+    if (!term) continue;
+    const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${esc}(?:s|es)?\\b`, 'i').test(hay)) return term;
+  }
+  return null;
+}
+
 function violatesStrictPreferences(
   recipe: GeneratedRecipeResponse,
   allowOverride: boolean,
+  excludeIngredients?: string[],
 ): boolean {
+  // Excluded ingredients are a HARD guardrail — enforced even when the caller
+  // allows a diet/allergy override (fridge/special-request slots).
+  const banned = findExcludedIngredient(recipe, excludeIngredients);
+  if (banned) {
+    // Surface it in `violations` so the existing reject logs explain the drop.
+    (recipe.violations ||= []).push(`EXCLUDE VIOLATION: Contains ${banned}`);
+    return true;
+  }
   if (allowOverride) return false;
   const violations = recipe.violations || [];
   return violations.some(
@@ -210,7 +249,11 @@ function violatesStrictPreferences(
 function curatedFailsAllergyOrDiet(
   recipe: GeneratedRecipeResponse,
   preferences: Parameters<typeof validateRecipeAgainstPreferences>[1],
+  excludeIngredients?: string[],
 ): boolean {
+  // Curated picks are pre-filtered on excludes by the matcher, but re-check here
+  // so an excluded ingredient can NEVER reach the plan even if that regresses.
+  if (findExcludedIngredient(recipe, excludeIngredients)) return true;
   const { violations } = validateRecipeAgainstPreferences(recipe, preferences, false, false);
   return violations.some(
     (v) => v.includes('ALLERGY VIOLATION') || v.includes('DIETARY VIOLATION'),
@@ -443,7 +486,7 @@ export async function generateRecipesOptimized(
           similarityThreshold: threshold,
         });
         if (!curated) break; // curated bank has no more unique safe-by-style breakfasts
-        if (curatedFailsAllergyOrDiet(curated, preferences)) {
+        if (curatedFailsAllergyOrDiet(curated, preferences, options.excludeIngredients)) {
           usedRecipeNames.push(curated.name); // exclude it, try the next candidate
           console.warn(`[OptimizedGeneration] Curated breakfast "${curated.name}" failed allergy/diet re-check — trying next curated`);
           continue;
@@ -487,6 +530,7 @@ export async function generateRecipesOptimized(
               allowRepeats: false,
               breakfastStyle: style,
               customCookingInstructions,
+              hasSpecialRequest: options.hasSpecialRequest,
             },
             excludeNames
           ), OPENAI_ATTEMPT_TIMEOUT_MS, 'OpenAI breakfast');
@@ -495,7 +539,7 @@ export async function generateRecipesOptimized(
             continue;
           }
           // STRICT: reject a breakfast that breaks the user's diet/allergies.
-          if (violatesStrictPreferences(recipe, false)) {
+          if (violatesStrictPreferences(recipe, false, options.excludeIngredients)) {
             console.warn(`[OptimizedGeneration] Breakfast "${recipe.name}" violates diet/allergy — rejecting: ${(recipe.violations || []).join('; ')}`);
             excludeNames.push(recipe.name);
             continue;
@@ -519,7 +563,7 @@ export async function generateRecipesOptimized(
           predicate: (r) => (style === 'no-cook' ? r.cookTime === 0 : r.cookTime > 0),
           similarityThreshold: threshold,
         });
-        if (relaxed && !curatedFailsAllergyOrDiet(relaxed, preferences)) {
+        if (relaxed && !curatedFailsAllergyOrDiet(relaxed, preferences, options.excludeIngredients)) {
           relaxed.mealType = 'breakfast';
           curatedCount++;
           usedRecipeNames.push(relaxed.name);
@@ -924,7 +968,7 @@ export async function generateRecipesOptimized(
         const curated = curatedMatcher.take(mealType, excludeNames, {
           similarityThreshold: optimizeGrocery ? 0.8 : 0.6,
         });
-        if (curated && curatedFailsAllergyOrDiet(curated, preferences)) {
+        if (curated && curatedFailsAllergyOrDiet(curated, preferences, options.excludeIngredients)) {
           console.warn(`[OptimizedGeneration] Curated ${mealType} "${curated.name}" failed allergy/diet re-check — falling back to OpenAI`);
         } else if (curated) {
           curatedCount++;
@@ -972,6 +1016,7 @@ export async function generateRecipesOptimized(
             mealTypes: [mealType],
             preferences,
             additionalInstructions: recipeAdditionalInstructions, // Use recipe-specific instructions
+            hasSpecialRequest: options.hasSpecialRequest,
             recipesToGenerate: uniqueRecipesToGenerate,
             optimizeGrocery,
             allowRepeats,
@@ -1000,7 +1045,7 @@ export async function generateRecipesOptimized(
           // STRICT: never accept a recipe that breaks the user's diet/allergies
           // (regenerateSingleRecipe may return a non-compliant one after exhausting
           // its own retries). Fridge-assigned slots are the only allowed override.
-          if (violatesStrictPreferences(recipe, !!assignedFridgeIngredient)) {
+          if (violatesStrictPreferences(recipe, !!assignedFridgeIngredient, options.excludeIngredients)) {
             console.warn(`[OptimizedGeneration] Recipe "${recipe.name}" violates diet/allergy — rejecting & retrying: ${(recipe.violations || []).join('; ')}`);
             excludeNames.push(recipe.name);
             continue;
@@ -1045,7 +1090,7 @@ export async function generateRecipesOptimized(
         const relaxed = curatedMatcher.takeRelaxed?.(mealType, [...usedRecipeNames], {
           similarityThreshold: optimizeGrocery ? 0.8 : 0.6,
         });
-        if (relaxed && !curatedFailsAllergyOrDiet(relaxed, preferences)) {
+        if (relaxed && !curatedFailsAllergyOrDiet(relaxed, preferences, options.excludeIngredients)) {
           relaxed.mealType = mealType;
           curatedCount++;
           generatedCount++;
@@ -1253,13 +1298,14 @@ export async function generateRecipesOptimized(
           preferences,
           additionalInstructions,
           customCookingInstructions: safeCookingInstructions,
+          hasSpecialRequest: options.hasSpecialRequest,
           recipesToGenerate,
           optimizeGrocery,
           allowRepeats,
         }, [...usedRecipeNames]).then(recipe => {
           // STRICT: drop a safety-net recipe that breaks diet/allergies rather
           // than serve it (a deliberate fridge/special request may override).
-          if (violatesStrictPreferences(recipe, !!additionalInstructions)) {
+          if (violatesStrictPreferences(recipe, !!additionalInstructions, options.excludeIngredients)) {
             console.warn(`[OptimizedGeneration] Safety-net recipe "${recipe.name}" violates diet/allergy — dropping: ${(recipe.violations || []).join('; ')}`);
             return null;
           }

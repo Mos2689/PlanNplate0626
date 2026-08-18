@@ -1,9 +1,16 @@
 import type { Recipe } from './store';
 import { classifyRecipeByContent } from './meal-type-validator';
+import { canonicalMealTag, isMealTypeTag, categoryForTag } from './recipe-categories';
+import { findInspiredById } from './inspired-adapters';
 
 /**
- * Reclassify existing recipes based on content analysis
- * This scans all recipes and updates their meal type tags based on characteristics
+ * FILL IN a missing meal-type tag from content analysis.
+ *
+ * This only ADDS a meal-type tag to recipes that don't already have one and
+ * aren't curated. It must NEVER override a meal type a recipe already carries —
+ * a content guess is fallible (it once mislabelled a curry as breakfast), and a
+ * curated library recipe's category is authoritative. Reading is done through
+ * the shared taxonomy so every tag format ('Lunch/Dinner', 'lunch', …) counts.
  */
 
 export interface ReclassificationReport {
@@ -18,16 +25,6 @@ export interface ReclassificationReport {
 }
 
 /**
- * Extract meal type from recipe tags (looks for breakfast/lunch/dinner/snack)
- */
-function extractCurrentMealType(recipe: Recipe): string | null {
-  const mealTypeTag = recipe.tags.find(tag =>
-    ['breakfast', 'lunch', 'dinner', 'snack'].includes(tag.toLowerCase())
-  );
-  return mealTypeTag?.toLowerCase() || null;
-}
-
-/**
  * Reclassify a single recipe based on content
  */
 export function reclassifySingleRecipe(recipe: Recipe): {
@@ -36,9 +33,51 @@ export function reclassifySingleRecipe(recipe: Recipe): {
   newMealType: string;
   updatedRecipe: Recipe | null;
 } {
-  const currentMealType = extractCurrentMealType(recipe);
+  // 1. CURATED library recipe → REPAIR from the library, which is authoritative.
+  //    Content classification must never decide here — it once mislabelled the
+  //    curry "Saag Aloo" (mealType "Lunch/Dinner") as breakfast, and past runs
+  //    persisted that wrong tag. We keep every non-meal tag plus any meal-type
+  //    tag of the RIGHT category, drop meal-type tags of any other category, and
+  //    ensure the correct canonical tag is present.
+  if (recipe.curatedSourceId) {
+    const lib = findInspiredById(recipe.curatedSourceId);
+    const libCat = lib?.mealType ? categoryForTag(lib.mealType) : undefined;
+    if (libCat) {
+      const cleaned = recipe.tags.filter(
+        (t) => !isMealTypeTag(t) || categoryForTag(t)?.key === libCat.key,
+      );
+      if (!cleaned.some((t) => categoryForTag(t)?.key === libCat.key)) {
+        cleaned.push(libCat.tag);
+      }
+      const changed =
+        cleaned.length !== recipe.tags.length ||
+        cleaned.some((t, i) => t !== recipe.tags[i]);
+      if (changed) {
+        return {
+          needsUpdate: true,
+          oldMealType: recipe.tags.filter(isMealTypeTag).join('+') || 'untagged',
+          newMealType: libCat.tag,
+          updatedRecipe: { ...recipe, tags: cleaned },
+        };
+      }
+    }
+    // Curated but not in the inspired library (e.g. a curated-plan recipe), or
+    // already correct → leave untouched.
+    return { needsUpdate: false, oldMealType: null, newMealType: 'n/a', updatedRecipe: null };
+  }
 
-  // Convert recipe to format expected by validator
+  // 2. NON-CURATED that already carries ANY meal-type tag (breakfast, main,
+  //    snack, drink, dessert, …) → never override it.
+  if (recipe.tags.some(isMealTypeTag)) {
+    return {
+      needsUpdate: false,
+      oldMealType: 'tagged',
+      newMealType: 'tagged',
+      updatedRecipe: null,
+    };
+  }
+
+  // 3. NON-CURATED and untagged → derive a meal type from content and fill it in.
   const recipeForValidation = {
     name: recipe.name,
     description: recipe.description,
@@ -57,33 +96,16 @@ export function reclassifySingleRecipe(recipe: Recipe): {
   };
 
   const detectedMealType = classifyRecipeByContent(recipeForValidation as any);
-  const needsUpdate = currentMealType !== detectedMealType;
-
-  if (needsUpdate) {
-    // Remove old meal type tag and add new one
-    const updatedTags = recipe.tags.filter(tag =>
-      !['breakfast', 'lunch', 'dinner', 'snack'].includes(tag.toLowerCase())
-    );
-    updatedTags.push(detectedMealType);
-
-    const updatedRecipe: Recipe = {
-      ...recipe,
-      tags: updatedTags,
-    };
-
-    return {
-      needsUpdate: true,
-      oldMealType: currentMealType || 'untagged',
-      newMealType: detectedMealType,
-      updatedRecipe,
-    };
-  }
+  // Defensive: strip any stray meal-type tags (there shouldn't be any, since
+  // currentCategory was null) and add the single canonical tag.
+  const updatedTags = recipe.tags.filter(tag => !isMealTypeTag(tag));
+  updatedTags.push(canonicalMealTag(detectedMealType));
 
   return {
-    needsUpdate: false,
-    oldMealType: currentMealType,
+    needsUpdate: true,
+    oldMealType: 'untagged',
     newMealType: detectedMealType,
-    updatedRecipe: null,
+    updatedRecipe: { ...recipe, tags: updatedTags },
   };
 }
 

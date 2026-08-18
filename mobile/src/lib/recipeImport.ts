@@ -433,12 +433,14 @@ Ingredient categories must be one of: produce, dairy, meat, pantry, frozen, bake
 
 If you cannot find specific values, make reasonable estimates based on the recipe type. Times should be in minutes.
 
+LANGUAGE: Output EVERY text field — name, description, ingredient names, units, instructions, and tags — in ENGLISH. If the source content is in another language or script (e.g. Portuguese, Spanish, Hindi, Japanese), TRANSLATE it into natural English. The saved recipe must always be in English regardless of the source language.
+
 Only return valid JSON, no markdown or explanation.`;
 
   const responseText = await callOpenAIDirect([
     {
       role: 'system',
-      content: 'You are a helpful recipe extraction expert that extracts recipe information from webpage content. Only output valid JSON, no markdown or explanations.',
+      content: 'You are a helpful recipe extraction expert that extracts recipe information from webpage content. Always output all recipe fields in English, translating from the source language when needed. Only output valid JSON, no markdown or explanations.',
     },
     {
       role: 'user',
@@ -506,12 +508,14 @@ Return a JSON object with this exact structure:
 
 Ingredient categories should be one of: produce, dairy, meat, pantry, frozen, bakery, other.
 
+LANGUAGE: Output EVERY text field — name, description, ingredient names, units, instructions, and tags — in ENGLISH. If the input is in another language or script, TRANSLATE it into natural English. The saved recipe must always be in English regardless of the input language.
+
 Only return valid JSON, no markdown or explanation.`;
 
   const responseText = await callOpenAIDirect([
     {
       role: 'system',
-      content: 'You are a helpful recipe extraction expert that structures recipe information into JSON format. Only output valid JSON, no markdown or explanations.',
+      content: 'You are a helpful recipe extraction expert that structures recipe information into JSON format. Always output all recipe fields in English, translating from the source language when needed. Only output valid JSON, no markdown or explanations.',
     },
     {
       role: 'user',

@@ -827,16 +827,24 @@ export default function HomeScreen() {
       (s.recipeId ? recipes.find((r) => r.id === s.recipeId)?.name : undefined) ||
       s.customMealName ||
       '';
-    // Leftover/repeat placeholders ("Leftovers · <dish>" AI slots and the
-    // curated flow's "Leftover <dish>" variants) are reheated, not cooked — so
-    // they don't count toward the day's "dishes to cook".
-    const isLeftoverSlot = (s: (typeof mealSlots)[number]) =>
-      /^leftovers?\b/i.test(nameOf(s));
+    // No-cook slots don't count toward the day's "dishes to cook". These are
+    // recipe-less placeholders the planner writes as customMealName (store.ts):
+    //   • "Skipped"            — meal skipped, nothing cooked.
+    //   • "Leftovers · <dish>" — reheated, not cooked.
+    //   • "Grab & go"          — no-cook breakfast.
+    //   • "Buy out"            — bought lunch/dinner.
+    // Plus any REAL recipe slot the user later marked skipped via a cooking log.
+    const isNoCookSlot = (s: (typeof mealSlots)[number]) => {
+      if (cookingLogs.some((l) => l.slotId === s.id && l.status === 'skipped')) return true;
+      return /^(skipped\b|leftovers?\b|grab\s*(?:&|and)?\s*go\b|buy[\s-]*out\b)/i.test(
+        nameOf(s).trim(),
+      );
+    };
     const slots = mealSlots.filter(
       (s) =>
         s.date === dayKey &&
         (s.recipeId || s.customMealName) &&
-        !isLeftoverSlot(s),
+        !isNoCookSlot(s),
     );
     const cookedCount = slots.filter((s) =>
       cookingLogs.some((l) => l.slotId === s.id && l.status === 'cooked'),

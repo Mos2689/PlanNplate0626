@@ -57,6 +57,10 @@ export interface GenerateRecipeParams {
   mealCount?: number; // Total unique recipes being generated for protein diversity rules
   customCookingInstructions?: string; // Free-text user instructions that override preferences (but not allergies)
   breakfastStyle?: 'no-cook' | 'cooked'; // For breakfast only: weekday = no-cook, weekend = cooked
+  // True when the user typed a special instruction on Plan-My-Meals. Like the
+  // fridge path, it lets the SPECIAL REQUEST override diet + cuisine PREFERENCES
+  // (e.g. "chicken only" beats a Pescatarian tune-sheet choice) — never allergies.
+  hasSpecialRequest?: boolean;
 }
 
 // Parse fridge ingredients from user's "What's in your Fridge" specification
@@ -1642,7 +1646,7 @@ export async function generateRecipe(
 
     // Validate recipe against user preferences
     // Special request can override preferences but never allergies
-    const hasSpecialRequest = !!params.additionalInstructions;
+    const hasSpecialRequest = !!params.additionalInstructions || !!params.hasSpecialRequest;
     const validation = validateRecipeAgainstPreferences(
       recipe,
       params.preferences,
@@ -2521,7 +2525,7 @@ export async function regenerateSingleRecipe(
     console.log(`📦 Generated "${recipe.name}" with ${recipe.ingredients.length} ingredients${params.optimizeGrocery ? ' (grocery opt ON)' : ' (grocery opt OFF)'}`);
 
     // Validate: special request can override preferences but never allergies
-    const hasSpecialRequest = !!params.additionalInstructions;
+    const hasSpecialRequest = !!params.additionalInstructions || !!params.hasSpecialRequest;
     const validation = validateRecipeAgainstPreferences(
       recipe,
       params.preferences,

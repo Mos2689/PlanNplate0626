@@ -57,6 +57,13 @@ interface DishImageProps {
    * full-screen viewer. Grid cards and the detail hero leave it off.
    */
   placeholderLabel?: boolean;
+  /**
+   * When set, the branded placeholder (shown when there's no real photo) becomes
+   * tappable, letting the user add a photo in place. Only wire this on surfaces
+   * with a known recipe + update path (the detail hero) — not on grid cards,
+   * where the tap already navigates to the recipe.
+   */
+  onAddPhoto?: () => void;
 }
 
 // Warm neutral tones drawn from the app's cream/sage palette. Deliberately low
@@ -93,6 +100,7 @@ export function DishImage({
   recyclingKey,
   priority = 'normal',
   placeholderLabel = false,
+  onAddPhoto,
 }: DishImageProps) {
   // Empty URL or the shared stock photo == "no real image yet". Short-circuit
   // to the branded line-art placeholder and never fetch the old salad bowl.
@@ -148,7 +156,7 @@ export function DishImage({
   // the branded line-art placeholder IS the final state. Same dimensions and
   // layout as the image, so the card never resizes.
   if (isPlaceholder || !url || !sized || failed) {
-    return <RecipePlaceholder style={style} showLabel={placeholderLabel} />;
+    return <RecipePlaceholder style={style} showLabel={placeholderLabel} onPress={onAddPhoto} />;
   }
 
   const sourceUri = useRawFallback ? url : sized;

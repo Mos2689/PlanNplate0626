@@ -18,6 +18,21 @@ import {
 } from './database';
 import { track } from './analytics';
 
+// DEV-ONLY premium override.
+//
+// Metro / Expo dev builds talk to RevenueCat's TEST store (the `test_…` key is
+// selected whenever __DEV__ is true — see revenuecatClient.ts). The Test store
+// has no record of real App Store / Play purchases, so a genuinely-paid account
+// would read as free in dev — AND syncWithRevenueCat would write that false back
+// to Supabase, corrupting the stored status.
+//
+// So in dev we (a) treat the user as premium so paid features are testable, and
+// (b) NEVER write to Supabase from the RC sync. This has ZERO effect on release
+// builds (__DEV__ is false there — real entitlements decide). Set
+// EXPO_PUBLIC_DEV_FORCE_FREE=true to test the free / paywall flow in dev instead.
+const DEV_PREMIUM_OVERRIDE =
+  __DEV__ && process.env.EXPO_PUBLIC_DEV_FORCE_FREE !== 'true';
+
 // The trigger that opened the PaywallSheet — useful for analytics +
 // for the sheet to show context-aware headline copy (e.g. "Keep cooking
 // the vibe" when triggered from PnP, "Keep importing recipes" from
@@ -172,6 +187,7 @@ export const useSubscriptionStore = create<SubscriptionStore>()((set, get) => ({
 
   // Check if user has premium (from local state or refetch)
   checkPremiumStatus: async (userId: string) => {
+    if (DEV_PREMIUM_OVERRIDE) return true;
     const { userSubscription } = get();
 
     // Quick check from local state
@@ -203,6 +219,20 @@ export const useSubscriptionStore = create<SubscriptionStore>()((set, get) => ({
 
   // Sync RevenueCat subscription status to Supabase
   syncWithRevenueCat: async (userId: string) => {
+    // DEV override: treat as premium and DO NOT write the (test-store) status
+    // back to Supabase. Read the existing row read-only so accountStatus stays
+    // accurate, but force isPremium true.
+    if (DEV_PREMIUM_OVERRIDE) {
+      console.log('[Subscription] DEV_PREMIUM_OVERRIDE active — forcing premium, skipping RC/Supabase write');
+      const subscription = await fetchUserSubscription(userId);
+      set({
+        userSubscription: subscription ?? null,
+        isPremium: true,
+        accountStatus: subscription?.accountStatus || 'active',
+      });
+      return;
+    }
+
     if (!isRevenueCatEnabled()) {
       // If RevenueCat isn't configured, just use Supabase data
       const subscription = await fetchUserSubscription(userId);

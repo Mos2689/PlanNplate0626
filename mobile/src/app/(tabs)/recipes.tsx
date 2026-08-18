@@ -568,6 +568,11 @@ export default function RecipesScreen() {
     lastCookedAt,
   ]);
 
+  // While the user is typing a search, collapse the Collections / duplicate
+  // banner / filter chips so the matching recipes sit right under the search
+  // bar — visible above the keyboard, instead of pushed off-screen behind it.
+  const isSearching = searchQuery.trim().length > 0;
+
   // Signature of a group = its sorted member recipe ids. Adding a NEW similar
   // recipe changes the membership → new signature → the group is shown again.
   const allDuplicateGroups = useMemo(() => findDuplicateGroups(recipes), [recipes]);
@@ -766,6 +771,11 @@ export default function RecipesScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
+          // With the keyboard up during search: let a tap on a result register
+          // (instead of only dismissing the keyboard), and dismiss the keyboard
+          // as soon as the user drags the list to browse the matches.
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           // Virtualization budget. RN's defaults (10 initial, 10 per batch,
           // windowSize 21) render roughly ten screens of cards up front, which
           // on a 2-column image grid is a lot of mounting and decoding before
@@ -1096,7 +1106,8 @@ export default function RecipesScreen() {
               </Animated.View>
               )}
 
-              {/* ── My Collections ──────────────────────────────── */}
+              {/* ── My Collections (hidden while searching) ──────── */}
+              {!isSearching && (
               <Animated.View
                 entering={FadeInDown.delay(150).springify()}
                 style={{ paddingBottom: 20 }}
@@ -1299,9 +1310,10 @@ export default function RecipesScreen() {
                   </Pressable>
                 </ScrollView>
               </Animated.View>
+              )}
 
-              {/* ── Duplicate banner (inline-restyled) ──────────── */}
-              {duplicateGroups.length > 0 && (
+              {/* ── Duplicate banner (hidden while searching) ─────── */}
+              {!isSearching && duplicateGroups.length > 0 && (
                 <View style={{ paddingHorizontal: 20, paddingBottom: 18 }}>
                   <View
                     style={{
@@ -1445,7 +1457,8 @@ export default function RecipesScreen() {
                 ) : null}
               </View>
 
-              {/* ── Filter chips ────────────────────────────────── */}
+              {/* ── Filter chips (hidden while searching) ─────────── */}
+              {!isSearching && (
               <Animated.View
                 entering={FadeInDown.delay(200).springify()}
                 style={{ paddingBottom: 16 }}
@@ -1509,6 +1522,7 @@ export default function RecipesScreen() {
                   })}
                 </ScrollView>
               </Animated.View>
+              )}
             </View>
           }
           numColumns={2}

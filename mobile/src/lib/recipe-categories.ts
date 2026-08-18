@@ -58,3 +58,67 @@ export function categoryForTag(tag: string): RecipeCategory | undefined {
 export function isMealTypeTag(tag: string): boolean {
   return MEAL_TYPE_MATCH_SET.has(tag.toLowerCase());
 }
+
+/** The three meal-TIME categories a plan cares about (breakfast / a main / snack). */
+export type MealCategory = 'breakfast' | 'lunch-dinner' | 'snack';
+
+/**
+ * The meal category a recipe belongs to, read from its `tags` through the
+ * shared taxonomy — so it tolerates every format variant ('Lunch/Dinner',
+ * 'lunch', 'dinner', 'main', …), not just a hardcoded lowercase word.
+ *
+ * MAINS WIN: a recipe that (from stale/polluted tags) carries both a main tag
+ * and a breakfast/snack tag classifies as 'lunch-dinner', so a dinner dish is
+ * never mis-slotted to breakfast. Non-meal-time categories (appetiser, side,
+ * dessert, drink) and untagged recipes return null.
+ */
+export function mealCategoryOf(recipe: { tags?: string[] | null }): MealCategory | null {
+  let hasBreakfast = false;
+  let hasSnack = false;
+  for (const tag of recipe.tags ?? []) {
+    const key = categoryForTag(tag)?.key;
+    if (key === 'lunch-dinner') return 'lunch-dinner';
+    if (key === 'breakfast') hasBreakfast = true;
+    else if (key === 'snack') hasSnack = true;
+  }
+  if (hasBreakfast) return 'breakfast';
+  if (hasSnack) return 'snack';
+  return null;
+}
+
+/**
+ * The canonical tag to WRITE for a given meal type, so every writer emits one
+ * agreed format. Maps any variant to the taxonomy's canonical tag
+ * (lunch|dinner|'Lunch/Dinner'|main → 'dinner'; breakfast → 'breakfast'; …).
+ */
+export function canonicalMealTag(mealType: string): string {
+  return categoryForTag(mealType)?.tag ?? mealType.toLowerCase();
+}
+
+/**
+ * How a recipe fits a meal-plan slot, from its tags:
+ *   'main'      — a lunch/dinner dish (cookable in any main slot)
+ *   'breakfast' — a breakfast dish
+ *   'other'     — an explicit NON-main category (snack, drink, dessert, side,
+ *                 appetiser) that has NO cooked plan slot → must not be placed
+ *   'untagged'  — no meal-type tag at all (safe to treat as a main by default)
+ *
+ * Distinguishing 'other' from 'untagged' is what stops a drink/dessert from
+ * being dropped into a dinner slot. Mains win over breakfast/other.
+ */
+export type MealSlotKind = 'main' | 'breakfast' | 'other' | 'untagged';
+
+export function mealSlotKindOf(recipe: { tags?: string[] | null }): MealSlotKind {
+  let hasBreakfast = false;
+  let hasOther = false;
+  for (const tag of recipe.tags ?? []) {
+    const key = categoryForTag(tag)?.key;
+    if (!key) continue;
+    if (key === 'lunch-dinner') return 'main';
+    if (key === 'breakfast') hasBreakfast = true;
+    else hasOther = true; // snack / drink / dessert / side / appetiser
+  }
+  if (hasBreakfast) return 'breakfast';
+  if (hasOther) return 'other';
+  return 'untagged';
+}

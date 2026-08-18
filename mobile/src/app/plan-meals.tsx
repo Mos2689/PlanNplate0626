@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar as CalendarIcon,
+  SlidersHorizontal,
   Check,
   ChefHat,
   Flame,
@@ -66,6 +67,8 @@ import {
   type WeeknightMinutes,
 } from '@/lib/store';
 import { MONTHLY_FEATURE_LIMITS } from '@/lib/store';
+import { mealSlotKindOf } from '@/lib/recipe-categories';
+import { PlanTuneSheet } from '@/components/PlanTuneSheet';
 import { type MealType } from '@/lib/openai';
 import { useAuthStore } from '@/lib/auth-store';
 import {
@@ -486,6 +489,7 @@ export default function PlanMealsScreen() {
   const allRecipes = useMealPlanStore((s) => s.recipes);
   const recipeRatings = useMealPlanStore((s) => s.recipeRatings);
   const cookingLogs = useMealPlanStore((s) => s.cookingLogs);
+  const mealSlots = useMealPlanStore((s) => s.mealSlots);
   const [selectedFavoriteIds, setSelectedFavoriteIds] = useState<string[]>([]);
 
   // Latest "cooked" timestamp per recipe (used to flag + sort recently-cooked
@@ -527,8 +531,12 @@ export default function PlanMealsScreen() {
     const isRecentlyAdded = (r: Recipe) => now - addedAt(r) <= RECENT_WINDOW_MS;
     // Recency signal used for sorting = most recent of "added" or "cooked".
     const recencyOf = (r: Recipe) => Math.max(addedAt(r), cookedAtById.get(r.id) ?? 0);
+    // Snacks, drinks, desserts, sides and appetisers aren't breakfast/lunch/
+    // dinner slots, so hide them from the picker. Mains win in mealSlotKindOf, so
+    // a real meal carrying a stray non-meal tag still shows.
+    const isNonMealSlot = (r: Recipe) => mealSlotKindOf(r) === 'other';
     return allRecipes
-      .filter((r) => r.isSaved || fiveStarById.has(r.id) || isRecentlyAdded(r))
+      .filter((r) => (r.isSaved || fiveStarById.has(r.id) || isRecentlyAdded(r)) && !isNonMealSlot(r))
       .sort((a, b) => recencyOf(b) - recencyOf(a))
       .slice(0, 20);
   }, [allRecipes, fiveStarById, cookedAtById]);
@@ -540,10 +548,11 @@ export default function PlanMealsScreen() {
     );
   }, []);
 
-  // ── Per-plan overrides (ephemeral) — now only servings + cook-time write here
-  // (the Tune sheet has been removed). ──
+  // ── Per-plan overrides (ephemeral) — servings + cook-time write here from the
+  // inline controls, and cuisine / diet / allergies from the Tune sheet. ──
   const [overrides, setOverrides] = useState<Partial<UserPreferences>>({});
   const [oneTimeNote, setOneTimeNote] = useState<string>('');
+  const [showTuneSheet, setShowTuneSheet] = useState(false);
 
   // ── Optimise groceries + Special Instructions ──
   const [optimizeGrocery, setOptimizeGrocery] = useState(false);
@@ -721,30 +730,51 @@ export default function PlanMealsScreen() {
     setCalendarOpen(false);
   }, [tempStart, tempEnd]);
 
-  // Period-marked dates for the calendar (brand-coloured span).
+  // Dates that already have something planned (a recipe or a labelled
+  // placeholder) — surfaced as a dot so the user can see which days a plan would
+  // overwrite before picking a range.
+  const plannedDates = useMemo(() => {
+    const s = new Set<string>();
+    for (const slot of mealSlots) {
+      if (slot.recipeId || slot.customMealName) s.add(slot.date);
+    }
+    return s;
+  }, [mealSlots]);
+
+  // Period-marked dates for the calendar (brand-coloured span) + a terracotta
+  // dot under any date that already has meals planned.
   const calendarMarks = useMemo(() => {
     const marks: Record<string, any> = {};
-    if (!tempStart) return marks;
-    const brand = designTokens.colors.brand;
-    const cream = designTokens.colors.cream;
-    const startKey = formatDateKey(tempStart);
-    const end = tempEnd ?? tempStart;
-    const cur = new Date(tempStart);
-    const endKey = formatDateKey(end);
-    let guard = 0;
-    while (cur.getTime() <= end.getTime() && guard < 400) {
-      const k = formatDateKey(cur);
-      marks[k] = {
-        color: brand,
-        textColor: cream,
-        startingDay: k === startKey,
-        endingDay: k === endKey,
-      };
-      cur.setDate(cur.getDate() + 1);
-      guard++;
+    const dotColor = designTokens.colors.olive; // terracotta "has meals" accent
+
+    // Dots first, so the range span below can merge onto the same mark object.
+    for (const d of plannedDates) {
+      marks[d] = { marked: true, dotColor };
+    }
+
+    if (tempStart) {
+      const brand = designTokens.colors.brand;
+      const cream = designTokens.colors.cream;
+      const startKey = formatDateKey(tempStart);
+      const end = tempEnd ?? tempStart;
+      const cur = new Date(tempStart);
+      const endKey = formatDateKey(end);
+      let guard = 0;
+      while (cur.getTime() <= end.getTime() && guard < 400) {
+        const k = formatDateKey(cur);
+        marks[k] = {
+          ...(marks[k] ?? {}), // keep the planned-meals dot if present
+          color: brand,
+          textColor: cream,
+          startingDay: k === startKey,
+          endingDay: k === endKey,
+        };
+        cur.setDate(cur.getDate() + 1);
+        guard++;
+      }
     }
     return marks;
-  }, [tempStart, tempEnd]);
+  }, [tempStart, tempEnd, plannedDates]);
 
   // ── Generate (fire-and-forget) ──
   const handleGenerate = useCallback(async () => {
@@ -815,7 +845,10 @@ export default function PlanMealsScreen() {
       specialInstructions: {
         exclude: instructions.exclude,
         include: instructions.include,
+        reduce: instructions.reduce,
         diets: instructions.diets,
+        cuisines: instructions.cuisines,
+        rawText: instructions.raw,
       },
     });
 
@@ -947,6 +980,34 @@ export default function PlanMealsScreen() {
               </Text>
             </Text>
           </View>
+
+          {/* Tune trigger — cuisine / diet / allergies for THIS plan. */}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowTuneSheet(true);
+            }}
+            hitSlop={10}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: Object.keys(overrides).length > 0 ? designTokens.colors.brand : cardBg,
+                borderWidth: 1,
+                borderColor: Object.keys(overrides).length > 0 ? designTokens.colors.brand : cardBorder,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <SlidersHorizontal
+                size={19}
+                color={Object.keys(overrides).length > 0 ? designTokens.colors.cream : inkPrimary}
+                strokeWidth={1.9}
+              />
+            </View>
+          </Pressable>
         </View>
 
         <ScrollView
@@ -1926,6 +1987,20 @@ export default function PlanMealsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Tune sheet — per-plan cuisine / diet / allergies ── */}
+      <PlanTuneSheet
+        visible={showTuneSheet}
+        basePreferences={preferences}
+        overrides={overrides}
+        oneTimeNote={oneTimeNote}
+        onChange={(ov, note) => {
+          setOverrides(ov);
+          setOneTimeNote(note);
+        }}
+        onClose={() => setShowTuneSheet(false)}
+        isDark={isDark}
+      />
     </View>
   );
 }

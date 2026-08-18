@@ -26,6 +26,7 @@ import {
   Tag,
   Hash,
   Check,
+  Wand2,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInDown, FadeIn, useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing } from 'react-native-reanimated';
@@ -418,6 +419,13 @@ export default function AddRecipeScreen() {
   const [uploadedImages, setUploadedImages] = useState<string[]>([]); // Multiple images (up to 5)
   const [wasAutoFilled, setWasAutoFilled] = useState(false); // Track if form was auto-filled via voice/upload
 
+  // "Paste full recipe" free-text box — lets the user paste/type a whole recipe
+  // and have it parsed into the structured form (as an alternative to filling the
+  // grid manually). Mirrors the Text/Recipe box in the social-import flow.
+  const [pasteText, setPasteText] = useState('');
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [isPasteProcessing, setIsPasteProcessing] = useState(false);
+
   // Compute meal type classification
   const classifiedMealType = useMemo(() => {
     const tempRecipe = {
@@ -600,6 +608,30 @@ export default function AddRecipeScreen() {
       setInstructions(parsedRecipe.instructions);
     }
   }, []);
+
+  // Parse the "Paste full recipe" free-text box into the structured form.
+  const handleFillFromText = useCallback(async () => {
+    const text = pasteText.trim();
+    if (!text || isPasteProcessing) return;
+    Keyboard.dismiss();
+    setPasteError(null);
+    setIsPasteProcessing(true);
+    try {
+      const parsedRecipe = await parseRecipeFromText(text);
+      // Typed/pasted recipe — no source photo, so use the Pexels fallback on Save.
+      setFoodPhotoUri(null);
+      fillFormWithRecipe(parsedRecipe);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Reveal the filled fields below.
+      formScrollRef.current?.scrollTo({ y: 320, animated: true });
+    } catch (error) {
+      console.error('Failed to parse pasted recipe:', error);
+      setPasteError("Couldn't read a recipe from that text. Try adding more detail, or fill the fields below.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsPasteProcessing(false);
+    }
+  }, [pasteText, isPasteProcessing, fillFormWithRecipe]);
 
   // Handle image upload (add to collection, up to 5)
   const handleImageUpload = useCallback(async () => {
@@ -1325,6 +1357,97 @@ export default function AddRecipeScreen() {
               <View style={{ flex: 1, height: 1, backgroundColor: designTokens.colors.hair2 }} />
             </View>
             </>
+            )}
+
+            {/* ── Paste full recipe (free text → structured form) ── */}
+            {/* Only in the "Type it" flow — Speak/Snap have their own inputs, and
+                the default entry state shows the Speak/Snap cards instead. */}
+            {action === 'type' && isApiConfigured && (
+              <Animated.View
+                entering={FadeInDown.delay(120).springify()}
+                style={{ paddingHorizontal: 16, paddingBottom: 18 }}
+              >
+                <Text style={eyebrowStyle}>Paste a recipe</Text>
+                <View style={[fieldShellStyle, { minHeight: 120, paddingTop: 12, paddingBottom: 12 }]}>
+                  <TextInput
+                    value={pasteText}
+                    onChangeText={setPasteText}
+                    placeholder="Paste or type the whole recipe — name, ingredients, steps. We'll fill in the fields below for you."
+                    placeholderTextColor={designTokens.colors.ink3}
+                    multiline
+                    textAlignVertical="top"
+                    style={{
+                      flex: 1,
+                      minHeight: 96,
+                      fontFamily: designTokens.font.regular,
+                      fontSize: 15,
+                      lineHeight: 22,
+                      color: designTokens.colors.ink,
+                    }}
+                  />
+                </View>
+                {pasteError && (
+                  <Text
+                    style={{
+                      marginTop: 6,
+                      fontFamily: designTokens.font.regular,
+                      fontSize: 12.5,
+                      color: designTokens.colors.notice,
+                    }}
+                  >
+                    {pasteError}
+                  </Text>
+                )}
+                <Pressable
+                  onPress={handleFillFromText}
+                  disabled={!pasteText.trim() || isPasteProcessing}
+                  style={{
+                    marginTop: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    paddingVertical: 13,
+                    borderRadius: 999,
+                    backgroundColor: designTokens.colors.brand,
+                    opacity: !pasteText.trim() || isPasteProcessing ? 0.5 : 1,
+                  }}
+                >
+                  {isPasteProcessing ? (
+                    <ActivityIndicator color={designTokens.colors.cream} size="small" />
+                  ) : (
+                    <>
+                      <Wand2 size={16} color={designTokens.colors.cream} strokeWidth={1.9} />
+                      <Text
+                        style={{
+                          fontFamily: designTokens.font.semibold,
+                          fontSize: 14.5,
+                          color: designTokens.colors.cream,
+                        }}
+                      >
+                        Fill from text
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+
+                {/* Separator between the paste option and the manual grid. */}
+                <View style={{ marginTop: 18, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ flex: 1, height: 1, backgroundColor: designTokens.colors.hair2 }} />
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.medium,
+                      fontSize: 11,
+                      letterSpacing: 0.66,
+                      textTransform: 'uppercase',
+                      color: designTokens.colors.ink3,
+                    }}
+                  >
+                    or fill in the fields
+                  </Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: designTokens.colors.hair2 }} />
+                </View>
+              </Animated.View>
             )}
 
             {/* ── Basic Info ───────────────────────────────────── */}
