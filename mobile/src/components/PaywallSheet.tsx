@@ -9,7 +9,7 @@
 // monthly cap, the monthly tier shows everything unlimited at the offer price.
 // A single "Continue" CTA acts on the selected tier: continue free (dismiss)
 // or start the monthly purchase. No separate "not now" exit — the Free tab IS
-// the free path. "Most popular" badge sits on the Monthly tab.
+// the free path.
 //
 // Brand rules (locked):
 //   • Olive eyebrow + italic word in the headline.
@@ -50,6 +50,7 @@ import { friendlyPurchaseError } from '@/lib/purchase-errors';
 import { makeFailure, presentFailure } from '@/lib/failure';
 import { useRouter } from 'expo-router';
 import { useSubscriptionStore } from '@/lib/subscription-store';
+import { useOfferFunnelStore } from '@/lib/offer-funnel-store';
 import { MONTHLY_FEATURE_LIMITS } from '@/lib/store';
 import { designTokens, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import { t } from '@/lib/platform-tokens';
@@ -92,12 +93,9 @@ const FEATURES: FeatureRow[] = [
   },
 ];
 
-// ── Pricing (display) ───────────────────────────────────────────────────
-// Marketing-fixed display values per product spec. Actual billing comes from
-// the RevenueCat monthly package; keep these mirrored in App Store Connect /
-// RevenueCat so the displayed offer matches what StoreKit charges.
-const ORIGINAL_MONTHLY = 'AU$6.99';
-const OFFER_MONTHLY = 'AU$3.99';
+// Pricing is read LIVE from the RevenueCat monthly package's `priceString`
+// (see `monthlyPriceString` in the render) so the displayed price always matches
+// what StoreKit will charge and localizes per region — never hard-coded.
 
 type PlanTab = 'free' | 'monthly';
 
@@ -158,6 +156,10 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
     // on the home tab (gated actions re-fire the paywall later).
     if (isOnboarding) router.replace('/(tabs)/recipes');
     closeSheet();
+    // Dismissed WITHOUT purchasing → let the offer funnel decide whether to
+    // present the one-time annual offer (fires at most once, ever). A successful
+    // purchase/restore calls closeSheet directly and never reaches here.
+    void useOfferFunnelStore.getState().onPaywallDismissed();
   }, [closeSheet, isOnboarding, router, trigger]);
 
   const handlePurchase = useCallback(async () => {
@@ -272,6 +274,10 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
   if (!visible) return null;
 
   const isMonthly = tab === 'monthly';
+  // Live price from RevenueCat (localized, always matches the store). The
+  // hard-coded fallback only shows for the brief moment before the offering
+  // loads, or if RevenueCat is unavailable.
+  const monthlyPriceString = monthly?.product.priceString ?? 'AU$6.99';
 
   return (
     <Modal
@@ -398,9 +404,8 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
                 />
                 <PlanTabButton
                   label="Monthly"
-                  sub={`${OFFER_MONTHLY} / mo`}
+                  sub={`${monthlyPriceString} / mo`}
                   active={tab === 'monthly'}
-                  badge="Most popular"
                   onPress={() => {
                     Haptics.selectionAsync();
                     setTab('monthly');
@@ -448,23 +453,12 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
                     <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
                       <Text
                         style={{
-                          fontFamily: designTokens.font.regular,
-                          fontSize: 13,
-                          color: designTokens.colors.ink3,
-                          textDecorationLine: 'line-through',
-                          marginRight: 6,
-                        }}
-                      >
-                        {ORIGINAL_MONTHLY}
-                      </Text>
-                      <Text
-                        style={{
                           fontFamily: designTokens.font.semibold,
                           fontSize: 15,
                           color: colors.ink,
                         }}
                       >
-                        {OFFER_MONTHLY}
+                        {monthlyPriceString}
                       </Text>
                       <Text
                         style={{
@@ -632,7 +626,7 @@ export function PaywallSheet({ isDark = false }: PaywallSheetProps) {
                         lineHeight: 15,
                       }}
                     >
-                      {OFFER_MONTHLY}/month after the offer. Auto-renews. Cancel anytime in Settings.
+                      {monthlyPriceString}/month. Auto-renews. Cancel anytime in Settings.
                     </Text>
                   )}
 

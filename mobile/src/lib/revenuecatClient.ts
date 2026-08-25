@@ -337,3 +337,44 @@ export const getPackage = async (
 
   return { ok: true, data: pkg };
 };
+
+/**
+ * Get a package from the current offering by its underlying STORE PRODUCT id
+ * (e.g. "monthly_sub_3.99") rather than its RevenueCat package identifier.
+ * Used for standalone products that don't sit on a standard package alias.
+ */
+export const getPackageByProductId = async (
+  productId: string,
+): Promise<RevenueCatResult<PurchasesPackage | null>> => {
+  const offeringsResult = await getOfferings();
+  if (!offeringsResult.ok) {
+    return { ok: false, reason: offeringsResult.reason, error: offeringsResult.error };
+  }
+  const pkg =
+    offeringsResult.data.current?.availablePackages.find(
+      (p) => p.product.identifier === productId,
+    ) ?? null;
+  return { ok: true, data: pkg };
+};
+
+export type IntroEligibility = 'eligible' | 'ineligible' | 'unknown';
+
+/**
+ * Whether the user is eligible for a product's introductory offer.
+ *
+ * iOS returns a real answer; Android always returns UNKNOWN (Play enforces
+ * eligibility at purchase). Callers should only PROMISE the intro price when
+ * this is 'eligible' — otherwise StoreKit would charge the standard price.
+ */
+export const checkIntroEligibility = async (
+  productId: string,
+): Promise<RevenueCatResult<IntroEligibility>> => {
+  return guardRevenueCatUsage("checkIntroEligibility", async () => {
+    const map = await Purchases.checkTrialOrIntroductoryPriceEligibility([productId]);
+    const status = map[productId]?.status;
+    const E = Purchases.INTRO_ELIGIBILITY_STATUS;
+    if (status === E.INTRO_ELIGIBILITY_STATUS_ELIGIBLE) return "eligible";
+    if (status === E.INTRO_ELIGIBILITY_STATUS_INELIGIBLE) return "ineligible";
+    return "unknown";
+  });
+};
