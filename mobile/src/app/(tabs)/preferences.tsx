@@ -443,6 +443,7 @@ export default function ProfileScreen() {
   const userAvatar = useUserAvatar();
   const deleteAccount = useSubscriptionStore((s) => s.deleteAccount);
   const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
+  const openManageMembership = useSubscriptionStore((s) => s.openManageMembership);
 
   // Drives the dot on the Help & support row. Refreshed on focus, so a reply
   // that arrived while the app was backgrounded shows on return.
@@ -699,7 +700,9 @@ export default function ProfileScreen() {
                   <Pressable
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      openPaywallSheet('profile-banner');
+                      // A paying member taps their crown → show membership
+                      // status, NOT the sales paywall.
+                      openManageMembership();
                     }}
                     style={{
                       position: 'absolute',
@@ -1864,7 +1867,10 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                   <Pressable
-                    onPress={handleManageSubscription}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      openManageMembership();
+                    }}
                     style={{
                       paddingHorizontal: 13,
                       paddingVertical: 7,
@@ -1986,7 +1992,16 @@ export default function ProfileScreen() {
               <SettingsRow
                 icon={<CreditCard size={14} color={designTokens.colors.ink2} strokeWidth={1.7} />}
                 label="Manage subscription"
-                onPress={handleManageSubscription}
+                onPress={() => {
+                  // Premium members get the membership sheet; free users have
+                  // no subscription to manage, so fall back to the store link.
+                  if (isPremium) {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    openManageMembership();
+                  } else {
+                    handleManageSubscription();
+                  }
+                }}
                 isDark={isDark}
               />
 

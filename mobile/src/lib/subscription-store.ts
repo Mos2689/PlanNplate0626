@@ -65,6 +65,15 @@ interface SubscriptionStore {
   openPaywallSheet: (trigger: PaywallTrigger) => void;
   closePaywallSheet: () => void;
 
+  // ── Manage Membership sheet visibility (global) ──
+  // Mounted once at the root alongside PaywallSheet. This is the PREMIUM
+  // counterpart to the paywall: a paying member's membership entry points
+  // (the profile crown, the "Manage" buttons) open this instead of the
+  // sales paywall. Any caller can pop it via openManageMembership().
+  manageMembershipVisible: boolean;
+  openManageMembership: () => void;
+  closeManageMembership: () => void;
+
   // ── Post-signup welcome beat (global, ephemeral) ──
   // Shown for ~1.2 s after a guest converts to a real account, before the
   // onboarding paywall slides up. Not persisted — a force-quit during the
@@ -108,6 +117,15 @@ export const useSubscriptionStore = create<SubscriptionStore>()((set, get) => ({
   },
   closePaywallSheet: () => {
     set({ paywallSheetTrigger: null });
+  },
+
+  manageMembershipVisible: false,
+  openManageMembership: () => {
+    track('manage_membership_viewed', {});
+    set({ manageMembershipVisible: true });
+  },
+  closeManageMembership: () => {
+    set({ manageMembershipVisible: false });
   },
 
   postSignupWelcome: null,
@@ -315,6 +333,7 @@ export const useSubscriptionStore = create<SubscriptionStore>()((set, get) => ({
       userSubscription: null,
       accountStatus: 'active',
       _initializingUserId: null,
+      manageMembershipVisible: false,
     });
   },
 

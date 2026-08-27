@@ -9,7 +9,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, Pressable, Modal, ScrollView, StyleSheet, Alert, ActivityIndicator,
+  View, Text, Pressable, Modal, ScrollView, StyleSheet, Alert, ActivityIndicator, Platform,
 } from 'react-native';
 import {
   Crown, X, CalendarHeart, BookmarkPlus, Soup, ShoppingBasket, Lightbulb, Download,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import type { PurchasesPackage } from 'react-native-purchases';
-import { getPackage, purchasePackage, restorePurchases, isRevenueCatEnabled } from '@/lib/revenuecatClient';
+import { getPackage, purchasePackage, purchaseSubscriptionOption, restorePurchases, isRevenueCatEnabled, findAndroidIntroOption } from '@/lib/revenuecatClient';
 import { friendlyPurchaseError } from '@/lib/purchase-errors';
 import { makeFailure, presentFailure } from '@/lib/failure';
 import { useOfferFunnelStore } from '@/lib/offer-funnel-store';
@@ -80,7 +80,14 @@ export function AnnualOfferSheet({ isDark = false }: { isDark?: boolean }) {
   }, [visible]);
 
   const product: any = pkg?.product;
-  const introPriceString: string = product?.introPrice?.priceString ?? 'AU$29.99';
+  // On Android the intro offer lives on a subscription option, not on
+  // product.introPrice — resolve it so we both PRICE and PURCHASE the offer,
+  // not the base plan. On iOS this is null and the StoreKit introPrice is used.
+  const androidIntroOption = Platform.OS === 'android' ? findAndroidIntroOption(product) : null;
+  const introPriceString: string =
+    androidIntroOption?.introPhase?.price.formatted ??
+    product?.introPrice?.priceString ??
+    'AU$29.99';
   const standardPriceString: string = product?.priceString ?? 'AU$6.99';
   const perWeek = perWeekString(introPriceString);
 
@@ -98,7 +105,12 @@ export function AnnualOfferSheet({ isDark = false }: { isDark?: boolean }) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     track('annual_offer_purchase_started', { package: pkg.product.identifier });
     setPurchasing(true);
-    const result = await purchasePackage(pkg);
+    // Android: buy the specific offer OPTION so the $29.99 intro is applied
+    // (purchasePackage would buy the base plan at the standard price). iOS:
+    // purchasePackage applies the eligible StoreKit intro automatically.
+    const result = androidIntroOption
+      ? await purchaseSubscriptionOption(androidIntroOption)
+      : await purchasePackage(pkg);
     setPurchasing(false);
     if (result.ok) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -115,7 +127,7 @@ export function AnnualOfferSheet({ isDark = false }: { isDark?: boolean }) {
       if (!friendly) return; // user cancelled — keep the sheet open
       presentFailure(friendly, () => handleClaim());
     }
-  }, [pkg, markConverted]);
+  }, [pkg, androidIntroOption, markConverted]);
 
   const handleRestore = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

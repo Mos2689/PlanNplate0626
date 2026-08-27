@@ -18,6 +18,7 @@ import { useEffect, useRef } from 'react';
 import * as Linking from 'expo-linking';
 import { initializeCacheTable } from '@/lib/recipe-cache';
 import { PaywallSheet } from '@/components/PaywallSheet';
+import { ManageMembershipSheet } from '@/components/ManageMembershipSheet';
 import { AnnualOfferSheet } from '@/components/AnnualOfferSheet';
 import { LimitedTimeMonthlyOfferSheet } from '@/components/LimitedTimeMonthlyOfferSheet';
 import { useOfferFunnelStore } from '@/lib/offer-funnel-store';
@@ -557,6 +558,10 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           any tab/screen can fire openPaywallSheet(trigger) and the
           sheet slides up over the current view. */}
       <PaywallSheet isDark={colorScheme === 'dark'} />
+      {/* Manage Membership — the PREMIUM counterpart to the paywall. Members'
+          membership entry points open this (via openManageMembership) instead
+          of the sales paywall. */}
+      <ManageMembershipSheet isDark={colorScheme === 'dark'} />
       {/* Post-paywall offer funnel — the one-time annual offer and the later
           24-hour $3.99 offer. Both self-gate via useOfferFunnelStore. */}
       <AnnualOfferSheet isDark={colorScheme === 'dark'} />

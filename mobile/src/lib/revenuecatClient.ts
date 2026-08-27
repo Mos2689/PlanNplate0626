@@ -26,6 +26,8 @@ import Purchases, {
   type CustomerInfo,
   type MakePurchaseResult,
   type PurchasesPackage,
+  type PurchasesStoreProduct,
+  type SubscriptionOption,
 } from "react-native-purchases";
 
 // Check if running on web
@@ -355,6 +357,114 @@ export const getPackageByProductId = async (
       (p) => p.product.identifier === productId,
     ) ?? null;
   return { ok: true, data: pkg };
+};
+
+/**
+ * A minimal, UI-ready snapshot of the user's active premium subscription,
+ * read from the RevenueCat `premium` entitlement. Powers the Manage
+ * Membership sheet: what plan they're on, when it renews or lapses, whether
+ * it's set to auto-renew, and the store-native URL to manage/cancel it.
+ */
+export interface SubscriptionManagementInfo {
+  isActive: boolean;
+  productIdentifier: string | null;
+  expirationDate: string | null; // ISO string, or null for lifetime
+  willRenew: boolean;
+  periodType: string | null; // 'NORMAL' | 'INTRO' | 'TRIAL'
+  store: string | null; // 'APP_STORE' | 'PLAY_STORE' | ...
+  managementURL: string | null; // native subscription-management deep link
+}
+
+/**
+ * Read the current user's premium subscription details for the Manage
+ * Membership surface. Returns a failure result if RevenueCat is unavailable;
+ * callers should fall back to a store deep link in that case.
+ */
+export const getManagementInfo = async (): Promise<
+  RevenueCatResult<SubscriptionManagementInfo>
+> => {
+  const customerInfoResult = await getCustomerInfo();
+  if (!customerInfoResult.ok) {
+    return {
+      ok: false,
+      reason: customerInfoResult.reason,
+      error: customerInfoResult.error,
+    };
+  }
+
+  const info = customerInfoResult.data;
+  const premium = info.entitlements.active?.['premium'] ?? null;
+
+  return {
+    ok: true,
+    data: {
+      isActive: Boolean(premium),
+      productIdentifier: premium?.productIdentifier ?? null,
+      expirationDate: premium?.expirationDate ?? null,
+      willRenew: premium?.willRenew ?? false,
+      periodType: premium?.periodType ?? null,
+      store: premium?.store ?? null,
+      managementURL: info.managementURL ?? null,
+    },
+  };
+};
+
+/**
+ * Google Play only. Find the subscription option that carries a paid,
+ * pay-up-front intro offer (e.g. "$29.99 first year, then $6.99/mo") on a
+ * product.
+ *
+ * On Google Play, intro pricing lives on `product.subscriptionOptions` — NOT on
+ * `product.introPrice`, which reflects only the base plan / default option. The
+ * offer is a NON-base-plan option whose intro phase is a real paid charge
+ * (amount > 0, i.e. not a free trial). It must be PURCHASED via that specific
+ * option (`purchaseSubscriptionOption`), because `purchasePackage` buys the base
+ * plan and skips the offer.
+ *
+ * Returns null on iOS, when the product is missing, or when no such offer
+ * exists. When several qualify, a SINGLE_PAYMENT (pay-up-front) offer wins.
+ */
+export const findAndroidIntroOption = (
+  product: PurchasesStoreProduct | null | undefined,
+): SubscriptionOption | null => {
+  if (Platform.OS !== "android" || !product) return null;
+  const options = product.subscriptionOptions ?? [];
+  const paidIntros = options.filter(
+    (opt) =>
+      !opt.isBasePlan &&
+      !!opt.introPhase &&
+      opt.introPhase.price.amountMicros > 0,
+  );
+  if (paidIntros.length === 0) return null;
+  // Prefer a true pay-up-front (single payment) offer when more than one paid
+  // intro exists; otherwise take the first paid intro.
+  const singlePayment = paidIntros.find(
+    (opt) => opt.introPhase?.offerPaymentMode === "SINGLE_PAYMENT",
+  );
+  return singlePayment ?? paidIntros[0];
+};
+
+/**
+ * The formatted intro price for the Android offer on a product (e.g. "$29.99"),
+ * or null if there's no such offer / not on Android.
+ */
+export const androidIntroPriceString = (
+  product: PurchasesStoreProduct | null | undefined,
+): string | null => {
+  const option = findAndroidIntroOption(product);
+  return option?.introPhase?.price.formatted ?? null;
+};
+
+/**
+ * Purchase a specific Google Play subscription option — required to apply an
+ * offer that lives on a non-default option (see `findAndroidIntroOption`).
+ */
+export const purchaseSubscriptionOption = (
+  option: SubscriptionOption,
+): Promise<RevenueCatResult<MakePurchaseResult>> => {
+  return guardRevenueCatUsage("purchaseSubscriptionOption", () =>
+    Purchases.purchaseSubscriptionOption(option),
+  );
 };
 
 export type IntroEligibility = 'eligible' | 'ineligible' | 'unknown';

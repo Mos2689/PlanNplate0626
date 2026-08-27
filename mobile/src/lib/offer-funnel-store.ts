@@ -17,6 +17,7 @@ import {
   isRevenueCatEnabled,
   checkIntroEligibility,
   getPackage,
+  findAndroidIntroOption,
 } from './revenuecatClient';
 import { useSubscriptionStore } from './subscription-store';
 
@@ -28,16 +29,17 @@ const MONTHLY_PACKAGE_ID = '$rc_monthly';
 // Whether to present the annual $29.99 intro offer to THIS user.
 //   • iOS: StoreKit can report intro eligibility directly — trust it.
 //   • Android: eligibility can't be queried (always 'unknown'), and Play
-//     enforces it at purchase, so we instead show the offer only when the
-//     monthly product actually surfaces an intro/offer price for this user
-//     (RevenueCat computes `introPrice` from the eligible default offer).
+//     enforces it at purchase. The offer lives on a subscription OPTION
+//     (not product.introPrice, which only reflects the base plan), so we
+//     show it when the monthly product carries a paid intro offer option.
 async function annualOfferAvailable(): Promise<boolean> {
   if (Platform.OS === 'ios') {
     const elig = await checkIntroEligibility(MONTHLY_INTRO_PRODUCT_ID);
     return elig.ok && elig.data === 'eligible';
   }
   const res = await getPackage(MONTHLY_PACKAGE_ID);
-  return res.ok && !!(res.data?.product as any)?.introPrice;
+  if (!res.ok) return false;
+  return findAndroidIntroOption(res.data?.product ?? null) !== null;
 }
 
 // Timing — 30 days between the annual dismissal and the 24-hour window.
