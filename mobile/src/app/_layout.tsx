@@ -288,6 +288,13 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     return () => task.cancel();
   }, []);
 
+  // Live entitlement updates: RevenueCat pushes new customer info the instant a
+  // purchase or restore completes, so `isPremium` (and the profile Premium tag)
+  // flips immediately instead of only after a tab switch or app refresh.
+  useEffect(() => {
+    useSubscriptionStore.getState().setupCustomerInfoListener();
+  }, []);
+
   // Re-sync RevenueCat on foreground. Webhook-driven entitlement changes
   // (new subscription, refund, restore on another device) won't reach a
   // backgrounded app — without this, a paying user could come back to a

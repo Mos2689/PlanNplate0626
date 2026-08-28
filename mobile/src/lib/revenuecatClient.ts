@@ -28,6 +28,7 @@ import Purchases, {
   type PurchasesPackage,
   type PurchasesStoreProduct,
   type SubscriptionOption,
+  type CustomerInfoUpdateListener,
 } from "react-native-purchases";
 
 // Check if running on web
@@ -465,6 +466,24 @@ export const purchaseSubscriptionOption = (
   return guardRevenueCatUsage("purchaseSubscriptionOption", () =>
     Purchases.purchaseSubscriptionOption(option),
   );
+};
+
+/**
+ * Subscribe to RevenueCat customer-info changes. The listener fires whenever
+ * entitlements change — crucially, right after a purchase or restore completes
+ * — so callers can update premium state immediately instead of waiting for the
+ * next app-foreground/navigation re-sync.
+ *
+ * Returns an unsubscribe function; a no-op when RevenueCat isn't enabled.
+ */
+export const addCustomerInfoUpdateListener = (
+  listener: CustomerInfoUpdateListener,
+): (() => void) => {
+  if (!isEnabled) return () => {};
+  Purchases.addCustomerInfoUpdateListener(listener);
+  return () => {
+    Purchases.removeCustomerInfoUpdateListener(listener);
+  };
 };
 
 export type IntroEligibility = 'eligible' | 'ineligible' | 'unknown';

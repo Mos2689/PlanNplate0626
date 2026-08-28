@@ -4,6 +4,7 @@ import {
   getCustomerInfo,
   setUserId,
   isRevenueCatEnabled,
+  addCustomerInfoUpdateListener,
 } from './revenuecatClient';
 import {
   fetchUserSubscription,
@@ -32,6 +33,10 @@ import { track } from './analytics';
 // EXPO_PUBLIC_DEV_FORCE_FREE=true to test the free / paywall flow in dev instead.
 const DEV_PREMIUM_OVERRIDE =
   __DEV__ && process.env.EXPO_PUBLIC_DEV_FORCE_FREE !== 'true';
+
+// Guards against registering the RevenueCat customer-info listener more than
+// once (setupCustomerInfoListener may be called on every mount).
+let customerInfoListenerRegistered = false;
 
 // The trigger that opened the PaywallSheet — useful for analytics +
 // for the sheet to show context-aware headline copy (e.g. "Keep cooking
@@ -86,6 +91,7 @@ interface SubscriptionStore {
   initializeSubscription: (userId: string, email: string, name?: string) => Promise<void>;
   checkPremiumStatus: (userId: string) => Promise<boolean>;
   syncWithRevenueCat: (userId: string) => Promise<void>;
+  setupCustomerInfoListener: () => void;
   clearSubscription: () => void;
   declineTrialOffer: (userId: string) => Promise<boolean>;
 
@@ -323,6 +329,31 @@ export const useSubscriptionStore = create<SubscriptionStore>()((set, get) => ({
     } catch (error) {
       console.error('Error syncing with RevenueCat:', error);
     }
+  },
+
+  // Register a global RevenueCat listener that flips `isPremium` the moment
+  // entitlements change — right after a purchase or restore — so the UI (e.g.
+  // the profile Premium tag) updates immediately instead of only after a tab
+  // switch or app refresh. Safe to call repeatedly; only registers once.
+  setupCustomerInfoListener: () => {
+    if (customerInfoListenerRegistered) return;
+    if (!isRevenueCatEnabled()) return;
+    customerInfoListenerRegistered = true;
+
+    addCustomerInfoUpdateListener((info) => {
+      // DEV override wins — never let the test store flip a dev session to free.
+      if (DEV_PREMIUM_OVERRIDE) {
+        if (!get().isPremium) set({ isPremium: true });
+        return;
+      }
+      const active = Boolean(info.entitlements.active?.['premium']);
+      // Flip the flag immediately for a snappy UI update…
+      if (get().isPremium !== active) set({ isPremium: active });
+      // …then persist to Supabase (expiry, RC id) in the background if we know
+      // the user. syncWithRevenueCat re-reads and reconciles authoritatively.
+      const userId = get().userSubscription?.id;
+      if (userId) void get().syncWithRevenueCat(userId);
+    });
   },
 
   // Clear subscription state on logout
