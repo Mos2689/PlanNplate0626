@@ -278,6 +278,34 @@ verify_jwt = false
 # Disable built-in JWT verification - we handle auth ourselves in the function
 verify_jwt = false
 
+# ── Engagement email (weekly / monthly lifecycle) ───────────────────────────
+# All four run without a user JWT, for different reasons. Each does its own
+# authentication; none of them trusts its caller by default.
+
+[functions.engagement-dispatch]
+# Called by pg_cron via pg_net, which has no user session. Authenticated by the
+# x-engagement-secret header against the ENGAGEMENT_DISPATCH_SECRET secret.
+verify_jwt = false
+
+[functions.engagement-click]
+# Opened from an email client. There is no session to present — the link has to
+# work for someone who is signed out, or reading on a different device. Carries
+# no authority: it resolves an allowlisted key to a deep link and stamps a
+# timestamp.
+verify_jwt = false
+
+[functions.engagement-unsubscribe]
+# Must work without a login, by design and by law. Someone locked out of their
+# account still has to be able to stop the email. Authorised by an opaque
+# per-user token that grants nothing except opting out.
+verify_jwt = false
+
+[functions.engagement-webhook]
+# Resend calls this. Authenticated by Svix signature against
+# RESEND_WEBHOOK_SECRET; an unverified body is rejected before anything is
+# written.
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
