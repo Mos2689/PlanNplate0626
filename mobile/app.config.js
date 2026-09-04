@@ -150,6 +150,21 @@ module.exports = function ({ config }) {
     config.plugins.push("@bacons/apple-targets");
   }
 
+  // Keep Android's three-button and gesture navigation areas visually joined
+  // to the app surface. Without this, Android adds a semi-opaque system scrim
+  // that reads as a harsh white band below warm screens such as auth.
+  if (!hasPlugin("react-native-edge-to-edge")) {
+    config.plugins.push([
+      "react-native-edge-to-edge",
+      {
+        android: {
+          parentTheme: "Default",
+          enforceNavigationBarContrast: false,
+        },
+      },
+    ]);
+  }
+
   // 2. Meta SDK configuration plugin
   if (!hasPlugin("react-native-fbsdk-next")) {
     config.plugins.push([

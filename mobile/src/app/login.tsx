@@ -11,11 +11,16 @@ import {
   ActivityIndicator,
   Modal,
   Dimensions,
+  Keyboard,
+  Platform,
+  ScrollView,
+  findNodeHandle,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SystemBars } from 'react-native-edge-to-edge';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
@@ -48,6 +53,7 @@ import { SocialAuthButtons } from '@/components/SocialAuthButtons';
 import type { SocialProvider } from '@/lib/social-auth';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const IS_ANDROID = Platform.OS === 'android';
 
 // Editorial hero — bundled autoplay looping cooking video. Local require()
 // (not a remote URL) so it plays instantly from disk with no network fetch.
@@ -63,6 +69,7 @@ function getTimeOfDayGreeting(): { greeting: string; accent: string } {
 
 export default function LoginScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const login = useAuthStore((s) => s.login);
   const signInWithProvider = useAuthStore((s) => s.signInWithProvider);
   const sendPasswordResetOTP = useAuthStore((s) => s.sendPasswordResetOTP);
@@ -137,7 +144,27 @@ export default function LoginScreen() {
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
   // Field refs — for return-key chaining
+  const authScrollRef = useRef<ScrollView>(null);
+  const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
+
+  // Android can report the focused input before the IME/edge-to-edge resize
+  // settles. Retrying after the keyboard animation keeps the field visible;
+  // iOS never enters this fallback path.
+  const keepAndroidInputVisible = useCallback((inputRef: React.RefObject<TextInput | null>) => {
+    if (!IS_ANDROID) return;
+
+    setTimeout(() => {
+      const inputHandle = findNodeHandle(inputRef.current);
+      if (inputHandle == null) return;
+
+      authScrollRef.current?.scrollResponderScrollNativeHandleToKeyboard(
+        inputHandle,
+        32,
+        true,
+      );
+    }, 260);
+  }, []);
 
   // Button animation (preserved)
   const buttonScale = useSharedValue(1);
@@ -256,7 +283,7 @@ export default function LoginScreen() {
 
   // ── Token-driven styles ────────────────────────────────────────────────
   const surfaceBg = isDark ? '#1a1a1a' : '#FFFFFF';
-  const cardBg = isDark ? '#1f1f1f' : '#FFFFFF';
+  const cardBg = isDark ? '#1f1f1f' : IS_ANDROID ? '#FFFDFC' : '#FFFFFF';
   const cardBorder = isDark ? '#2a2a2a' : designTokens.colors.hair;
   const inkPrimary = isDark ? '#fff' : designTokens.colors.ink;
   const inkSecondary = isDark ? '#888' : designTokens.colors.ink2;
@@ -265,18 +292,25 @@ export default function LoginScreen() {
   const eyebrowStyle = {
     fontFamily: designTokens.font.medium,
     fontSize: 11,
+    lineHeight: IS_ANDROID ? 14 : undefined,
+    includeFontPadding: IS_ANDROID ? false : undefined,
     letterSpacing: 0.55,
     textTransform: 'uppercase' as const,
     color: inkTertiary,
-    marginBottom: 8,
+    marginBottom: IS_ANDROID ? 6 : 8,
   };
+
+  const androidTextMetrics = IS_ANDROID ? { includeFontPadding: false } : {};
+  const androidInputMetrics = IS_ANDROID
+    ? { includeFontPadding: false, textAlignVertical: 'center' as const, lineHeight: 20 }
+    : {};
 
   const fieldShellStyle = {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: 10,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: IS_ANDROID ? 10 : 12,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: cardBorder,
@@ -289,17 +323,30 @@ export default function LoginScreen() {
   });
 
   const { greeting, accent } = getTimeOfDayGreeting();
-  const HERO_HEIGHT = Math.round(SCREEN_HEIGHT * 0.38);
+  const HERO_HEIGHT = Math.round(SCREEN_HEIGHT * (IS_ANDROID ? 0.35 : 0.38));
+  const cardPadding = IS_ANDROID ? 20 : 22;
+  const footerTopPadding = IS_ANDROID ? 16 : 32;
   const pageBg = isDark ? '#1a1a1a' : designTokens.colors.cream;
 
   return (
     <View style={{ flex: 1, backgroundColor: pageBg }}>
+      {IS_ANDROID ? (
+        <SystemBars
+          style={{ statusBar: 'light', navigationBar: isDark ? 'light' : 'dark' }}
+        />
+      ) : null}
       <KeyboardAwareScrollView
+        ref={authScrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 32 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingBottom: IS_ANDROID ? Math.max(insets.bottom, 8) : 32,
+        }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        bottomOffset={24}
+        keyboardDismissMode={IS_ANDROID ? 'on-drag' : 'none'}
+        onScrollBeginDrag={IS_ANDROID ? Keyboard.dismiss : undefined}
+        bottomOffset={IS_ANDROID ? 32 : 24}
         extraKeyboardSpace={0}
       >
           {/* ── Editorial hero (autoplay video + dark overlays) ─────── */}
@@ -325,7 +372,9 @@ export default function LoginScreen() {
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  backgroundColor: 'rgba(21,20,15,0.35)',
+                  backgroundColor: IS_ANDROID
+                    ? 'rgba(21,20,15,0.30)'
+                    : 'rgba(21,20,15,0.35)',
                 }}
                 pointerEvents="none"
               />
@@ -338,7 +387,13 @@ export default function LoginScreen() {
               {/* Bottom pedestal — headline + tagline emphasis */}
               <LinearGradient
                 colors={['transparent', 'rgba(21,20,15,0.80)']}
-                style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 240 }}
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: IS_ANDROID ? Math.round(HERO_HEIGHT * 0.72) : 240,
+                }}
                 pointerEvents="none"
               />
             </Animated.View>
@@ -360,7 +415,7 @@ export default function LoginScreen() {
                   flex: 1,
                   justifyContent: 'flex-end',
                   paddingHorizontal: 24,
-                  paddingBottom: 56,
+                  paddingBottom: IS_ANDROID ? 48 : 56,
                 }}
               >
                 <Animated.View>
@@ -384,6 +439,7 @@ export default function LoginScreen() {
                       style={{
                         fontFamily: designTokens.font.medium,
                         fontSize: 11,
+                        ...androidTextMetrics,
                         letterSpacing: 0.8,
                         textTransform: 'uppercase',
                         color: 'rgba(246,242,233,0.85)',
@@ -397,6 +453,7 @@ export default function LoginScreen() {
                     style={{
                       fontFamily: designTokens.font.medium,
                       fontSize: 26,
+                      ...androidTextMetrics,
                       color: '#F6F2E9',
                       letterSpacing: -0.52,
                     }}
@@ -417,6 +474,7 @@ export default function LoginScreen() {
                     style={{
                       fontFamily: designTokens.font.regular,
                       fontSize: 14.5,
+                      ...androidTextMetrics,
                       color: 'rgba(246,242,233,0.80)',
                       marginTop: 6,
                     }}
@@ -433,18 +491,29 @@ export default function LoginScreen() {
             style={{
               marginHorizontal: 20,
               marginTop: -26,
-              padding: 22,
-              paddingTop: 26,
-              paddingBottom: 28,
+              padding: cardPadding,
+              paddingTop: IS_ANDROID ? 20 : 26,
+              paddingBottom: IS_ANDROID ? 20 : 28,
               borderRadius: 22,
               borderWidth: 1,
               borderColor: cardBorder,
               backgroundColor: cardBg,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 6 },
-              shadowOpacity: 0.08,
-              shadowRadius: 18,
-              elevation: 6,
+              ...(IS_ANDROID
+                ? {
+                    shadowColor: 'transparent',
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0,
+                    shadowRadius: 0,
+                    elevation: 0,
+                    boxShadow: '0 8px 24px rgba(21, 20, 15, 0.09)',
+                  }
+                : {
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 18,
+                    elevation: 6,
+                  }),
               position: 'relative',
             }}
           >
@@ -511,7 +580,7 @@ export default function LoginScreen() {
             />
 
             {/* Email */}
-            <View style={{ marginBottom: 14 }}>
+            <View style={{ marginBottom: IS_ANDROID ? 12 : 14 }}>
               <Text style={eyebrowStyle}>Email</Text>
               <View style={focusedShellStyle(focusedField === 'email')}>
                 <Mail
@@ -520,10 +589,12 @@ export default function LoginScreen() {
                   strokeWidth={1.8}
                 />
                 <TextInput
+                  ref={emailRef}
                   style={{
                     flex: 1,
                     fontFamily: designTokens.font.regular,
                     fontSize: 15,
+                    ...androidInputMetrics,
                     color: inkPrimary,
                     padding: 0,
                   }}
@@ -531,7 +602,10 @@ export default function LoginScreen() {
                   placeholderTextColor={inkTertiary}
                   value={email}
                   onChangeText={setEmail}
-                  onFocus={() => setFocusedField('email')}
+                  onFocus={() => {
+                    setFocusedField('email');
+                    keepAndroidInputVisible(emailRef);
+                  }}
                   onBlur={() => setFocusedField(null)}
                   keyboardType="email-address"
                   autoCapitalize="none"
@@ -561,6 +635,7 @@ export default function LoginScreen() {
                     flex: 1,
                     fontFamily: designTokens.font.regular,
                     fontSize: 15,
+                    ...androidInputMetrics,
                     color: inkPrimary,
                     padding: 0,
                   }}
@@ -568,7 +643,10 @@ export default function LoginScreen() {
                   placeholderTextColor={inkTertiary}
                   value={password}
                   onChangeText={setPassword}
-                  onFocus={() => setFocusedField('password')}
+                  onFocus={() => {
+                    setFocusedField('password');
+                    keepAndroidInputVisible(passwordRef);
+                  }}
                   onBlur={() => setFocusedField(null)}
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
@@ -589,12 +667,18 @@ export default function LoginScreen() {
             </View>
 
             {/* Forgot link */}
-            <View style={{ alignItems: 'flex-end', marginBottom: 20 }}>
+            <View
+              style={{
+                alignItems: 'flex-end',
+                marginBottom: IS_ANDROID ? 16 : 20,
+              }}
+            >
               <Pressable onPress={openForgotModal} hitSlop={10}>
                 <Text
                   style={{
                     fontFamily: designTokens.font.medium,
                     fontSize: 13,
+                    ...androidTextMetrics,
                     color: inkSecondary,
                   }}
                 >
@@ -615,7 +699,7 @@ export default function LoginScreen() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 8,
-                  paddingVertical: 15,
+                  paddingVertical: IS_ANDROID ? 14 : 15,
                   borderRadius: 999,
                   backgroundColor: designTokens.colors.brand,
                   opacity: isLoading ? 0.85 : 1,
@@ -629,6 +713,7 @@ export default function LoginScreen() {
                       style={{
                         fontFamily: designTokens.font.semibold,
                         fontSize: 15,
+                        ...androidTextMetrics,
                         color: designTokens.colors.cream,
                       }}
                     >
@@ -646,7 +731,7 @@ export default function LoginScreen() {
               disabled={isLoading || Boolean(socialLoadingProvider)}
               style={{
                 marginTop: 10,
-                paddingVertical: 14,
+                paddingVertical: IS_ANDROID ? 13 : 14,
                 borderRadius: 999,
                 borderWidth: 1,
                 borderColor: cardBorder,
@@ -659,6 +744,7 @@ export default function LoginScreen() {
                 style={{
                   fontFamily: designTokens.font.medium,
                   fontSize: 14,
+                  ...androidTextMetrics,
                   color: isDark ? '#ddd' : designTokens.colors.ink2,
                 }}
               >
@@ -669,7 +755,13 @@ export default function LoginScreen() {
 
           {/* ── Footer band — "what's inside" benefit row + brand mark ─── */}
           <Animated.View
-            style={{ paddingHorizontal: 24, paddingTop: 32, paddingBottom: 8 }}
+            style={{
+              flexGrow: IS_ANDROID ? 1 : 0,
+              paddingHorizontal: 24,
+              paddingTop: IS_ANDROID ? 8 : footerTopPadding,
+              paddingBottom: 8,
+              justifyContent: IS_ANDROID ? 'space-evenly' : 'flex-start',
+            }}
           >
             <View
               style={{
@@ -677,7 +769,7 @@ export default function LoginScreen() {
                 alignItems: 'flex-start',
                 justifyContent: 'space-between',
                 gap: 14,
-                marginBottom: 22,
+                marginBottom: IS_ANDROID ? 0 : 22,
               }}
             >
               {[
@@ -688,9 +780,9 @@ export default function LoginScreen() {
                 <View key={idx} style={{ flex: 1, alignItems: 'center', gap: 8 }}>
                   <View
                     style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 12,
+                      width: IS_ANDROID ? 34 : 36,
+                      height: IS_ANDROID ? 34 : 36,
+                      borderRadius: IS_ANDROID ? 11 : 12,
                       borderWidth: 1,
                       borderColor: cardBorder,
                       backgroundColor: cardBg,
@@ -705,6 +797,7 @@ export default function LoginScreen() {
                       fontFamily: designTokens.font.medium,
                       fontSize: 11.5,
                       lineHeight: 15,
+                      ...androidTextMetrics,
                       color: isDark ? '#bbb' : designTokens.colors.ink2,
                       textAlign: 'center',
                     }}
@@ -715,26 +808,29 @@ export default function LoginScreen() {
               ))}
             </View>
 
-            <View
-              style={{
-                height: 1,
-                backgroundColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
-                marginHorizontal: 80,
-                marginBottom: 14,
-              }}
-            />
-            <Text
-              style={{
-                fontFamily: designTokens.font.medium,
-                fontSize: 11,
-                letterSpacing: 0.8,
-                textTransform: 'uppercase',
-                color: isDark ? '#666' : designTokens.colors.ink3,
-                textAlign: 'center',
-              }}
-            >
-              PlannPlate · Made for home cooks
-            </Text>
+            <View>
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
+                  marginHorizontal: 80,
+                  marginBottom: IS_ANDROID ? 10 : 14,
+                }}
+              />
+              <Text
+                style={{
+                  fontFamily: designTokens.font.medium,
+                  fontSize: 11,
+                  ...androidTextMetrics,
+                  letterSpacing: 0.8,
+                  textTransform: 'uppercase',
+                  color: isDark ? '#666' : designTokens.colors.ink3,
+                  textAlign: 'center',
+                }}
+              >
+                PlannPlate · Made for home cooks
+              </Text>
+            </View>
           </Animated.View>
       </KeyboardAwareScrollView>
 
