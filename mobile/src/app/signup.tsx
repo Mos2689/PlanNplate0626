@@ -168,15 +168,18 @@ export default function SignupScreen() {
     if (!IS_ANDROID) return;
 
     setTimeout(() => {
-      const inputHandle = findNodeHandle(inputRef.current);
-      if (inputHandle == null) return;
+      if (!authScrollRef.current) return;
 
-      authScrollRef.current?.scrollResponderScrollNativeHandleToKeyboard(
-        inputHandle,
-        32,
-        true,
-      );
-    }, 260);
+      if (inputRef === confirmPasswordRef) {
+        authScrollRef.current.scrollToEnd({ animated: true });
+      } else if (inputRef === passwordRef) {
+        authScrollRef.current.scrollTo({ y: 340, animated: true });
+      } else if (inputRef === emailRef) {
+        authScrollRef.current.scrollTo({ y: 220, animated: true });
+      } else if (inputRef === nameRef) {
+        authScrollRef.current.scrollTo({ y: 100, animated: true });
+      }
+    }, 180);
   }, []);
 
   // Name validation constants
@@ -534,13 +537,13 @@ export default function SignupScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           flexGrow: 1,
-          paddingBottom: IS_ANDROID ? Math.max(insets.bottom, 8) : 32,
+          paddingBottom: IS_ANDROID ? Math.max(insets.bottom + 48, 56) : 32,
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={IS_ANDROID ? 'on-drag' : 'none'}
-        bottomOffset={IS_ANDROID ? 32 : 24}
-        extraKeyboardSpace={0}
+        bottomOffset={IS_ANDROID ? 96 : 24}
+        extraKeyboardSpace={IS_ANDROID ? 64 : 0}
         onScrollBeginDrag={() => Keyboard.dismiss()}
       >
           {/* ── Editorial hero (autoplay video + dark overlays) ─────── */}

@@ -155,15 +155,14 @@ export default function LoginScreen() {
     if (!IS_ANDROID) return;
 
     setTimeout(() => {
-      const inputHandle = findNodeHandle(inputRef.current);
-      if (inputHandle == null) return;
+      if (!authScrollRef.current) return;
 
-      authScrollRef.current?.scrollResponderScrollNativeHandleToKeyboard(
-        inputHandle,
-        32,
-        true,
-      );
-    }, 260);
+      if (inputRef === passwordRef) {
+        authScrollRef.current.scrollToEnd({ animated: true });
+      } else if (inputRef === emailRef) {
+        authScrollRef.current.scrollTo({ y: 180, animated: true });
+      }
+    }, 180);
   }, []);
 
   // Button animation (preserved)
@@ -340,14 +339,14 @@ export default function LoginScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           flexGrow: 1,
-          paddingBottom: IS_ANDROID ? Math.max(insets.bottom, 8) : 32,
+          paddingBottom: IS_ANDROID ? Math.max(insets.bottom + 48, 56) : 32,
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={IS_ANDROID ? 'on-drag' : 'none'}
         onScrollBeginDrag={IS_ANDROID ? Keyboard.dismiss : undefined}
-        bottomOffset={IS_ANDROID ? 32 : 24}
-        extraKeyboardSpace={0}
+        bottomOffset={IS_ANDROID ? 96 : 24}
+        extraKeyboardSpace={IS_ANDROID ? 64 : 0}
       >
           {/* ── Editorial hero (autoplay video + dark overlays) ─────── */}
           <View style={{ width: SCREEN_WIDTH, height: HERO_HEIGHT, backgroundColor: '#181612' }}>

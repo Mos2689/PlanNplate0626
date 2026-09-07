@@ -1,5 +1,8 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Share, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Share, KeyboardAvoidingView as RNKeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { KeyboardAvoidingView as ControllerKeyboardAvoidingView } from 'react-native-keyboard-controller';
+
+const KeyboardAvoidingView = Platform.OS === 'android' ? ControllerKeyboardAvoidingView : RNKeyboardAvoidingView;
 import { Audio } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -699,7 +702,7 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
     <View className="absolute inset-0 z-50">
       <Pressable onPress={onClose} className="absolute inset-0 bg-black/50" />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
         className="absolute bottom-0 left-0 right-0"
       >
         <Animated.View
@@ -976,7 +979,7 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
         <View className="absolute inset-0 z-50">
           <Pressable className="absolute inset-0 bg-black/50" onPress={() => setShowUnitPicker(false)} />
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
             className="absolute bottom-0 left-0 right-0"
           >
             <Animated.View
@@ -1341,7 +1344,7 @@ function SaveListNameModal({ visible, onClose, onSave, isDark, maxReached }: Sav
         className="absolute inset-0 bg-black/50"
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
         className="absolute bottom-0 left-0 right-0"
       >
         <Animated.View

@@ -19,11 +19,14 @@ import {
   FlatList,
   Dimensions,
   StyleSheet,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView as RNKeyboardAvoidingView,
   Platform,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { KeyboardAvoidingView as ControllerKeyboardAvoidingView } from 'react-native-keyboard-controller';
+
+const KeyboardAvoidingView = Platform.OS === 'android' ? ControllerKeyboardAvoidingView : RNKeyboardAvoidingView;
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
@@ -164,7 +167,7 @@ export function PagerSheet({
             stay visible while typing. Must live INSIDE the Modal to take effect. */}
         <KeyboardAvoidingView
           style={styles.backdrop}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
         >
           {/* Invisible backdrop layer — closes sheet on tap, but doesn't wrap the sheet
               (so gestures inside the sheet aren't intercepted) */}

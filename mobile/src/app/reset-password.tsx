@@ -4,10 +4,13 @@ import {
   Text,
   TextInput,
   Pressable,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView as RNKeyboardAvoidingView,
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { KeyboardAvoidingView as ControllerKeyboardAvoidingView } from 'react-native-keyboard-controller';
+
+const KeyboardAvoidingView = Platform.OS === 'android' ? ControllerKeyboardAvoidingView : RNKeyboardAvoidingView;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -107,7 +110,7 @@ export default function ResetPasswordScreen() {
       />
       <SafeAreaView className="flex-1">
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
           className="flex-1"
         >
           {/* Header */}

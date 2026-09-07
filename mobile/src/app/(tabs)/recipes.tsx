@@ -4,6 +4,7 @@
 // from the previous implementation is preserved.
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, Platform } from 'react-native';
+import { KeyboardAvoidingView as ControllerKeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { DishImage } from '@/components/DishImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -352,6 +353,7 @@ export default function RecipesScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const colors = getThemeColors(isDark);
+  const isAndroid = Platform.OS === 'android';
 
   // ── Store reads — identical to inventory ──────────────────────────
   const recipes = useMealPlanStore((s) => s.recipes);
@@ -1001,7 +1003,15 @@ export default function RecipesScreen() {
                       >
                         Add them to your meal plan or build your grocery list.
                       </Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 11 }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          flexWrap: isAndroid ? 'nowrap' : 'wrap',
+                          alignItems: isAndroid ? 'center' : undefined,
+                          gap: isAndroid ? 6 : 8,
+                          marginTop: isAndroid ? 9 : 11,
+                        }}
+                      >
                         <Pressable
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1010,24 +1020,27 @@ export default function RecipesScreen() {
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            gap: 5,
-                            paddingHorizontal: 13,
-                            paddingVertical: 7,
+                            justifyContent: isAndroid ? 'center' : undefined,
+                            gap: isAndroid ? 4 : 5,
+                            paddingHorizontal: isAndroid ? 10 : 13,
+                            paddingVertical: isAndroid ? 6 : 7,
                             borderRadius: 999,
                             backgroundColor: designTokens.colors.brand,
+                            flexShrink: isAndroid ? 0 : undefined,
                           }}
                         >
                           <Text
+                            numberOfLines={isAndroid ? 1 : undefined}
                             style={{
                               fontFamily: designTokens.font.medium,
-                              fontSize: 12.5,
+                              fontSize: isAndroid ? 11.5 : 12.5,
                               color: designTokens.colors.cream,
                               letterSpacing: -0.05,
                             }}
                           >
                             Add to meal plan
                           </Text>
-                          <ArrowRight size={14} color={designTokens.colors.cream} strokeWidth={2} />
+                          <ArrowRight size={isAndroid ? 13 : 14} color={designTokens.colors.cream} strokeWidth={2} />
                         </Pressable>
                         <Pressable
                           onPress={() => {
@@ -1037,19 +1050,22 @@ export default function RecipesScreen() {
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            gap: 5,
-                            paddingHorizontal: 13,
-                            paddingVertical: 7,
+                            justifyContent: isAndroid ? 'center' : undefined,
+                            gap: isAndroid ? 4 : 5,
+                            paddingHorizontal: isAndroid ? 10 : 13,
+                            paddingVertical: isAndroid ? 6 : 7,
                             borderRadius: 999,
                             backgroundColor: 'transparent',
                             borderWidth: 1,
                             borderColor: isDark ? 'rgba(139,155,120,0.42)' : 'rgba(84,100,69,0.35)',
+                            flexShrink: isAndroid ? 0 : undefined,
                           }}
                         >
                           <Text
+                            numberOfLines={isAndroid ? 1 : undefined}
                             style={{
                               fontFamily: designTokens.font.medium,
-                              fontSize: 12.5,
+                              fontSize: isAndroid ? 11.5 : 12.5,
                               color: isDark ? '#cdd6c0' : designTokens.colors.brand,
                               letterSpacing: -0.05,
                             }}
@@ -1150,34 +1166,71 @@ export default function RecipesScreen() {
                           borderColor: c.fg,
                         }}
                       >
-                        <Icon
-                          size={19}
-                          color={c.fg}
-                          strokeWidth={2}
-                          fill={c.id === 'favorites' ? c.fg : 'transparent'}
-                        />
-                        <Text
-                          numberOfLines={1}
-                          style={{
-                            marginTop: 10,
-                            fontFamily: designTokens.font.semibold,
-                            fontSize: 15,
-                            color: colors.ink,
-                            letterSpacing: -0.2,
-                          }}
-                        >
-                          {c.title}
-                        </Text>
-                        <Text
-                          style={{
-                            marginTop: 2,
-                            fontFamily: designTokens.font.regular,
-                            fontSize: 12,
-                            color: colors.ink2,
-                          }}
-                        >
-                          {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
-                        </Text>
+                        {isAndroid ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <Icon
+                              size={20}
+                              color={c.fg}
+                              strokeWidth={2}
+                              fill={c.id === 'favorites' ? c.fg : 'transparent'}
+                            />
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text
+                                numberOfLines={1}
+                                style={{
+                                  fontFamily: designTokens.font.semibold,
+                                  fontSize: 14,
+                                  color: colors.ink,
+                                  letterSpacing: -0.2,
+                                }}
+                              >
+                                {c.title}
+                              </Text>
+                              <Text
+                                numberOfLines={1}
+                                style={{
+                                  marginTop: 1,
+                                  fontFamily: designTokens.font.regular,
+                                  fontSize: 11.5,
+                                  color: colors.ink2,
+                                }}
+                              >
+                                {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
+                              </Text>
+                            </View>
+                          </View>
+                        ) : (
+                          <>
+                            <Icon
+                              size={19}
+                              color={c.fg}
+                              strokeWidth={2}
+                              fill={c.id === 'favorites' ? c.fg : 'transparent'}
+                            />
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                marginTop: 10,
+                                fontFamily: designTokens.font.semibold,
+                                fontSize: 15,
+                                color: colors.ink,
+                                letterSpacing: -0.2,
+                              }}
+                            >
+                              {c.title}
+                            </Text>
+                            <Text
+                              style={{
+                                marginTop: 2,
+                                fontFamily: designTokens.font.regular,
+                                fontSize: 12,
+                                color: colors.ink2,
+                              }}
+                            >
+                              {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
+                            </Text>
+                          </>
+                        )}
                         {meta.cover ? (
                           <DishImage
                             url={meta.cover}
@@ -1186,14 +1239,14 @@ export default function RecipesScreen() {
                               width: 88,
                               height: 88,
                               borderRadius: 44,
-                              marginTop: 12,
+                              marginTop: isAndroid ? 10 : 12,
                               alignSelf: 'center',
                             }}
                             transition={150}
                             recyclingKey={meta.cover}
                           />
                         ) : (
-                          <View style={{ height: 100 }} />
+                          <View style={{ height: isAndroid ? 88 : 100 }} />
                         )}
                       </Pressable>
                     );
@@ -1224,29 +1277,61 @@ export default function RecipesScreen() {
                           borderColor: designTokens.colors.ink2,
                         }}
                       >
-                        <BookmarkIcon size={19} color={designTokens.colors.ink2} strokeWidth={2} />
-                        <Text
-                          numberOfLines={1}
-                          style={{
-                            marginTop: 10,
-                            fontFamily: designTokens.font.semibold,
-                            fontSize: 15,
-                            color: colors.ink,
-                            letterSpacing: -0.2,
-                          }}
-                        >
-                          {c.name}
-                        </Text>
-                        <Text
-                          style={{
-                            marginTop: 2,
-                            fontFamily: designTokens.font.regular,
-                            fontSize: 12,
-                            color: colors.ink2,
-                          }}
-                        >
-                          {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
-                        </Text>
+                        {isAndroid ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <BookmarkIcon size={20} color={designTokens.colors.ink2} strokeWidth={2} />
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text
+                                numberOfLines={1}
+                                style={{
+                                  fontFamily: designTokens.font.semibold,
+                                  fontSize: 14,
+                                  color: colors.ink,
+                                  letterSpacing: -0.2,
+                                }}
+                              >
+                                {c.name}
+                              </Text>
+                              <Text
+                                numberOfLines={1}
+                                style={{
+                                  marginTop: 1,
+                                  fontFamily: designTokens.font.regular,
+                                  fontSize: 11.5,
+                                  color: colors.ink2,
+                                }}
+                              >
+                                {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
+                              </Text>
+                            </View>
+                          </View>
+                        ) : (
+                          <>
+                            <BookmarkIcon size={19} color={designTokens.colors.ink2} strokeWidth={2} />
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                marginTop: 10,
+                                fontFamily: designTokens.font.semibold,
+                                fontSize: 15,
+                                color: colors.ink,
+                                letterSpacing: -0.2,
+                              }}
+                            >
+                              {c.name}
+                            </Text>
+                            <Text
+                              style={{
+                                marginTop: 2,
+                                fontFamily: designTokens.font.regular,
+                                fontSize: 12,
+                                color: colors.ink2,
+                              }}
+                            >
+                              {meta.count} {meta.count === 1 ? 'recipe' : 'recipes'}
+                            </Text>
+                          </>
+                        )}
                         {meta.cover ? (
                           <DishImage
                             url={meta.cover}
@@ -1255,14 +1340,14 @@ export default function RecipesScreen() {
                               width: 88,
                               height: 88,
                               borderRadius: 44,
-                              marginTop: 12,
+                              marginTop: isAndroid ? 10 : 12,
                               alignSelf: 'center',
                             }}
                             transition={150}
                             recyclingKey={meta.cover}
                           />
                         ) : (
-                          <View style={{ height: 100 }} />
+                          <View style={{ height: isAndroid ? 88 : 100 }} />
                         )}
                       </Pressable>
                     );
@@ -1280,7 +1365,7 @@ export default function RecipesScreen() {
                       borderColor: colors.hair,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      minHeight: 186,
+                      minHeight: isAndroid ? 160 : 186,
                     }}
                   >
                     <View
@@ -1880,6 +1965,154 @@ export default function RecipesScreen() {
             paddingHorizontal: 28,
           }}
         >
+        {isAndroid ? (
+          <ControllerKeyboardAvoidingView
+            behavior="padding"
+            style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                borderRadius: 24,
+                backgroundColor: colors.bg,
+                borderWidth: 1,
+                borderColor: colors.hair,
+                padding: 20,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: designTokens.font.semibold,
+                  fontSize: 17,
+                  color: colors.ink,
+                  letterSpacing: -0.3,
+                }}
+              >
+                Edit collection
+              </Text>
+
+              {/* Rename */}
+              <TextInput
+                value={renameDraft}
+                onChangeText={setRenameDraft}
+                placeholder="Collection name"
+                placeholderTextColor={colors.ink3}
+                maxLength={40}
+                returnKeyType="done"
+                onSubmitEditing={handleSaveRename}
+                style={{
+                  marginTop: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: colors.hair,
+                  backgroundColor: colors.pill,
+                  fontFamily: designTokens.font.medium,
+                  fontSize: 15,
+                  color: colors.ink,
+                }}
+              />
+
+              {/* Add recipes — bulk picker for this collection. */}
+              <Pressable
+                onPress={() => {
+                  const id = manageCollectionId;
+                  setManageCollectionId(null);
+                  if (id) setTimeout(() => handleOpenPicker(id), 250);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  marginTop: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: colors.hair,
+                }}
+              >
+                <Plus size={16} color={colors.ink} strokeWidth={2} />
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 14.5,
+                    color: colors.ink,
+                  }}
+                >
+                  Add or remove recipes
+                </Text>
+              </Pressable>
+
+              <Text
+                style={{
+                  marginTop: 14,
+                  fontFamily: designTokens.font.regular,
+                  fontSize: 12.5,
+                  lineHeight: 18,
+                  color: colors.ink3,
+                }}
+              >
+                Deleting a collection removes the grouping only — your recipes stay in your
+                library.
+              </Text>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <Pressable
+                  onPress={() =>
+                    manageCollectionId && handleDeleteCollection(manageCollectionId)
+                  }
+                  style={{
+                    flexDirection: 'row',
+                    gap: 7,
+                    paddingHorizontal: 16,
+                    paddingVertical: 13,
+                    borderRadius: 14,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: designTokens.colors.olive,
+                  }}
+                >
+                  <Trash2 size={15} color={designTokens.colors.olive} strokeWidth={2} />
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.semibold,
+                      fontSize: 14.5,
+                      color: designTokens.colors.olive,
+                    }}
+                  >
+                    Delete
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSaveRename}
+                  disabled={!renameDraft.trim()}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 13,
+                    borderRadius: 14,
+                    alignItems: 'center',
+                    backgroundColor: designTokens.colors.brand,
+                    opacity: renameDraft.trim() ? 1 : 0.45,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.semibold,
+                      fontSize: 14.5,
+                      color: '#fff',
+                    }}
+                  >
+                    Save
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </ControllerKeyboardAvoidingView>
+        ) : (
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={{
@@ -2021,6 +2254,7 @@ export default function RecipesScreen() {
               </Pressable>
             </View>
           </Pressable>
+        )}
         </Pressable>
       </Modal>
 
