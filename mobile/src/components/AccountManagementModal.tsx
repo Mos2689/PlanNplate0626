@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, Modal, ActivityIndicator } from 'react-native';
-import { X, RefreshCw, AlertTriangle } from 'lucide-react-native';
+import { X, Trash2, AlertTriangle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { cn } from '@/lib/cn';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -50,21 +50,22 @@ export function AccountManagementModal({
   const getModalContent = () => {
     if (modalType === 'delete') {
       return {
-        icon: <RefreshCw size={32} color="#6a7d56" />,
-        iconBg: isDark ? 'bg-sage-900/30' : 'bg-sage-100',
-        title: 'Fresh Start',
+        icon: <Trash2 size={30} color={isDark ? '#f87171' : '#dc2626'} />,
+        iconBg: isDark ? 'bg-red-900/30' : 'bg-red-50',
+        title: 'Delete account',
         description:
-          'Ready for a clean slate? This will reset all your data so you can start fresh with new recipes, meal plans, and preferences.',
+          'This permanently deletes your account and all your data. You’ll be signed out, and this can’t be undone — you’d need to sign up again to use PlanNplate.',
         bullets: [
-          'All saved recipes will be cleared',
-          'Meal plans will be reset',
-          'Preferences will return to defaults',
-          'You can set everything up again',
+          'Your account and login are removed',
+          'All saved recipes are deleted',
+          'Meal plans and grocery lists are deleted',
+          'Preferences are deleted',
+          'This cannot be undone',
         ],
-        confirmText: 'Reset & Start Fresh',
-        confirmBg: isDark ? 'bg-sage-600' : 'bg-sage-500',
+        confirmText: 'Delete account',
+        confirmBg: isDark ? 'bg-red-600' : 'bg-red-500',
         confirmTextColor: 'text-white',
-        warning: false,
+        warning: true,
       };
     }
     return null;

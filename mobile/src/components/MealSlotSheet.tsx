@@ -53,9 +53,23 @@ interface MealSlotSheetProps {
   onOpenServing: (slot: MealSlot, recipe: Recipe) => void;
   onAllergenPress: (recipe: Recipe, info: RecipeAllergenInfo) => void;
   onToggleCooked: (slot: MealSlot) => void;
+  // Greys out + disables the "mark cooked" button (e.g. for future dates — you
+  // can't have cooked a meal that hasn't happened yet).
+  cookDisabled?: boolean;
 }
 
-function CookButton({ isCooked, onPress, isDark, colors }: any) {
+// No cook button for Skipped, Grab & go, or Buy out — there's nothing to cook.
+// Leftovers are the exception: you can still mark the reheated meal as done, so
+// they KEEP the cook button (greyed for future dates like any other meal).
+const NO_COOK_RE = /^(skipped\b|grab\s*(?:&|and)?\s*go\b|buy[\s-]*out\b)/i;
+function isNoCookSlot(slot: MealSlot, recipe?: Recipe): boolean {
+  const name = (recipe?.name ?? slot.customMealName ?? '').trim();
+  if (/^leftovers?\b/i.test(name)) return false; // leftovers stay cookable
+  if (!slot.recipeId) return true; // other recipe-less placeholders
+  return NO_COOK_RE.test(name);
+}
+
+function CookButton({ isCooked, onPress, isDark, colors, disabled = false }: any) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -64,9 +78,10 @@ function CookButton({ isCooked, onPress, isDark, colors }: any) {
 
   return (
     <Pressable
-      onPressIn={() => { scale.value = withSpring(0.85); }}
-      onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
-      onPress={onPress}
+      onPressIn={() => { if (!disabled) scale.value = withSpring(0.85); }}
+      onPressOut={() => { if (!disabled) scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
       hitSlop={6}
     >
       <Animated.View
@@ -75,6 +90,7 @@ function CookButton({ isCooked, onPress, isDark, colors }: any) {
           {
             backgroundColor: isCooked ? '#fff' : (isDark ? colors.surface : '#fff'),
             borderColor: isCooked ? designTokens.colors.olive : designTokens.colors.hair,
+            opacity: disabled ? 0.4 : 1,
           },
           animatedStyle
         ]}
@@ -106,6 +122,7 @@ export function MealSlotSheet({
   onOpenServing,
   onAllergenPress,
   onToggleCooked,
+  cookDisabled = false,
 }: MealSlotSheetProps) {
   const colors = getThemeColors(isDark);
   const recipeById = React.useMemo(
@@ -436,13 +453,16 @@ export function MealSlotSheet({
                       )}
                       {!isRestricted && (
                         <>
-                          {(() => {
+                          {/* No cook button for Skipped / Grab & go / Buy out /
+                              Leftovers — there's nothing to mark as cooked. */}
+                          {!isNoCookSlot(slot, recipe) && (() => {
                             const isCooked = cookedSlotIds.has(slot.id);
                             return (
                               <CookButton
                                 isCooked={isCooked}
                                 isDark={isDark}
                                 colors={colors}
+                                disabled={cookDisabled}
                                 onPress={() => {
                                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                                   onToggleCooked(slot);

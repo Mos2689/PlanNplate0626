@@ -436,6 +436,7 @@ export default function PlanMealsScreen() {
   const isDark = colorScheme === 'dark';
 
   const preferences = useMealPlanStore((s) => s.preferences);
+  const setPreferences = useMealPlanStore((s) => s.setPreferences);
   const startBackgroundGeneration = useMealPlanStore(
     (s) => s.startBackgroundGeneration,
   );
@@ -1998,6 +1999,10 @@ export default function PlanMealsScreen() {
           setOverrides(ov);
           setOneTimeNote(note);
         }}
+        dietaryConsentAt={preferences.dietaryDataConsentAt ?? null}
+        onDietaryConsentChange={(at) =>
+          setPreferences({ dietaryDataConsentAt: at ?? undefined })
+        }
         onClose={() => setShowTuneSheet(false)}
         isDark={isDark}
       />

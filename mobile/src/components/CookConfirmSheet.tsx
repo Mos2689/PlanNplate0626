@@ -8,6 +8,8 @@ import {
   Text,
   Pressable,
   TextInput,
+  ScrollView,
+  Dimensions,
   StyleSheet,
 } from 'react-native';
 // expo-image rather than RN's Image: this hero shows recipe photos the user has
@@ -20,6 +22,8 @@ import * as Haptics from 'expo-haptics';
 import { designTokens, elevation } from '@/lib/design-tokens';
 import { PagerSheet, pressedStyle } from './PagerSheet';
 import type { MealSlot, Recipe, CookStatus, SkipReason } from '@/lib/store';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 const MEAL_LABEL: Record<MealSlot['mealType'], string> = {
   breakfast: 'Breakfast',
@@ -319,20 +323,35 @@ function MealPage({
 }) {
   const { slot, recipe } = entry;
   const isDone = mode === 'done';
+  // While the text input is open ('swapping'), the keyboard covers the lower
+  // half of the sheet — shrink the hero so the input + button clear it.
+  const compact = mode === 'swapping';
+  const heroStyle = compact ? styles.heroImgCompact : styles.heroImg;
 
   return (
-    <Animated.View entering={FadeIn.duration(220)} style={styles.page}>
+    // Vertical scroll + keyboard insets so the "made something else" input is
+    // never trapped behind the keyboard, on any screen size. Capped height so
+    // the page still sizes the sheet nicely when the keyboard is down.
+    <ScrollView
+      style={{ maxHeight: Math.round(SCREEN_HEIGHT * 0.62) }}
+      contentContainerStyle={styles.page}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      automaticallyAdjustKeyboardInsets
+      bounces={false}
+    >
+    <Animated.View entering={FadeIn.duration(220)}>
       {/* Hero image */}
       <View style={[styles.hero, elevation.card]}>
         {recipe?.imageUrl ? (
           <DishImage
             url={recipe.imageUrl}
             width={600}
-            style={styles.heroImg}
+            style={heroStyle}
             recyclingKey={recipe.id}
           />
         ) : (
-          <View style={[styles.heroImg, styles.heroFallback]}>
+          <View style={[heroStyle, styles.heroFallback]}>
             <Utensils size={32} color={designTokens.colors.ink3} strokeWidth={1.4} />
           </View>
         )}
@@ -464,6 +483,7 @@ function MealPage({
         </Animated.View>
       )}
     </Animated.View>
+    </ScrollView>
   );
 }
 
@@ -521,6 +541,13 @@ const styles = StyleSheet.create({
   heroImg: {
     width: '100%',
     aspectRatio: 4 / 3,
+    backgroundColor: '#F4F0E8',
+  },
+  // Shrunk hero used while the text input is open, so the input clears the
+  // keyboard. Fixed height (no aspectRatio) keeps it a slim strip.
+  heroImgCompact: {
+    width: '100%',
+    height: 96,
     backgroundColor: '#F4F0E8',
   },
   heroFallback: {

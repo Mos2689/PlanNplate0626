@@ -19,7 +19,6 @@ import * as ImagePicker from 'expo-image-picker';
 import {
   X,
   UtensilsCrossed,
-  AlertTriangle,
   Clock,
   ChefHat,
   Users,
@@ -51,7 +50,6 @@ import { diffPersona, type PersonaSnapshot } from '@/lib/onboarding-analytics-po
 import {
   DIETARY_OPTIONS,
   CUISINE_OPTIONS,
-  ALLERGY_OPTIONS,
   SKILL_LEVELS,
   WEEKNIGHT_TIME_OPTIONS,
   HOUSEHOLD_OPTIONS,
@@ -357,14 +355,6 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
       : [...current, cuisine];
     setPreferences({ cuisinePreferences: updated });
   }, [preferences.cuisinePreferences, setPreferences]);
-
-  const toggleAllergy = useCallback((allergy: string) => {
-    const current = preferences.allergies;
-    const updated = current.includes(allergy)
-      ? current.filter((a) => a !== allergy)
-      : [...current, allergy];
-    setPreferences({ allergies: updated });
-  }, [preferences.allergies, setPreferences]);
 
   // Pick image from library — preserved verbatim.
   const pickImage = useCallback(async () => {
@@ -890,20 +880,6 @@ export function EditProfileModal({ visible, onClose }: EditProfileModalProps) {
                   onToggle={toggleCuisinePreference}
                   isDark={isDark}
                   icon={<ChefHat size={16} color={designTokens.colors.brand} strokeWidth={1.8} />}
-                />
-              </Animated.View>
-
-              {/* Allergies */}
-              <Animated.View entering={FadeInDown.delay(360).springify()}>
-                <MultiSelectSection
-                  title="Allergies"
-                  subtitle="Foods to avoid in recipes"
-                  options={ALLERGY_OPTIONS}
-                  selected={preferences.allergies}
-                  onToggle={toggleAllergy}
-                  isDark={isDark}
-                  icon={<AlertTriangle size={16} color={designTokens.colors.olive} strokeWidth={1.8} />}
-                  tone="olive"
                 />
               </Animated.View>
 

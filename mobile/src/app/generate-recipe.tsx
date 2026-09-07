@@ -3632,25 +3632,6 @@ export default function GenerateRecipeScreen() {
                     )}
                   </View>
 
-                  {/* Allergies */}
-                  <View style={{ marginBottom: 22 }}>
-                    <Text style={sectionEyebrow}>Allergies to avoid</Text>
-                    {renderChips(
-                      ['Nuts', 'Shellfish', 'Eggs', 'Soy', 'Fish', 'Wheat', 'Sesame'],
-                      localPreferences.allergies,
-                      (allergy) => {
-                        const isSelected = localPreferences.allergies.includes(allergy);
-                        setLocalPreferences(prev => ({
-                          ...prev,
-                          allergies: isSelected
-                            ? prev.allergies.filter(a => a !== allergy)
-                            : [...prev.allergies, allergy],
-                        }));
-                      },
-                      'olive',
-                    )}
-                  </View>
-
                   {/* Reset */}
                   <Pressable
                     onPress={() => {

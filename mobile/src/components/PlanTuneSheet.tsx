@@ -26,6 +26,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  Linking,
 } from 'react-native';
 import {
   X,
@@ -45,6 +46,7 @@ import {
   DIETARY_OPTIONS,
   CUISINE_OPTIONS,
 } from '@/lib/preference-options';
+import { PRIVACY_POLICY_URL } from '@/lib/legal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_MAX_HEIGHT = Math.round(SCREEN_HEIGHT * 0.88);
@@ -69,6 +71,12 @@ export interface PlanTuneSheetProps {
   // plan". Backdrop / X / drag-down dismissals do not trigger this.
   onChange: (overrides: Partial<UserPreferences>, oneTimeNote: string) => void;
   onClose: () => void;
+  // Durable consent to collect dietary-preference data (which may reveal
+  // religious belief or a health condition — halal, kosher, gluten-free, etc.).
+  // Persisted to the profile, NOT a per-plan override: it's a lasting record,
+  // and gates whether the Diet chips can be edited. Null = not consented.
+  dietaryConsentAt: string | null;
+  onDietaryConsentChange: (consentedAt: string | null) => void;
   isDark?: boolean;
 }
 
@@ -195,12 +203,14 @@ function Chip({
   tone = 'sage',
   onPress,
   isDark,
+  disabled = false,
 }: {
   label: string;
   selected: boolean;
   tone?: 'sage' | 'olive';
   onPress: () => void;
   isDark: boolean;
+  disabled?: boolean;
 }) {
   const s = useTuneStyles(isDark);
   const bg = selected
@@ -209,7 +219,7 @@ function Chip({
       : designTokens.colors.brand
     : s.cardBg;
   return (
-    <Pressable onPress={onPress}>
+    <Pressable onPress={onPress} disabled={disabled}>
       {({ pressed }) => (
         <View
           style={{
@@ -222,6 +232,7 @@ function Chip({
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
+            opacity: disabled ? 0.4 : 1,
             transform: [{ scale: pressed ? 0.97 : 1 }],
           }}
         >
@@ -249,9 +260,24 @@ export function PlanTuneSheet({
   oneTimeNote,
   onChange,
   onClose,
+  dietaryConsentAt,
+  onDietaryConsentChange,
   isDark = false,
 }: PlanTuneSheetProps) {
   const s = useTuneStyles(isDark);
+  const dietConsented = !!dietaryConsentAt;
+
+  // Toggle the durable dietary-preference consent. Revoking it also clears any
+  // diet selections in the draft so we don't keep tuning on withdrawn consent.
+  const toggleDietConsent = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (dietConsented) {
+      onDietaryConsentChange(null);
+      setDraftField('dietaryRestrictions', [] as any);
+    } else {
+      onDietaryConsentChange(new Date().toISOString());
+    }
+  };
 
   // Draft state — re-seeded from props each time the sheet opens so
   // it always reflects the committed truth. Internal edits never leak
@@ -444,6 +470,54 @@ export function PlanTuneSheet({
             >
               {/* ── DIET ──────────────────────────────────────────────── */}
               <SectionCard title="Diet" Icon={Apple} iconTone="olive" isDark={isDark}>
+                {/* Consent — dietary preferences can reveal religious belief
+                    (halal/kosher) or a health condition (gluten/dairy-free), so
+                    we collect them only with the user's consent, captured here. */}
+                <Pressable
+                  onPress={toggleDietConsent}
+                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}
+                >
+                  <View
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 6,
+                      marginTop: 1,
+                      borderWidth: dietConsented ? 0 : 1.5,
+                      borderColor: s.cardBorder,
+                      backgroundColor: dietConsented ? designTokens.colors.olive : 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {dietConsented && <Check size={13} color="#FFFFFF" strokeWidth={3} />}
+                  </View>
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontFamily: designTokens.font.regular,
+                      fontSize: 12,
+                      lineHeight: 17,
+                      color: s.ink2,
+                    }}
+                  >
+                    I consent to PlanNplate using my dietary preferences, including any
+                    religious or health-related choices such as halal, kosher or
+                    gluten-free, to personalise my plan.{' '}
+                    <Text
+                      onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})}
+                      style={{
+                        color: designTokens.colors.brand,
+                        fontFamily: designTokens.font.medium,
+                        textDecorationLine: 'underline',
+                      }}
+                    >
+                      Privacy Policy
+                    </Text>
+                    .
+                  </Text>
+                </Pressable>
+
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {DIETARY_OPTIONS.map((d) => (
                     <Chip
@@ -452,9 +526,23 @@ export function PlanTuneSheet({
                       selected={(draft.dietaryRestrictions ?? []).includes(d)}
                       onPress={() => toggleStringInList('dietaryRestrictions', d)}
                       isDark={isDark}
+                      disabled={!dietConsented}
                     />
                   ))}
                 </View>
+                {!dietConsented && (
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.regular,
+                      fontSize: 11.5,
+                      color: s.ink3,
+                      marginTop: 8,
+                      letterSpacing: -0.05,
+                    }}
+                  >
+                    Tick the box above to personalise by diet.
+                  </Text>
+                )}
               </SectionCard>
 
               {/* ── TASTES ────────────────────────────────────────────── */}

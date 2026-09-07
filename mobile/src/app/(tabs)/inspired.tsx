@@ -11,6 +11,7 @@
 // Design language: editorial header (italic "Inspired"), sage primary,
 // terracotta accent, hairline borders, Geist + Instrument Serif.
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { SuccessToast } from '@/components/SuccessToast';
 import { View, Text, Pressable, ScrollView, TextInput, Keyboard, Dimensions, KeyboardAvoidingView, Platform, Modal, InteractionManager } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withSpring, interpolate, Extrapolation, useAnimatedRef } from 'react-native-reanimated';
@@ -541,6 +542,14 @@ export default function CuratedMealPlanScreen() {
   // React mirror of isSearchOpen (a shared value can't drive JSX conditionals):
   // when true the search bar is pinned to the top and browse chrome collapses.
   const [searchExpanded, setSearchExpanded] = useState(false);
+  // Transient "Saved to Recipes" confirmation after tapping the bookmark.
+  const [savedToast, setSavedToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!savedToast) return;
+    const t = setTimeout(() => setSavedToast(null), 2200);
+    return () => clearTimeout(t);
+  }, [savedToast]);
   const searchInputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
 
@@ -747,6 +756,7 @@ export default function CuratedMealPlanScreen() {
         if (!usedInPlan) deleteRecipe(existingId);
       } else {
         addRecipe(inspiredToRecipe(r, false));
+        setSavedToast('Saved to Recipes');
       }
     },
     [inspiredSavedMap, mealSlots, deleteRecipe, addRecipe],
@@ -1137,6 +1147,7 @@ export default function CuratedMealPlanScreen() {
 
       <StickyScreenHeader scrollY={scrollY} title="Get Inspired" />
 
+      <SuccessToast visible={!!savedToast} message={savedToast ?? ''} duration={2000} isDark={isDark} />
     </View>
   );
 }

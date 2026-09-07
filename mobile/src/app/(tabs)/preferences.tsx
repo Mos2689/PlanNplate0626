@@ -15,7 +15,7 @@ import {
   Crown,
   ChevronRight,
   LogOut,
-  RefreshCw,
+  Trash2,
   CreditCard,
   ExternalLink,
   Flame,
@@ -540,9 +540,7 @@ export default function ProfileScreen() {
       });
     }
     if (
-      preferences.dietaryRestrictions.includes('Vegetarian') === false &&
-      preferences.allergies.includes('Fish') === false &&
-      preferences.allergies.includes('Shellfish') === false
+      preferences.dietaryRestrictions.includes('Vegetarian') === false
     ) {
       if (preferences.cuisinePreferences.includes('Japanese') || preferences.cuisinePreferences.includes('Mediterranean')) {
         tags.push({
@@ -631,10 +629,7 @@ export default function ProfileScreen() {
     household: householdLine,
     time: timeSummary(preferences.mealPrepTime),
     diet: joinSummary(
-      [
-        ...clamp(preferences.dietaryRestrictions, 2),
-        preferences.allergies.length > 0 ? `No ${clamp(preferences.allergies, 2).join(', ').toLowerCase()}` : null,
-      ],
+      [...clamp(preferences.dietaryRestrictions, 2)],
       'No restrictions set',
     ),
     cuisines:
@@ -1775,7 +1770,7 @@ export default function ProfileScreen() {
                 <PrefRow
                   icon={<Leaf size={16} color="#6E7250" strokeWidth={1.7} />}
                   tint="#EEEEE3"
-                  title="Diet & allergies"
+                  title="Diet"
                   summary={prefRowSummaries.diet}
                   onPress={openEditProfile}
                   isDark={isDark}
@@ -2050,7 +2045,7 @@ export default function ProfileScreen() {
             </View>
           </Animated.View>
 
-          {/* ── Fresh Start ─────────────────────────────────────── */}
+          {/* ── Delete account ──────────────────────────────────── */}
           <Animated.View
             entering={FadeInDown.delay(400).springify()}
             style={{ paddingHorizontal: 16, paddingBottom: 22 }}
@@ -2077,24 +2072,24 @@ export default function ProfileScreen() {
                   width: 32,
                   height: 32,
                   borderRadius: 10,
-                  backgroundColor: 'rgba(228,109,70,0.10)',
+                  backgroundColor: 'rgba(220,38,38,0.10)',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
                 }}
               >
-                <RefreshCw size={14} color={designTokens.colors.olive} strokeWidth={1.8} />
+                <Trash2 size={14} color="#DC2626" strokeWidth={1.8} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text
                   style={{
                     fontFamily: designTokens.font.medium,
                     fontSize: 14,
-                    color: colors.ink,
+                    color: '#DC2626',
                     letterSpacing: -0.07,
                   }}
                 >
-                  Fresh Start
+                  Delete account
                 </Text>
                 <Text
                   style={{
@@ -2104,7 +2099,7 @@ export default function ProfileScreen() {
                     marginTop: 1,
                   }}
                 >
-                  Reset recipes, plans, and preferences.
+                  Permanently delete your account and all data.
                 </Text>
               </View>
               <ChevronRight size={14} color={designTokens.colors.ink3} strokeWidth={1.7} />

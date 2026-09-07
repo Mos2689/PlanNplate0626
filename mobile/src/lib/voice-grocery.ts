@@ -60,10 +60,10 @@ export async function parseGroceryItemsFromTranscript(
   const trimmed = transcript.trim();
   if (!trimmed) return [];
 
-  const prompt = `Extract a grocery shopping list from this spoken text. Return ONLY a JSON array (no prose, no markdown).
+  const prompt = `Extract a grocery shopping list from this spoken text. The text may be in ANY language. Return ONLY a JSON array (no prose, no markdown).
 Each element must be: {"name": string, "quantity": string, "unit": string, "category": string}.
 Rules:
-- "name": the singular, lowercase item name with NO quantity/number words (e.g. "onion", "chicken breast", "milk").
+- "name": ALWAYS the common ENGLISH item name, singular and lowercase, with NO quantity/number words. Translate from the spoken language if needed (e.g. Gujarati "લસૂણ" → "garlic", "આદુ" → "ginger", Spanish "cebolla" → "onion"). Use the standard grocery English term (e.g. "onion", "chicken breast", "milk").
 - "quantity": a number as a string. Default "1" when none is spoken (e.g. "two onions" → "2", "a dozen eggs" → "12").
 - "unit": e.g. "g", "kg", "ml", "l", "piece", "bunch", "loaf", "can", "bottle", "pack". Default "item" when none is spoken.
 - "category": EXACTLY one of: produce | dairy | meat | pantry | frozen | bakery | other. Classify by item type:
@@ -81,7 +81,7 @@ Spoken text: "${trimmed}"`;
     messages: [
       {
         role: 'system',
-        content: 'You extract structured grocery lists and output only valid JSON arrays.',
+        content: 'You extract structured grocery lists from speech in any language, translating every item name into its common English grocery term, and output only valid JSON arrays.',
       },
       { role: 'user', content: prompt },
     ],

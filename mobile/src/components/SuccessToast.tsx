@@ -1,7 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Animated, { FadeInDown, FadeOutDown, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { Check } from 'lucide-react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 interface SuccessToastProps {
   visible: boolean;
@@ -10,43 +9,16 @@ interface SuccessToastProps {
   isDark?: boolean;
 }
 
-export const SuccessToast: React.FC<SuccessToastProps> = ({
-  visible,
-  message,
-  duration = 3000,
-  isDark = false,
-}) => {
-  const opacity = useSharedValue(0);
-
-  useEffect(() => {
-    if (visible) {
-      opacity.value = withTiming(1, { duration: 300 });
-      const timer = setTimeout(() => {
-        opacity.value = withTiming(0, { duration: 300 });
-      }, duration);
-      return () => clearTimeout(timer);
-    }
-  }, [visible, duration, opacity]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
-
+// Matches the quiet "Added to grocery" pill on the Recipes tab: a small dark
+// pill near the bottom, one gentle entrance, no internal opacity tween. The
+// parent controls how long it stays up (it clears `visible` on a timer).
+export const SuccessToast: React.FC<SuccessToastProps> = ({ visible, message }) => {
   if (!visible) return null;
 
-  const bgColor = isDark ? '#2d3748' : '#ffffff';
-  const textColor = isDark ? '#a6b594' : '#6a7d56';
-  const iconColor = isDark ? '#a6b594' : '#6a7d56';
-
   return (
-    <Animated.View
-      entering={FadeInDown}
-      exiting={FadeOutDown}
-      style={[styles.container, animatedStyle]}
-    >
-      <View style={[styles.content, { backgroundColor: bgColor }]}>
-        <Check size={24} color={iconColor} style={{ marginRight: 12 }} />
-        <Text style={[styles.message, { color: textColor }]}>{message}</Text>
+    <Animated.View entering={FadeInDown.springify()} pointerEvents="none" style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.message}>{message}</Text>
       </View>
     </Animated.View>
   );
@@ -55,28 +27,27 @@ export const SuccessToast: React.FC<SuccessToastProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: '50%',
-    left: 20,
-    right: 20,
-    transform: [{ translateY: -60 }],
+    left: 0,
+    right: 0,
+    bottom: 96,
+    alignItems: 'center',
     zIndex: 1000,
   },
   content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    backgroundColor: '#201C17',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
     shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   message: {
-    fontSize: 16,
-    fontWeight: '600',
-    flex: 1,
-    lineHeight: 22,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#fff',
+    letterSpacing: -0.1,
   },
 });

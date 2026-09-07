@@ -124,18 +124,6 @@ const DIETARY_OPTIONS = [
   { id: 'Kosher', label: 'Kosher', icon: '✡️' },
 ];
 
-const ALLERGY_OPTIONS = [
-  { id: 'Peanuts', label: 'Peanuts', icon: '🥜' },
-  { id: 'Tree Nuts', label: 'Tree Nuts', icon: '🌰' },
-  { id: 'Milk', label: 'Dairy', icon: '🥛' },
-  { id: 'Eggs', label: 'Eggs', icon: '🥚' },
-  { id: 'Fish', label: 'Fish', icon: '🐟' },
-  { id: 'Shellfish', label: 'Shellfish', icon: '🦐' },
-  { id: 'Soy', label: 'Soy', icon: '🫘' },
-  { id: 'Wheat', label: 'Wheat', icon: '🌾' },
-  { id: 'Sesame', label: 'Sesame', icon: '🫘' },
-];
-
 const CUISINE_OPTIONS = [
   { id: 'Any', label: 'Any', icon: '🌍' },
   { id: 'Italian', label: 'Italian', icon: '🍝' },
@@ -646,19 +634,12 @@ export default function OnboardingScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [household, setHousehold] = useState<Household>(preferences.household ?? 'couple');
 
-  // Step 1 — Diet & allergies
-  const [dietaryRestrictions, setDietaryRestrictions] = useState<string[]>(
+  // Diet preference (retained only as a recipe-generation default). Allergy
+  // collection and the sensitive-data consent flow were removed — the app no
+  // longer collects allergy or other health information.
+  const [dietaryRestrictions] = useState<string[]>(
     preferences.dietaryRestrictions ?? []
   );
-  const [allergies, setAllergies] = useState<string[]>(preferences.allergies ?? []);
-  // Explicit consent to process dietary/allergy info (sensitive/health data).
-  // Records the moment consent was given; required only once the user actually
-  // selects a dietary restriction or allergy.
-  const [dietaryConsentAt, setDietaryConsentAt] = useState<string | null>(
-    preferences.dietaryDataConsentAt ?? null
-  );
-  const dietaryConsent = !!dietaryConsentAt;
-  const sensitiveDataSelected = dietaryRestrictions.length > 0 || allergies.length > 0;
 
   // Step 2 — Cuisines & style
   const [cuisinePreferences, setCuisinePreferences] = useState<string[]>(
@@ -1136,7 +1117,6 @@ export default function OnboardingScreen() {
 
       setPreferences({
         dietaryRestrictions,
-        allergies,
         cuisinePreferences,
         cookingSkillLevel,
         mealPrepTime: mealPrepTimeFromMinutes(weeknightMinutes),
@@ -1153,8 +1133,6 @@ export default function OnboardingScreen() {
         pantryStaples,
         goals,
         tasteRecipeIds,
-        // Record consent only when sensitive data is actually being saved.
-        dietaryDataConsentAt: sensitiveDataSelected ? (dietaryConsentAt ?? undefined) : undefined,
         hasCompletedOnboarding: true,
         onboardingStep: TOTAL_STEPS,
       });
@@ -1219,7 +1197,6 @@ export default function OnboardingScreen() {
     avatarUrl,
     household,
     dietaryRestrictions,
-    allergies,
     cuisinePreferences,
     cookingSkillLevel,
     cookingDaysPerWeek,
@@ -1602,7 +1579,7 @@ export default function OnboardingScreen() {
                 color: 'rgba(255,255,255,0.72)',
               }}
             >
-              Personalised for 20+ diets & allergies
+              Personalised for 20+ diets & cuisines
             </Text>
           </Animated.View>
 
@@ -1801,144 +1778,6 @@ export default function OnboardingScreen() {
         </View>
       </View>
     </KeyboardAwareScrollView>
-  );
-
-  // ── STEP 1: Diet & allergies ──────────────────────────────────────────────
-  const renderDietStep = () => (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 4, paddingBottom: 32 }}
-      showsVerticalScrollIndicator={false}
-    >
-      <IdentityRibbon firstName={firstName} avatarUrl={avatarUrl} isDark={isDark} />
-      <StepHeader
-        prefix="What's on your "
-        italic="plate"
-        suffix="?"
-        subtitle={firstName
-          ? `We'll only show recipes that fit you, ${firstName}.`
-          : "We'll only show recipes that fit."}
-        isDark={isDark}
-      />
-
-      <SectionEyebrow label="Dietary preferences" isDark={isDark} />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 26 }}>
-        {DIETARY_OPTIONS.map((opt) => (
-          <OptionTile
-            key={opt.id}
-            emoji={opt.icon}
-            label={opt.label}
-            // "No preference" is selected when nothing is chosen; picking it
-            // clears any diets, and picking a diet clears "No preference".
-            selected={opt.id === 'None' ? dietaryRestrictions.length === 0 : dietaryRestrictions.includes(opt.id)}
-            tone="sage"
-            onPress={() =>
-              opt.id === 'None'
-                ? setDietaryRestrictions([])
-                : toggleInList(opt.id, dietaryRestrictions, setDietaryRestrictions)
-            }
-            isDark={isDark}
-          />
-        ))}
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-        <AlertTriangle size={12} color={designTokens.colors.olive} strokeWidth={2} />
-        <Text
-          style={{
-            fontFamily: designTokens.font.medium,
-            fontSize: 11,
-            letterSpacing: 0.55,
-            textTransform: 'uppercase',
-            color: isDark ? '#888' : designTokens.colors.ink3,
-          }}
-        >
-          Allergies to avoid
-        </Text>
-      </View>
-      <Text
-        style={{
-          fontFamily: designTokens.font.regular,
-          fontSize: 12,
-          color: isDark ? '#666' : designTokens.colors.ink3,
-          marginBottom: 12,
-        }}
-      >
-        Tap any you're allergic to. You'll be flagged if a recipe contains the allergen.
-      </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
-        {ALLERGY_OPTIONS.map((opt) => (
-          <Chip
-            key={opt.id}
-            selected={allergies.includes(opt.id)}
-            label={opt.label}
-            icon={opt.icon}
-            tone="charcoal"
-            onPress={() => toggleInList(opt.id, allergies, setAllergies)}
-            isDark={isDark}
-          />
-        ))}
-      </View>
-
-      {/* Sensitive-data consent — shown once the user selects a diet/allergy.
-          Required to continue (see canProceed case 1). */}
-      {sensitiveDataSelected && (
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setDietaryConsentAt((prev) => (prev ? null : new Date().toISOString()));
-          }}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: 10,
-            marginTop: 24,
-            padding: 14,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: dietaryConsent
-              ? designTokens.colors.olive
-              : isDark ? '#2a2a2a' : designTokens.colors.hair,
-            backgroundColor: isDark ? '#1f1f1f' : '#FAF7F0',
-          }}
-        >
-          <View
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: 6,
-              marginTop: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: dietaryConsent ? 0 : 1.5,
-              borderColor: isDark ? '#444' : designTokens.colors.ink3,
-              backgroundColor: dietaryConsent ? designTokens.colors.olive : 'transparent',
-            }}
-          >
-            {dietaryConsent && <Check size={13} color="#FFFFFF" strokeWidth={3} />}
-          </View>
-          <Text
-            style={{
-              flex: 1,
-              fontFamily: designTokens.font.regular,
-              fontSize: 12.5,
-              lineHeight: 18,
-              color: isDark ? '#aaa' : designTokens.colors.ink2,
-            }}
-          >
-            I consent to PlanNplate using my dietary and allergy information to personalise my
-            recipes and warn me about allergens. See our{' '}
-            <Text
-              onPress={() => Linking.openURL('https://www.plannplate.com.au/privacy-policy').catch(() => {})}
-              style={{ color: designTokens.colors.olive, fontFamily: designTokens.font.medium }}
-            >
-              Privacy Policy
-            </Text>
-            .
-          </Text>
-        </Pressable>
-      )}
-    </ScrollView>
   );
 
   // ── STEP 2: Cuisine & style ───────────────────────────────────────────────

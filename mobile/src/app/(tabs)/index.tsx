@@ -749,6 +749,8 @@ export default function HomeScreen() {
 
   const handleToggleCooked = useCallback(
     (slot: MealSlot) => {
+      // Safety net: a meal on a future date can't be marked cooked yet.
+      if (slot.date > formatLocalDateKey(startOfDay(new Date()))) return;
       const isAlreadyCooked = cookedSlotIds.has(slot.id);
       deleteCookingLog(slot.id);
       if (!isAlreadyCooked) {
@@ -1391,6 +1393,9 @@ export default function HomeScreen() {
           onOpenServing={handleOpenServingModal}
           onAllergenPress={handleAllergenPress}
           onToggleCooked={handleToggleCooked}
+          // Grey out "mark cooked" for future dates — you can only log meals
+          // for today or the past.
+          cookDisabled={selectedDateKey > formatLocalDateKey(startOfDay(new Date()))}
         />
       )}
 
@@ -1657,14 +1662,36 @@ export default function HomeScreen() {
           .filter((r): r is Recipe => !!r)}
         cookedRecipeIds={cookedRecipeIds}
         isDark={isDark}
+        savedRatings={Object.fromEntries(
+          recipeRatings.map((r) => [r.recipeId, r.stars]),
+        )}
+        onRate={(r) =>
+          rateRecipe({
+            recipeId: r.recipeId,
+            stars: r.stars,
+            cookAgain: r.cookAgain,
+            ratedAt: new Date().toISOString(),
+          })
+        }
         onClose={() => {
-          // Mark this week's prompt as shown so the nudge doesn't re-fire
-          // until next Sunday. Done on close (not on open) so the sheet
-          // keeps its payload while the user interacts with it.
-          setLastWeeklyPromptAt(new Date().toISOString());
+          // Re-surface the nudge until EVERY meal is rated. Only stamp
+          // lastWeeklyPromptAt (which suppresses the nudge for the week) once
+          // all meals have a rating — an incomplete close leaves it unstamped
+          // so the nudge returns. Ratings so far are already saved via onRate,
+          // so nothing is lost. Explicit "Not tonight" on the nudge card
+          // (handleNudgeSecondary) still skips the whole week.
+          const ratedIds = new Set(
+            useMealPlanStore.getState().recipeRatings.map((r) => r.recipeId),
+          );
+          const weeklyIds = activeNudge?.payload.weeklyRecipeIds ?? [];
+          const allRated =
+            weeklyIds.length > 0 && weeklyIds.every((id) => ratedIds.has(id));
+          if (allRated) setLastWeeklyPromptAt(new Date().toISOString());
           setNudgeSheet(null);
         }}
         onSubmit={(ratings) => {
+          // Ratings are persisted incrementally via onRate; this final pass is
+          // idempotent (rateRecipe upserts by recipeId) and stamps the prompt.
           const ratedAt = new Date().toISOString();
           ratings.forEach((r) =>
             rateRecipe({

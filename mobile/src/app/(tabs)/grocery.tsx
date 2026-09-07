@@ -1668,6 +1668,7 @@ export default function GroceryScreen() {
   const currentSavedListName = useMealPlanStore((s) => s.currentSavedListName);
   const currentSavedListItems = useMealPlanStore((s) => s.currentSavedListItems);
   const groceryStartDate = useMealPlanStore((s) => s.groceryStartDate);
+  const groceryRecipeSources = useMealPlanStore((s) => s.groceryRecipeSources);
   const groceryEndDate = useMealPlanStore((s) => s.groceryEndDate);
   const mealSlots = useMealPlanStore((s) => s.mealSlots);
   const similarIngredients = useMealPlanStore((s) => s.similarIngredients);
@@ -2062,13 +2063,16 @@ export default function GroceryScreen() {
 
   // Format grocery list for sharing
   const formatGroceryListForShare = useCallback(() => {
-    if (groceryItems.length === 0) return '';
+    // Include BOTH recipe-generated and manually-added / voice items — the same
+    // combined set shown on screen — so nothing the user added is left out.
+    const allItems = [...groceryItems, ...customGroceryItems];
+    if (allItems.length === 0) return '';
 
     let text = '🛒 *Grocery List*\n\n';
 
     // Group by category
     const grouped: Record<string, GroceryItem[]> = {};
-    groceryItems.forEach((item) => {
+    allItems.forEach((item) => {
       if (!grouped[item.category]) {
         grouped[item.category] = [];
       }
@@ -2087,7 +2091,7 @@ export default function GroceryScreen() {
     });
 
     return text.trim();
-  }, [groceryItems, measurementSystem]);
+  }, [groceryItems, customGroceryItems, measurementSystem]);
 
   // Format saved list for sharing (includes checked/completed status)
   const formatSavedListForShare = useCallback(() => {
@@ -2163,22 +2167,15 @@ export default function GroceryScreen() {
   let subtitleText = '';
   if (isSavedListMode) {
     subtitleText = `${stats.total} item${stats.total === 1 ? '' : 's'} saved`;
-  } else if (groceryStartDate && groceryEndDate && hasAnyItems) {
-    // Inclusive number of days the grocery list was built for. Normalise to
-    // midnight so time-of-day / DST never skews the count.
-    const start = new Date(groceryStartDate);
-    const end = new Date(groceryEndDate);
-    const startMid = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-    const endMid = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-    const dayCount = Math.max(
-      1,
-      Math.round((endMid.getTime() - startMid.getTime()) / 86400000) + 1,
-    );
-    subtitleText = stats.total > 0
-      ? `${stats.total} item${stats.total === 1 ? '' : 's'} for ${dayCount} day${dayCount === 1 ? '' : 's'} meal.`
-      : '';
   } else if (hasAnyItems) {
-    subtitleText = `${stats.total} item${stats.total === 1 ? '' : 's'} in your list.`;
+    // Number of UNIQUE recipes this list was built from (a recipe cooked on
+    // two days counts once) — matches the recipe strip above.
+    const recipeCount = new Set(groceryRecipeSources.map((s) => s.recipeId)).size;
+    if (stats.total > 0 && recipeCount > 0) {
+      subtitleText = `${stats.total} item${stats.total === 1 ? '' : 's'} for ${recipeCount} recipe${recipeCount === 1 ? '' : 's'}.`;
+    } else if (stats.total > 0) {
+      subtitleText = `${stats.total} item${stats.total === 1 ? '' : 's'} in your list.`;
+    }
   } else {
     subtitleText = 'Your shopping list lives here.';
   }
@@ -2618,18 +2615,17 @@ export default function GroceryScreen() {
               >
                 {isSavedListMode ? 'Shopping list' : 'Ingredients'}
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 12.5,
-                    color: colors.ink2,
-                  }}
-                >
-                  By aisle
-                </Text>
-                <ChevronDown size={13} color={designTokens.colors.ink2} strokeWidth={1.6} />
-              </View>
+              {/* Plain label — the list is always grouped by aisle. No chevron
+                  or Pressable, so it doesn't read as a tappable control. */}
+              <Text
+                style={{
+                  fontFamily: designTokens.font.regular,
+                  fontSize: 12.5,
+                  color: colors.ink2,
+                }}
+              >
+                By aisle
+              </Text>
             </View>
           )}
 

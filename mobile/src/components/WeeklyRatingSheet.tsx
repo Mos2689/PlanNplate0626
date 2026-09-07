@@ -1,7 +1,7 @@
 // WeeklyRatingSheet — Sunday slow-down ritual.
 // Full-pager layout: one recipe per page with hero image + Vibe Slider.
 // Single gesture captures stars + cook-again intent (derived from position).
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, Image, StyleSheet } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { ArrowRight, Utensils } from 'lucide-react-native';
@@ -20,7 +20,19 @@ export interface WeeklyRatingSheetProps {
   recipes: Recipe[];
   cookedRecipeIds?: Set<string>;
   isDark?: boolean;
+  // Ratings already saved for these recipes (recipeId → stars). Used to
+  // rehydrate the sheet when it reopens so previously-rated meals show their
+  // vibe and the flow resumes at the first UNRATED meal instead of restarting.
+  savedRatings?: Record<string, 1 | 2 | 3 | 4 | 5>;
   onClose: () => void;
+  // Called the moment a single meal is rated, so feedback is persisted
+  // incrementally — closing part-way through no longer loses the ratings
+  // given so far.
+  onRate?: (rating: {
+    recipeId: string;
+    stars: 1 | 2 | 3 | 4 | 5;
+    cookAgain?: CookAgainIntent;
+  }) => void;
   onSubmit: (
     ratings: Array<{
       recipeId: string;
@@ -35,7 +47,9 @@ export function WeeklyRatingSheet({
   recipes,
   cookedRecipeIds,
   isDark = false,
+  savedRatings,
   onClose,
+  onRate,
   onSubmit,
 }: WeeklyRatingSheetProps) {
   const [drafts, setDrafts] = useState<Record<string, VibePosition>>({});
@@ -47,9 +61,31 @@ export function WeeklyRatingSheet({
 
   const ratedCount = useMemo(() => Object.keys(drafts).length, [drafts]);
 
-  const handleVibeChange = useCallback((recipeId: string, pos: VibePosition) => {
-    setDrafts((prev) => ({ ...prev, [recipeId]: pos }));
-  }, []);
+  // On open, rehydrate from already-saved ratings and jump to the first
+  // un-rated meal. Keyed on `visible` only (not `recipes`/`savedRatings`,
+  // which get new identities every render) so live incremental saves don't
+  // fight the user's in-progress input.
+  useEffect(() => {
+    if (!visible) return;
+    const initial: Record<string, VibePosition> = {};
+    recipes.forEach((r) => {
+      const s = savedRatings?.[r.id];
+      if (s) initial[r.id] = s;
+    });
+    setDrafts(initial);
+    const firstUnrated = recipes.findIndex((r) => !initial[r.id]);
+    setPageIndex(firstUnrated === -1 ? recipes.length : Math.max(0, firstUnrated));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const handleVibeChange = useCallback(
+    (recipeId: string, pos: VibePosition) => {
+      setDrafts((prev) => ({ ...prev, [recipeId]: pos }));
+      // Persist this meal's feedback immediately so it survives an early close.
+      onRate?.({ recipeId, stars: pos, cookAgain: deriveCookAgain(pos) });
+    },
+    [onRate],
+  );
 
   const handleNext = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

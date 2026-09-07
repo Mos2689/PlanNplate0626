@@ -1202,6 +1202,14 @@ function buildGroceryItemMap(
     }
 
     // ── Normal path — split compounds, convert to base unit, sum by key ──
+    // Guard: `ingredients` is typed as required but can be null/undefined for
+    // recipes loaded from the DB (see `db.ingredients || []`). Without this
+    // guard a single such recipe in a planned slot throws on `.flatMap` and
+    // aborts the ENTIRE grocery generation — the list comes back empty.
+    if (!Array.isArray(recipe.ingredients) || recipe.ingredients.length === 0) {
+      console.log(`[GROCERY] WARNING: Recipe "${recipe.name}" (${recipeId}) has no ingredients — contributing nothing.`);
+      return;
+    }
     recipe.ingredients.flatMap(splitCompoundIngredient).forEach((ing) => {
       try {
         const baseConversion = convertToBaseUnit(ing.quantity, ing.unit, ing.name);
@@ -1828,9 +1836,22 @@ export const useMealPlanStore = create<MealPlanStore>()(
         }));
         const userId = getCurrentUserId();
         if (userId) {
-          db.addRecipesToCollection(userId, collectionId, recipeIds).catch((err) =>
-            console.warn('[COLLECTIONS] Failed to sync bulk add:', err)
-          );
+          // Guard against the FK race when adding to a JUST-created collection:
+          // createCollection's own upsert is fire-and-forget, so the collection
+          // row may not be committed yet. Upsert it first (idempotent), then
+          // insert the join rows — otherwise collection_recipes' FK fails (23503).
+          const col = get().collections.find((c) => c.id === collectionId);
+          const ensureParent = col
+            ? (() => {
+                const { recipeIds: _omit, ...row } = col;
+                return db.upsertCollection(userId, row);
+              })()
+            : Promise.resolve();
+          ensureParent
+            .then(() => db.addRecipesToCollection(userId, collectionId, recipeIds))
+            .catch((err) =>
+              console.warn('[COLLECTIONS] Failed to sync bulk add:', err)
+            );
         }
       },
 

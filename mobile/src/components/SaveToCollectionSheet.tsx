@@ -41,7 +41,16 @@ export function SaveToCollectionSheet({
 
   return (
     <>
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {/* Only ONE Modal may be presented at a time — iOS deadlocks (frozen
+          screen) if a second Modal is opened while this one is still up. So
+          this sheet hides itself while the "New collection" composer is open,
+          then reappears (with the new collection ticked) once it closes. */}
+      <Modal
+        visible={visible && !composerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={onClose}
+      >
         <Pressable
           onPress={onClose}
           style={{
