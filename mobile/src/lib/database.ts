@@ -702,6 +702,71 @@ export async function fetchUserRecipes(userId: string): Promise<Recipe[]> {
   return recipes;
 }
 
+/**
+ * Recipes saved for this user since `sinceIso`, newest first.
+ *
+ * Exists because `loadUserData` runs once per sign-in (StoreHydration only calls
+ * it when the user id CHANGES), which was fine while the app was the only thing
+ * that could write a recipe. The iOS share extension writes them through the
+ * `share-import` edge function while the app is closed, so without a cheap
+ * foreground top-up a shared recipe wouldn't appear until the next cold start.
+ *
+ * Deliberately narrow: a timestamp filter and nothing else. Re-running
+ * `fetchUserRecipes` on every foreground would pull the whole library to find
+ * the one row that changed.
+ */
+export async function fetchRecipesSince(
+  userId: string,
+  sinceIso: string,
+): Promise<Recipe[]> {
+  if (!isSupabaseConfigured()) return [];
+
+  const { data, error } = await supabase
+    .from('recipes')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('created_at', sinceIso)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[DB] Error fetching recent recipes:', error);
+    return [];
+  }
+
+  return (data as DbRecipe[]).map(mapDbRecipe);
+}
+
+/**
+ * Reconcile the free-tier import allowance with the server.
+ *
+ * The counter has always been local (`preferences.lifetimeFeatureUsage`), which
+ * the share extension cannot read or write — it has no React state anywhere near
+ * it. `sync_import_allowance` takes the higher of the two, so:
+ *
+ *   • an existing user who has already spent their imports locally doesn't get a
+ *     fresh ten the first time they share, and
+ *   • a reinstall (local count back to zero) can't clear the server's count.
+ *
+ * Returns the reconciled count, or null when it couldn't be reached — callers
+ * keep using the local number in that case, which is the pre-existing behaviour.
+ */
+export async function syncImportAllowance(localCount: number): Promise<number | null> {
+  if (!isSupabaseConfigured()) return null;
+
+  const { data, error } = await supabase.rpc('sync_import_allowance', {
+    p_count: Math.max(0, Math.floor(localCount)),
+  });
+
+  if (error) {
+    // A project that hasn't run the migration yet reports an unknown function.
+    // Not fatal: the client keeps metering locally exactly as it did before.
+    console.warn('[DB] sync_import_allowance unavailable:', error.message);
+    return null;
+  }
+
+  return typeof data === 'number' ? data : null;
+}
+
 export async function insertRecipe(userId: string, recipe: Recipe): Promise<string | null> {
   if (!isSupabaseConfigured()) {
     console.warn('[DB] Supabase not configured, recipe will not persist');

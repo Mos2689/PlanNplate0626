@@ -59,6 +59,16 @@ declare class PlanNplateShareTargetModule extends NativeModule<ShareTargetEvents
    * rather than raising. Always true on Android, which has no container.
    */
   isContainerReachable(): boolean;
+  /**
+   * iOS: publish the backend endpoint and Keychain access group the share
+   * extension needs to import by itself.
+   *
+   * The extension cannot read `.env`, and the functions URL differs between
+   * development and production — compiling one in would point a TestFlight
+   * build at the wrong project. Neither value is a secret; the credential goes
+   * in the Keychain, not here.
+   */
+  configureShareImport(endpoint: string, keychainAccessGroup: string): boolean;
 }
 
 /**
@@ -106,6 +116,27 @@ export function wasLaunchedFromShare(): boolean {
 
 export function isContainerReachable(): boolean {
   return nativeModule?.isContainerReachable() ?? false;
+}
+
+/**
+ * Hand the share extension what it needs to import on its own.
+ *
+ * A no-op everywhere the function doesn't exist — Android, Expo Go, and any iOS
+ * build made before the extension learned to import. The `typeof` check is not
+ * belt-and-braces: an older native binary paired with newer JavaScript would
+ * otherwise throw on a call that is entirely optional, and a share feature
+ * should never be able to break app launch.
+ */
+export function configureShareImport(
+  endpoint: string,
+  keychainAccessGroup: string,
+): boolean {
+  if (typeof nativeModule?.configureShareImport !== 'function') return false;
+  try {
+    return nativeModule.configureShareImport(endpoint, keychainAccessGroup);
+  } catch {
+    return false;
+  }
 }
 
 export function addShareListener(

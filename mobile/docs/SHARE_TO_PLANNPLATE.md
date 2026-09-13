@@ -11,32 +11,97 @@ point onto the same pipeline**, not a second pipeline.
 
 ## Why it is built this way
 
-The single fact that shaped the design: **PlanNplate's importer is client-side JavaScript.**
-`extractRecipeFromUrl` ([src/lib/recipeImport.ts](../src/lib/recipeImport.ts)) fetches the page from the
-device with an iPhone Safari user-agent, cleans the HTML in JS, and sends the text to the `ai-chat`
-edge function. Persistence — ingredient validation, meal-type classification, image re-hosting, the
-store upsert — is JS too.
+**The extension fetches; the server parses and saves.** That split is the whole design, and it
+exists because of two facts that pull in opposite directions.
 
-An iOS share extension is a separate process that cannot run any of that. Making it import
-directly would have required either a Swift reimplementation of the parser (a second parser) or
-moving the fetch server-side (server IPs get blocked by Instagram and TikTok far more often than a
-phone on a residential connection — a regression for the flow that works today). Both were rejected.
+The first: **a phone's IP address is an asset.** Instagram and TikTok block datacenter addresses far
+more aggressively than a residential connection, so a backend that fetched the shared page itself
+would import strictly fewer recipes than a phone doing it. The fetch has to stay on the device.
 
-So the iOS extension **captures and confirms**; the app finishes the import.
+The second: **an iOS share extension is a separate process.** It has no React Native runtime, none of
+the app's JavaScript, and — deliberately — no Supabase session. It cannot run
+`extractRecipeFromUrl`, `validateIngredients` or `store.addRecipe`.
 
-Getting the user back into the app is the other half of that. `NSExtensionContext.open` is public
-API and is called, but it was **tested on device and answers `false`** — there is no supported way
-for an extension to launch its containing app, and the `openURL`-through-the-responder-chain
-workaround is not shipped here. So the extension posts a **local notification** instead
-([ShareNotification.swift](../targets/share/ShareNotification.swift)); tapping it launches PlanNplate,
-and `useShareTarget`'s existing foreground drain does the rest — no app-side wiring was needed to
-make the tap work. Notification authorization is inherited from the app and an extension cannot
-request it, so the sheet's closing line is written from what was actually posted: *"Tap the
-notification to add it now"* or *"We'll add it next time you open PlanNplate."* Never a promise the
-build can't keep.
+So the extension reads the page with an iPhone Safari user-agent
+([RecipeImportClient.swift](../targets/share/RecipeImportClient.swift)) and posts the HTML to the
+[`share-import`](../supabase/functions/share-import/index.ts) edge function, which does the parts that
+need a secret or a database. The sheet shows "Saving your recipe…", then the recipe's name, then
+dismisses itself. **One touch point: choosing PlanNplate.**
 
-Android has no such constraint: the app process *is* the share target, so the import runs
-immediately.
+### What this replaced, and why
+
+Until this change the extension could only **capture**; the app had to finish the import. That meant
+getting the user back into the app, and `NSExtensionContext.open` — public API — was **tested on
+device and answers `false`** for share extensions. There is no supported way for an extension to
+launch its containing app. The workaround was a local notification the user had to tap, which made
+saving a recipe a four-step flow **that saved nothing at all if they ignored the banner.**
+
+The notification path still exists and is still correct — it is now the **fallback**, reached only
+when the direct import can't run (signed out, offline, allowance spent, kill switch, server down).
+In that case the link stays in the App Group queue and the app imports it on next open, exactly as
+before. **No path through the extension can lose a user's link.**
+
+Android has no such constraint: the app process *is* the share target, so the import has always run
+immediately through the app's own pipeline, and none of this changed it.
+
+### The sheet
+
+The user is in Instagram, looking at food, and has four seconds of dead time. The sheet's job in
+those four seconds is to prove we understood **what they shared** — not to spin.
+
+- **While working:** the post's own photo (pulled from the `og:image` in the HTML the extension has
+  already fetched, so it costs no extra round trip) beside the post's title, with copy that advances
+  through what is actually happening — *Reading the post… → Finding the ingredients… → Almost there…*
+- **On success:** the recipe's name and `8 ingredients · 25 min`. "Saved" alone is a receipt; the
+  counts are evidence, and they are what the user would otherwise open the app to check.
+- **Then it leaves**, on a timer scaled to how much there is to read (2.4s for a result, 2.8s for the
+  queued card because that one carries an instruction).
+
+Motion is transcribed from the onboarding voice capture's "thinking" phase
+([VoiceDishCapture.tsx](../src/components/VoiceDishCapture.tsx)) rather than invented — same 900ms
+icon slots, same 2600/3800ms counter-orbiting arcs, same 2600ms rings, same 1900ms caption beat — so
+the two waits in the product feel like one system. `ShareSheetMotion.swift` carries those constants
+with the RN originals named beside them.
+
+Two constraints worth knowing before editing it:
+
+- **SF Symbols only, and only ones that shipped by iOS 15.** The target deploys to 15.1, and a
+  symbol introduced later renders as an empty box at runtime rather than failing the build. The
+  obvious choices (`frying.pan`, `cooktop`, `carrot`) are all iOS 16+.
+- **Dark mode follows the SYSTEM, not the app.** An extension can't see PlanNplate's in-app theme
+  toggle. A user who forced light mode in-app on a dark-mode phone gets a dark sheet.
+
+### What the server deliberately does NOT do
+
+It does not normalise ingredient units or classify the meal type. Doing so would mean copying
+`ingredient-validator` plus `ingredient-aliases`, `ingredient-unit-rules`, `ingredient-normalizer`
+and the AU average-weight table into `_shared/` — roughly two thousand lines, mostly lookup tables,
+in a second copy that nothing forces to stay in step with the first. When those drift, the grocery
+list quietly aggregates a shared recipe differently from a pasted one and nothing fails loudly.
+
+Instead the app normalises on arrival, through passes that already existed for exactly this purpose:
+`loadUserData` re-validates every ingredient it fetches (store.ts), `reclassifySingleRecipe` fills a
+missing meal-type tag, and `mergeRemoteRecipes` applies both to recipes picked up mid-session. One
+implementation of each rule, shared by both entry points.
+
+The same reasoning keeps the Pexels image search out of the server, and shapes how the recipe's photo
+is found:
+
+1. The extension reads `og:image` (or Instagram's JSON `display_url`) out of the page it already
+   fetched — free, and early enough to show in the sheet while the import runs.
+2. **If the page carries no image and it's an Instagram post, the extension fetches the public
+   `/embed/captioned/` page.** That is the normal case for Instagram: the post URL is login-walled
+   and hands a plain client nothing. It costs up to 4s, only on that path, and only when there would
+   otherwise be no photo at all.
+3. Whatever it found is posted to the function as `previewImageUrl`, which the function **prefers over
+   its own extraction** — it could not reproduce step 2, because Instagram treats a datacenter
+   address very differently from a phone.
+4. The function re-hosts the result if it's an expiring Meta CDN URL, and falls back to the Unsplash
+   placeholder only when every step above came up empty.
+
+Step 2 mirrors `toInstagramEmbedUrl` / `resolveSourceImageUrl` in
+[recipeImport.ts](../src/lib/recipeImport.ts) on purpose: sharing a post and pasting the same link
+should resolve the same photo.
 
 ---
 
@@ -46,10 +111,19 @@ immediately.
 iOS share sheet
   └─ ShareViewController (targets/share/)
        ├─ SharedLinkExtractor.swift   validate: scheme, host, pick the best link
-       ├─ ShareSheetView.swift        branded sheet: Saved, then dismisses itself
        ├─ PendingShareQueue.swift     write {id, url, subject, capturedAt} to the App Group
-       └─ ShareNotification.swift     post "tap to add it" — the one-tap way back in
-                                       ↓  (no tokens, no session, no user data)
+       │                              ALWAYS FIRST — the safety net, removed only on success
+       ├─ ShareImportConfig.swift     endpoint (App Group) + token (shared Keychain)
+       ├─ RecipeImportClient.swift    fetch the page HERE, POST the HTML
+       │        ↓
+       │   supabase/functions/share-import
+       │        token → user · entitlement · duplicate · extract · image · insert
+       │        ↓
+       ├─ ShareSheetView.swift        "Saving…" → "Saved — <name>" → dismisses itself
+       └─ ShareNotification.swift     FALLBACK ONLY: posted when the import couldn't run
+                                       ↓
+      app, next foreground:  refreshSharedRecipes() → mergeRemoteRecipes()
+
 Android share sheet
   └─ MainActivity  ACTION_SEND / text/plain   (launchMode=singleTask, exported=true)
        └─ PlanNplateShareTargetModule.kt      read EXTRA_TEXT, then STRIP the intent
@@ -72,7 +146,14 @@ Android share sheet
 
 | Area | Path |
 |---|---|
-| iOS extension | `targets/share/{expo-target.config.js, Info.plist, ShareViewController.swift, ShareSheetView.swift, SharedLinkExtractor.swift, PendingShareQueue.swift}` |
+| iOS extension | `targets/share/{expo-target.config.js, Info.plist, ShareViewController.swift, SharedLinkExtractor.swift, PendingShareQueue.swift, ShareNotification.swift}` |
+| iOS direct import | `targets/share/{ShareImportConfig.swift, RecipeImportClient.swift}` |
+| iOS sheet UI | `targets/share/{ShareSheetView.swift, ShareSheetTheme.swift, ShareSheetMotion.swift}` |
+| Server | `supabase/functions/share-import/index.ts`, `_shared/{recipe-parser,recipe-source-url,ai-provider,share-entitlement}.ts` |
+| Credential | `src/lib/share/import-token.ts`, `supabase/migrations/20260731120000_share_import_tokens.sql` |
+| Import meter | `supabase/migrations/20260913120000_share_import_allowance.sql`, `db.syncImportAllowance`, `store.setImportAllowanceUsed` |
+| Session setup | `src/lib/share/share-import-setup.ts` (called from `StoreHydration`) |
+| Recipe top-up | `src/lib/share/refresh-shared-recipes.ts`, `db.fetchRecipesSince`, `store.mergeRemoteRecipes` |
 | Native bridge | `modules/plannplate-share-target/` |
 | URL ingestion | `src/lib/share/url-ingest.ts`, `src/lib/recipe-source.ts` |
 | Orchestration | `src/lib/share/import-orchestrator.ts`, `outcome.ts`, `types.ts` |
@@ -92,7 +173,7 @@ Android share sheet
 | iOS app bundle id | `com.vibecode.planplate.8ctfq2` *(one `n` — as shipped)* |
 | Share extension bundle id | `com.vibecode.planplate.8ctfq2.ShareExtension` |
 | App Group | `group.com.vibecode.planplate.8ctfq2` |
-| Keychain access group | **none — not required.** See below. |
+| Keychain access group | `$(AppIdentifierPrefix)com.vibecode.planplate.8ctfq2` — carries the import token only |
 | Android package | `ycom.plannplate.app` |
 | URL scheme | `plannplate` |
 
@@ -104,18 +185,52 @@ The App Group identifier appears in four places and they must stay in step:
 
 ## Authentication and pending imports
 
-**No Keychain access group is needed, because no credential ever crosses a process boundary.**
-The extension performs no authenticated work: it writes `{id, url, subject?, capturedAt}` to the
-App Group and exits. Supabase sessions stay exactly where they are — in AsyncStorage, via the
-client in [src/lib/supabase.ts](../src/lib/supabase.ts) — and were not migrated, which would have
-risked signing out every existing user of a live build.
+**The extension never holds a Supabase session, and the link and the credential travel separately.**
+
+The App Group carries `{id, url, subject?, capturedAt}` and nothing else — no tokens, no user data.
+The credential is a **share-import token**: 32 random bytes in the shared Keychain, of which the
+server stores only a SHA-256 hash. It resolves to one user, authorises one action, and is revoked on
+sign-out. Supabase sessions stay exactly where they are — in AsyncStorage, via the client in
+[src/lib/supabase.ts](../src/lib/supabase.ts) — and were not migrated, which would have risked
+signing out every existing user of a live build.
+
+That distinction is the point: an extension is launched by arbitrary third-party apps with whatever
+content they choose to hand it, so it is a much larger attack surface than the app. A session token
+would open the whole account; this one can add a recipe.
+
+The token is minted by `ensureShareImportToken` and revoked by `revokeShareImportTokens`, both wired
+through [share-import-setup.ts](../src/lib/share/share-import-setup.ts) at the two moments
+`StoreHydration` already knows about: user data loaded, and session cleared.
+
+**`share-import` runs with `verify_jwt = false`** (see `supabase/config.toml`). It has to: the
+gateway would reject a share-import token as a malformed JWT before the function ever ran. The
+function does its own authentication and trusts nothing about its caller.
 
 | State | Behaviour |
 |---|---|
-| Signed in | Import runs immediately on confirmation, through the existing authenticated path. |
+| Signed in | The extension imports directly. The recipe is saved before the sheet closes. |
 | Signed out / guest | Link is retained **before** the user is sent anywhere. `/signup` → onboarding → the share sheet reopens automatically and resumes. |
 | Session expires mid-import | Classified as `auth-expired`, presented as "Sign in to finish saving". Link retained, nothing partially saved. |
-| Free-tier allowance spent | Same `useRecipeFeatureGate('import', …)` meter as pasting — sharing is not a paywall bypass. Link retained so upgrading resumes it. |
+| Free-tier allowance spent | Same lifetime allowance as pasting — sharing is not a paywall bypass. Enforced **server-side** for the extension (see below). Link retained so upgrading resumes it. |
+
+### The import meter
+
+Every paywall counter in this app was local (`preferences.lifetimeFeatureUsage`, which
+`upsertUserPreferences` has never written to the database). That was fine while a screen the client
+controls was the only way to import. The extension isn't, so the server needs its own copy:
+
+- `user_preferences.imports_used`, spent by `spend_import_allowance(user_id, limit)` — a single
+  `UPDATE … WHERE imports_used < limit`, so two links shared at once can't both pass the same check.
+  Refunded by `refund_import_allowance` when extraction then fails.
+- Premium is resolved by asking **RevenueCat's REST API** directly, which works because
+  `Purchases.logIn(userId)` uses the Supabase user id as the app_user_id. There is no subscription
+  table or webhook in this project. Needs the `REVENUECAT_SECRET_KEY` function secret.
+- `sync_import_allowance(count)` reconciles the two on each launch, taking the higher. Without it,
+  every existing user who had already spent their imports locally would get a fresh ten the first
+  time they shared — and a reinstall would clear the server's count.
+
+**Anything the server can't determine fails open to the queue**, never to a block. Wrongly gating a
+paying user is a support ticket; wrongly allowing one import is a rounding error.
 
 Pending links live in AsyncStorage under `plannplate.share.v1`. **Only the link is stored** — the
 shared text is run through ingestion at collection time and the caption is discarded immediately.
@@ -189,6 +304,13 @@ Do these once, before the first iOS build. All at
    tick `group.com.vibecode.planplate.8ctfq2` → Continue → Save.
 4. **Identifiers → `…​.ShareExtension` → Capabilities → App Groups → Edit** → tick the same group →
    Continue → Save.
+
+   > **Keychain Sharing is NOT on this page, and does not need to be.** Searching the capability
+   > list for it comes up empty, which is correct — unlike App Groups it requires no App ID
+   > configuration at all. Every provisioning profile Apple issues already carries a
+   > `keychain-access-groups` entry of `TEAMID.*`, so any group under the team prefix validates at
+   > signing. The entitlement in `app.config.js` and `targets/share/expo-target.config.js` is the
+   > whole configuration.
 5. **Apple Team ID — done.** `KP2T42YA49` (Hey Living Club Pty Ltd) is committed in
    `app.config.js`. It is not a secret — it ships inside every IPA — and it has to be in the config
    rather than the shell because EAS evaluates the config on its own build servers. Set
@@ -234,6 +356,29 @@ artifact from `eas build -p android --profile production` → add testers → *R
 > The trade-off: capabilities added via config from now on won't be auto-enabled on the App ID,
 > so enable them in the console when you add one.
 
+### Verify the entitlements before spending a build
+
+Two entitlements have to reach the extension's binary, and a missing one fails *silently* — the
+share just falls back to the queue, which looks like the feature never shipped. Prebuild on macOS,
+then check the generated file:
+
+```bash
+npx expo prebuild --platform ios --clean && cat ios/.targets/PlanNplateShare/generated.entitlements
+```
+
+Note the **leading dot** in `.targets` — it is a hidden directory and `ls ios/` will not show it.
+`@bacons/apple-targets` writes entitlements from the `entitlements` object in
+`targets/share/expo-target.config.js` to that path and points `CODE_SIGN_ENTITLEMENTS` at it. It
+must contain **both** `com.apple.security.application-groups` and `keychain-access-groups`.
+
+> **Never create `targets/share/generated.entitlements` by hand.** The plugin treats a file of that
+> name in the target's source directory as competing with the config object, warns, and ignores one
+> of them. Keep the config object as the only source.
+
+From Windows, `expo prebuild` refuses to generate iOS files at all. The config-level equivalent is
+`npx expo config --type introspect`, which shows the resolved entitlements for both the app and the
+share target — enough to catch a typo, not enough to prove the plugin wrote them.
+
 ```bash
 eas build -p ios --profile development-device
 ```
@@ -272,11 +417,15 @@ standard recipe site**
 | 3 | App closed (cold start) | ☐ | ☐ |
 | 4 | App backgrounded (warm start) | ☐ | ☐ |
 | 5 | App already open and in the foreground | ☐ | ☐ |
-| 6 | Signed in → recipe saved, the recipe opens by itself ~1s later | ☐ | ☐ |
-| 6a | Notification arrives over the sharing app; tapping it lands on the recipe | ☐ | n/a |
-| 6b | Notifications denied for PlanNplate → sheet says "next time you open", no banner | ☐ | n/a |
-| 6c | Undo on the sheet → notification disappears, nothing imports | ☐ | n/a |
-| 6d | Ignore the notification, open the app manually → still imports once | ☐ | n/a |
+| 6 | Signed in → sheet shows "Saving…" then "Saved — \<recipe name\>", dismisses itself, **no notification**, recipe is in the library on next open | ☐ | ☐ |
+| 6a | Dismiss the sheet by hand mid-import → recipe still saved (`waitUntil`), exactly one row | ☐ | n/a |
+| 6b | `SHARE_DIRECT_IMPORT_ENABLED` unset → every share falls back to queue + notification | ☐ | n/a |
+| 6c | Undo in the fallback state → notification disappears, nothing imports | ☐ | n/a |
+| 6d | Ignore the fallback notification, open the app manually → still imports once | ☐ | n/a |
+| 6e | Revoke the token row in `share_import_tokens`, share → falls back; reopen the app → new token minted, next share imports directly | ☐ | n/a |
+| 6f | Ingredients on a directly-imported recipe show canonical metric units after opening the app | ☐ | n/a |
+| 6g | A directly-imported recipe appears under the right meal-type filter chip | ☐ | n/a |
+| 6h | Airplane-mode the phone *after* the POST is sent → recipe still lands server-side | ☐ | n/a |
 | 7 | Signed out → sign in → import resumes without re-sharing | ☐ | ☐ |
 | 8 | Fresh install → signup → onboarding → share sheet appears afterwards | ☐ | ☐ |
 | 9 | Share the same post twice → "Already in PlanNplate", one library row | ☐ | ☐ |
@@ -286,7 +435,10 @@ standard recipe site**
 | 13 | Cancel from the sheet → nothing saved, no re-prompt | ☐ | ☐ |
 | 14 | Rotate the device mid-flow → no second import | n/a | ☐ |
 | 15 | Kill the app from the recents list mid-import → link still pending | ☐ | ☐ |
-| 16 | Free-tier allowance spent → paywall, link kept | ☐ | ☐ |
+| 16 | Free-tier allowance spent → sheet says so, link kept; upgrade + open app → resumes | ☐ | ☐ |
+| 16a | Premium user → imports directly, `imports_used` does NOT move | ☐ | n/a |
+| 16b | Existing user who had already spent their imports locally is NOT handed a fresh ten | ☐ | ☐ |
+| 16c | Extraction fails after the meter was spent → `imports_used` is refunded | ☐ | n/a |
 | 17 | VoiceOver / TalkBack reads each state change | ☐ | ☐ |
 | 18 | Largest Dynamic Type / font scale → nothing clipped | ☐ | ☐ |
 | 19 | Paste flow still imports normally (regression) | ☐ | ☐ |
@@ -295,18 +447,24 @@ standard recipe site**
 
 ## Known limitations
 
-- **iOS still needs one tap to come back.** Apple offers no sanctioned way to launch the containing
-  app from a share extension — `NSExtensionContext.open` was tried on device and returns `false`. The
-  notification closes that gap to a single tap, but it cannot close it to zero.
-- **Banner duration is the user's setting, not ours.** Settings → Notifications → PlanNplate →
-  Banner Style. Missing the banner costs nothing: the link stays queued and imports on next open.
-- **The notification usually shows the domain, not the dish.** It is posted the instant the link is
-  queued, which beats the `og:title` lookup. Fixable by delaying the post ~1.2s — parked for the next
-  build rather than spending one on it.
-- **No notification permission, no shortcut.** An extension cannot request notification
-  authorization, so a user who declined it for PlanNplate gets the original behaviour: the link is
-  queued and imports on their next launch. The sheet tells them that instead of promising a banner
-  that will never arrive.
+- **The recipe is saved, but the app still has to notice.** The extension writes straight to
+  Postgres, so a running app doesn't know about it until `refreshSharedRecipes` runs on the next
+  foreground. The user sees "Saved — \<name\>" immediately; the library row appears when they next
+  open PlanNplate. Closing that gap properly needs a realtime subscription, which is not worth a
+  socket for this.
+- **The share sheet has no analytics.** An extension cannot reach the PostHog SDK, so the
+  `recipe_share_*` events only cover the fallback path that goes through the app. Direct-import
+  outcomes are visible in the edge function's logs and nowhere else. A server-side sink is the
+  obvious follow-up.
+- **The `og:title` preview lookup is gone.** It existed to put a dish name on a sheet that could only
+  say "Saved"; the sheet now shows the real recipe name from the server. In the fallback state the
+  title is whatever the sharing app provided (Instagram and TikTok both provide one).
+- **Notifications are still the fallback's only shortcut, and still optional.** An extension cannot
+  request notification authorization, so a user who declined it gets the link queued and imported on
+  their next launch. The sheet says so rather than promising a banner that will never arrive. Banner
+  duration is their setting (Settings → Notifications → PlanNplate → Banner Style), not ours.
+- **Neither the extension nor the app can import a login-walled post.** Unchanged, and no UI claims
+  otherwise.
 - **Private and login-walled Instagram/Facebook posts cannot be imported.** The importer reads the
   public page. Nothing here changes that, and no UI claims otherwise.
 - **Redirect depth is bounded by a 6s timeout, not a hop count** — React Native's `fetch` does not
@@ -321,12 +479,33 @@ standard recipe site**
   default when the file is absent, and its default activation rule is `TRUEPREDICATE` — which would
   put PlanNplate in the share sheet for every file type on the device. **Do not delete it.**
 
+## Server setup
+
+Before the first build that includes the direct import:
+
+1. **Apply the migrations.** `share_import_tokens` (committed 2026-07-31, quite possibly never
+   pushed) and `share_import_allowance`. Check with `supabase migration list --linked` — do not
+   assume, this project has a history of committed-but-unapplied migrations.
+2. **Deploy the function.** `supabase functions deploy share-import`. It must go out with
+   `verify_jwt = false`, which `supabase/config.toml` already declares.
+3. **Set the secrets.**
+   - `REVENUECAT_SECRET_KEY` — a RevenueCat **secret** API key, not the public SDK key. Without it
+     every import falls back to the queue, because premium can't be determined.
+   - `SHARE_DIRECT_IMPORT_ENABLED=true` — the direct import is **off until this is set**. That is
+     deliberate: the function is safe to deploy before the app build that uses it.
+
 ## Rollback
 
-Set `FEATURE_FLAGS.shareToPlanNplate = false` in
-[src/lib/feature-flags.ts](../src/lib/feature-flags.ts). The app then ignores incoming payloads and
-never routes to `/share-import`. This is a JavaScript-only change and can ship in an ordinary
-update; the OS-level entries remain but do nothing.
+**Server-side, no release needed:** unset `SHARE_DIRECT_IMPORT_ENABLED` (or set it to anything but
+`true`). Every share then answers `fallback`, and the extension does exactly what it did before —
+queue the link, post the notification, let the app import it. This is the lever to pull first,
+because it reaches phones that already have the extension installed.
+
+`FEATURE_FLAGS.shareToPlanNplate = false` in
+[src/lib/feature-flags.ts](../src/lib/feature-flags.ts) still exists and still works, but note what
+it can and cannot do: it stops the **app** ingesting payloads and routing to `/share-import`. It is
+JavaScript, so it cannot stop a native extension from calling the server. The two levers are not
+interchangeable — use the env var to disable the direct import, the flag to disable the feature.
 
 Full removal: revert the commit, `npx expo prebuild --clean`, new store build. No migration, no
 schema change, nothing written to existing recipes — the flag path leaves the paste flow entirely

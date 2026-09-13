@@ -166,13 +166,15 @@ Ingredient categories must be one of: produce, dairy, meat, pantry, frozen, bake
 
 If you cannot find specific values, make reasonable estimates based on the recipe type. Times should be in minutes.
 
+LANGUAGE: Output EVERY text field — name, description, ingredient names, units, instructions, and tags — in ENGLISH. If the source content is in another language or script (e.g. Portuguese, Spanish, Hindi, Japanese), TRANSLATE it into natural English. The saved recipe must always be in English regardless of the source language.
+
 Only return valid JSON, no markdown or explanation.`;
 
   return [
     {
       role: 'system',
       content:
-        'You are a helpful recipe extraction expert that extracts recipe information from webpage content. Only output valid JSON, no markdown or explanations.',
+        'You are a helpful recipe extraction expert that extracts recipe information from webpage content. Always output all recipe fields in English, translating from the source language when needed. Only output valid JSON, no markdown or explanations.',
     },
     { role: 'user', content: prompt },
   ];

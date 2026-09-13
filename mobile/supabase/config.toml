@@ -306,6 +306,15 @@ verify_jwt = false
 # written.
 verify_jwt = false
 
+[functions.share-import]
+# The iOS share extension calls this, and an extension has no Supabase session —
+# holding one would mean putting the user's JWT in a process that arbitrary
+# third-party apps can launch with arbitrary content. It presents a share-import
+# token instead (src/lib/share/import-token.ts): revocable, resolves to one user
+# and authorises one action. The gateway would reject that as a malformed JWT
+# before the function ever ran, so verification has to be ours.
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

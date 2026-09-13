@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useMealPlanStore, MONTHLY_FEATURE_LIMITS, type MonthlyFeature } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
+import { reconcileImportAllowance } from '@/lib/share/share-import-setup';
 import {
   useHasPremiumAccess,
   useSubscriptionLoading,
@@ -121,6 +122,17 @@ export function useRecipeFeatureGate(
     if (markedRef.current || hasPremiumAccess) return;
     markedRef.current = true;
     recordMonthlyFeatureUse(feature);
+
+    // Imports are the one feature that can also be spent OFF-DEVICE: the iOS
+    // share extension imports through an edge function that reads the server's
+    // count, with no React state anywhere near it. Pushing the spend up now
+    // closes the window where a user pastes their way through the allowance and
+    // then shares from Instagram in the same session, against a server count
+    // that hasn't moved since launch. Fire-and-forget: the local meter is
+    // already correct, and this only catches the server up.
+    if (feature === 'importRecipe') {
+      void reconcileImportAllowance();
+    }
   }, [hasPremiumAccess, recordMonthlyFeatureUse, feature]);
 
   return { blocked, accessGranted, markUsed };

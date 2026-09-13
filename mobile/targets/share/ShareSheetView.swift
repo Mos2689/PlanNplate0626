@@ -3,39 +3,71 @@ import SwiftUI
 /**
  The PlanNplate sheet, as it appears inside another app's share sheet.
 
- Tokens are transcribed from `src/lib/design-tokens.ts` rather than approximated
- — an extension cannot reach the app's JavaScript, so this is the one surface
- where the palette has to be restated. Cream ground, warm near-black ink,
- terracotta reserved for the single primary action, sage for confirmation,
- generous negative space, 16pt corners, restrained shadow.
+ WHAT THIS IS FOR. The user is in Instagram, looking at food, and has four
+ seconds of dead time while we read the page and a model turns it into a recipe.
+ The sheet's job in those four seconds is to prove we understood what they
+ shared — not to spin. So it shows the post's own photo and title while it works,
+ narrates what it is actually doing, and ends on the recipe's name with enough
+ detail to be worth reading. Everything here is in service of that.
 
- Geist is loaded at runtime by the app (`@expo-google-fonts/geist`) and is not
- available to an extension process without bundling the files into this target,
- which would add weight to a surface that must appear instantly. San Francisco
- at matching weights is the honest substitute and reads as native here.
+ Design language is transcribed from the app rather than invented: colours and
+ spacing from `src/lib/design-tokens.ts` (see ShareSheetTheme), and the working
+ motion from the onboarding voice capture's "thinking" phase (see
+ ShareSheetMotion). An extension cannot reach the app's JavaScript, so these are
+ the two surfaces where the system has to be restated.
+
+ Geist is loaded at runtime by the app and is not available to an extension
+ without bundling the files into this target, which would add weight to a surface
+ that must appear instantly. San Francisco at matching weights is the honest
+ substitute and reads as native here.
 
  Accessibility: Dynamic Type throughout (no fixed point sizes on body copy),
- 44pt minimum targets, the whole state announced as one group, and a live
- announcement when the state changes so VoiceOver doesn't leave the user on a
- stale "Save to PlanNplate".
+ 44pt minimum targets, decorative motion hidden from VoiceOver, each state
+ announced as one group, and Reduce Motion honoured by the motion layer.
  */
+
+/// What the user shared, as much as we know of it at any moment.
+///
+/// `imageURL` arrives LATE and on purpose: it is pulled out of the page the
+/// extension has already fetched, so it costs no extra round trip, but it lands
+/// a second or two after the sheet first appears. The layout reserves its space
+/// from the first frame so nothing jumps when it does.
+struct ShareContext: Equatable {
+  var host: String
+  var title: String?
+  var imageURL: URL?
+}
+
+/// The saved recipe, as reported by the `share-import` edge function.
+///
+/// The counts are the point. "Saved" alone is a receipt; "Cheesy Garlic Bread ·
+/// 8 ingredients · 25 min" is evidence that something real was understood, and
+/// it is what the user would otherwise have opened the app to check.
+struct SavedRecipe: Equatable {
+  var name: String
+  var ingredientCount: Int
+  var totalMinutes: Int
+  var imageURL: URL?
+}
 
 /**
- There is no "Ready" state any more.
+ There is no "Ready" state, and no "Done" button.
 
  The sheet used to ask the user to confirm a decision they had already made by
- choosing PlanNplate in the share sheet — two taps in our own surface for no
- information gained. Capturing a link is harmless and reversible, so it now
- happens on appear and the sheet reports what it did. `Undo` is the escape
- hatch, and it removes the queued item rather than just closing.
+ choosing PlanNplate in the share sheet, and then — because the app had to run
+ the import — to tap a notification as well. It now does the work and reports the
+ result.
+
+ `.imported` and `.duplicate` are terminal and dismiss themselves; the user's next
+ action belongs to the app they were already in. `.queued` is the pre-existing
+ fallback, reached only when the direct import can't run.
  */
 enum ShareSheetState: Equatable {
-  case loading
-  /// `hint` says how the recipe actually gets added — by tapping the
-  /// notification, or on the user's next launch if they've turned notifications
-  /// off. It arrives a beat after the rest because an extension has to ask the
-  /// system whether it's allowed to post one. See ShareViewController.
-  case saved(host: String, title: String?, hint: String?)
+  case importing(ShareContext)
+  case imported(ShareContext, SavedRecipe)
+  case duplicate(ShareContext, SavedRecipe)
+  case queued(ShareContext, hint: String?)
+  case gated
   case unsupported
   case noLink
 }
@@ -44,154 +76,317 @@ struct ShareSheetView: View {
   let state: ShareSheetState
   let onUndo: () -> Void
   let onCancel: () -> Void
-  let onDone: () -> Void
 
-  // MARK: Palette — src/lib/design-tokens.ts
-  private let cream = Color(red: 0.980, green: 0.969, blue: 0.941)   // #FAF7F0
-  private let ink = Color(red: 0.082, green: 0.078, blue: 0.059)     // #15140F
-  private let ink2 = Color(red: 0.357, green: 0.349, blue: 0.314)    // #5B5950
-  private let ink3 = Color(red: 0.604, green: 0.588, blue: 0.545)    // #9A968B
-  private let hairline = Color(red: 0.925, green: 0.918, blue: 0.886) // #ECEAE2
-  private let terracotta = Color(red: 0.894, green: 0.427, blue: 0.275) // #E46D46
-  private let sage = Color(red: 0.329, green: 0.392, blue: 0.271)    // #546445
+  @Environment(\.colorScheme) private var colorScheme
+
+  private var theme: ShareSheetTheme { .resolve(colorScheme) }
 
   var body: some View {
     VStack(spacing: 0) {
       Spacer(minLength: 0)
 
-      VStack(alignment: .leading, spacing: 20) {
+      VStack(alignment: .leading, spacing: 18) {
         header
         content
         actions
       }
-      .padding(24)
-      .background(cream)
-      .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+      .padding(22)
+      .background(theme.ground)
+      .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
       .overlay(
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-          .stroke(hairline, lineWidth: 1)
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+          .stroke(theme.hairline, lineWidth: 1)
       )
-      .shadow(color: ink.opacity(0.10), radius: 24, x: 0, y: 8)
-      .padding(.horizontal, 16)
-      .padding(.bottom, 24)
+      .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.12), radius: 28, x: 0, y: 10)
+      .padding(.horizontal, 14)
+      .padding(.bottom, 22)
+      .animation(.spring(response: 0.42, dampingFraction: 0.86), value: state)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Color.black.opacity(0.18).ignoresSafeArea())
+    .background(Color.black.opacity(colorScheme == .dark ? 0.32 : 0.18).ignoresSafeArea())
     .accessibilityElement(children: .contain)
   }
 
-  // MARK: - Sections
+  // MARK: - Header
 
+  /// Brand on the left, source on the right. The source chip is what makes the
+  /// sheet feel addressed to *this* share rather than generically mounted.
   private var header: some View {
     HStack(spacing: 10) {
       RoundedRectangle(cornerRadius: 8, style: .continuous)
-        .fill(sage)
+        .fill(theme.brand)
         .frame(width: 26, height: 26)
         .overlay(
           Text("P")
-            .font(.system(size: 15, weight: .semibold, design: .default))
-            .foregroundColor(cream)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundColor(.white)
         )
         .accessibilityHidden(true)
+
       Text("PlanNplate")
-        .font(.subheadline.weight(.medium))
-        .foregroundColor(ink2)
-      Spacer()
+        .font(.subheadline.weight(.semibold))
+        .foregroundColor(theme.ink)
+
+      Spacer(minLength: 8)
+
+      if let host = currentHost {
+        Text(host)
+          .font(.caption.weight(.medium))
+          .foregroundColor(theme.ink3)
+          .lineLimit(1)
+          .padding(.horizontal, 9)
+          .padding(.vertical, 4)
+          .background(
+            Capsule().fill(theme.surfaceMuted)
+          )
+          .accessibilityLabel("Shared from \(host)")
+      }
     }
   }
+
+  private var currentHost: String? {
+    switch state {
+    case let .importing(context),
+         let .imported(context, _),
+         let .duplicate(context, _),
+         let .queued(context, _):
+      return context.host.isEmpty ? nil : context.host
+    case .gated, .unsupported, .noLink:
+      return nil
+    }
+  }
+
+  // MARK: - Content
 
   @ViewBuilder
   private var content: some View {
     switch state {
-    case .loading:
-      block(title: "Checking the recipe…", body: "This should only take a moment.")
-    case let .saved(host, title, hint):
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Saved to PlanNplate")
-          .font(.title3.weight(.semibold))
-          .foregroundColor(ink)
-          .accessibilityAddTraits(.isHeader)
-        if let title, !title.isEmpty {
-          Text(title)
-            .font(.subheadline)
-            .foregroundColor(ink2)
-            .lineLimit(2)
-        }
-        Text(host)
-          .font(.footnote)
-          .foregroundColor(ink3)
-          .lineLimit(1)
-        if let hint {
-          Text(hint)
-            .font(.footnote)
-            .foregroundColor(sage)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 2)
+    case let .importing(context):
+      media(context: context, recipe: nil, settled: false) {
+        VStack(alignment: .leading, spacing: 5) {
+          AdvancingCaption(theme: theme, lines: importCaptions)
+          if let title = context.title, !title.isEmpty {
+            // The post's own words. Proof we're working on the right thing,
+            // before there is a recipe name to show.
+            Text(title)
+              .font(.footnote)
+              .foregroundColor(theme.ink3)
+              .lineLimit(2)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
       }
       .accessibilityElement(children: .combine)
+      .accessibilityLabel("Saving your recipe from \(context.host)")
+
+    case let .imported(context, recipe):
+      media(context: context, recipe: recipe, settled: true) {
+        VStack(alignment: .leading, spacing: 5) {
+          Text(recipe.name)
+            .font(.headline)
+            .foregroundColor(theme.ink)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+          metaRow(recipe)
+        }
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("Saved to PlanNplate. \(recipe.name). \(metaSpoken(recipe))")
+
+    case let .duplicate(context, recipe):
+      media(context: context, recipe: recipe, settled: true) {
+        VStack(alignment: .leading, spacing: 5) {
+          Text(recipe.name)
+            .font(.headline)
+            .foregroundColor(theme.ink)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+          Text("Already in your recipes")
+            .font(.footnote)
+            .foregroundColor(theme.ink3)
+        }
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("Already in PlanNplate. \(recipe.name)")
+
+    case let .queued(context, hint):
+      media(context: context, recipe: nil, settled: true) {
+        VStack(alignment: .leading, spacing: 5) {
+          Text("Saved to PlanNplate")
+            .font(.headline)
+            .foregroundColor(theme.ink)
+          if let title = context.title, !title.isEmpty {
+            Text(title)
+              .font(.footnote)
+              .foregroundColor(theme.ink3)
+              .lineLimit(2)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          if let hint {
+            Text(hint)
+              .font(.footnote.weight(.medium))
+              .foregroundColor(theme.brand)
+              .fixedSize(horizontal: false, vertical: true)
+              .padding(.top, 1)
+          }
+        }
+      }
+      .accessibilityElement(children: .combine)
+
+    case .gated:
+      // Solid, because this one is asking for something. The two below are not.
+      notice(
+        symbol: "bolt.fill",
+        tint: theme.accent,
+        solid: true,
+        title: "You've used your free imports",
+        body: "We've kept this link. Upgrade in PlanNplate and it'll be added."
+      )
+
     case .unsupported:
-      block(
-        title: "This link isn’t supported yet",
+      notice(
+        symbol: "link.badge.plus",
+        tint: theme.ink2,
+        solid: false,
+        title: "This link isn't supported yet",
         body: "Try importing the recipe link directly in PlanNplate."
       )
+
     case .noLink:
-      block(
-        title: "We couldn’t find a recipe link",
+      notice(
+        symbol: "magnifyingglass",
+        tint: theme.ink2,
+        solid: false,
+        title: "We couldn't find a recipe link",
         body: "Try sharing the post again, or paste its link in PlanNplate."
       )
     }
   }
 
-  private func block(title: String, body: String) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(title)
-        .font(.title3.weight(.semibold))
-        .foregroundColor(ink)
-        .accessibilityAddTraits(.isHeader)
-      Text(body)
-        .font(.subheadline)
-        .foregroundColor(ink2)
-        .fixedSize(horizontal: false, vertical: true)
+  /// The disc-and-text row every contentful state shares, so the layout never
+  /// reflows between "working" and "done" — only its contents change.
+  private func media<Trailing: View>(
+    context: ShareContext,
+    recipe: SavedRecipe?,
+    settled: Bool,
+    @ViewBuilder trailing: () -> Trailing
+  ) -> some View {
+    HStack(alignment: .center, spacing: 14) {
+      WorkingDisc(
+        theme: theme,
+        // The recipe's final image wins once we have it: the server may have
+        // re-hosted or resolved a better one than the page handed us.
+        imageURL: recipe?.imageURL ?? context.imageURL,
+        settled: settled
+      )
+      trailing()
+      Spacer(minLength: 0)
+    }
+  }
+
+  /// "8 ingredients · 25 min" — omits either half rather than printing a zero.
+  @ViewBuilder
+  private func metaRow(_ recipe: SavedRecipe) -> some View {
+    let parts = metaParts(recipe)
+    if !parts.isEmpty {
+      HStack(spacing: 6) {
+        ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
+          if index > 0 {
+            Circle()
+              .fill(theme.ink3)
+              .frame(width: 3, height: 3)
+          }
+          Text(part)
+            .font(.footnote)
+            .foregroundColor(theme.ink2)
+        }
+      }
+    }
+  }
+
+  private func metaParts(_ recipe: SavedRecipe) -> [String] {
+    var parts: [String] = []
+    if recipe.ingredientCount > 0 {
+      parts.append("\(recipe.ingredientCount) ingredient\(recipe.ingredientCount == 1 ? "" : "s")")
+    }
+    if recipe.totalMinutes > 0 {
+      parts.append("\(recipe.totalMinutes) min")
+    }
+    return parts
+  }
+
+  private func metaSpoken(_ recipe: SavedRecipe) -> String {
+    metaParts(recipe).joined(separator: ", ")
+  }
+
+  /// The non-recipe outcomes. A symbol instead of a photo, because there is no
+  /// recipe to picture and a disc would promise one.
+  ///
+  /// `solid` is the hierarchy: a state that wants the user to DO something gets
+  /// a filled well with a knocked-out glyph, one that is merely reporting gets a
+  /// quiet one. Tinting a glyph on a pale well, which is what both used to do,
+  /// says neither.
+  private func notice(
+    symbol: String,
+    tint: Color,
+    solid: Bool,
+    title: String,
+    body: String
+  ) -> some View {
+    HStack(alignment: .top, spacing: 14) {
+      Image(systemName: symbol)
+        .font(.system(size: 20, weight: .semibold))
+        .foregroundColor(solid ? .white : tint)
+        .frame(width: 40, height: 40)
+        .background(Circle().fill(solid ? tint : theme.surfaceMuted))
+        .accessibilityHidden(true)
+
+      VStack(alignment: .leading, spacing: 5) {
+        Text(title)
+          .font(.headline)
+          .foregroundColor(theme.ink)
+          .fixedSize(horizontal: false, vertical: true)
+        Text(body)
+          .font(.footnote)
+          .foregroundColor(theme.ink2)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 0)
     }
     .accessibilityElement(children: .combine)
   }
 
+  // MARK: - Actions
+
   @ViewBuilder
   private var actions: some View {
     switch state {
-    case .loading:
+    case .importing, .imported, .duplicate:
+      // Nothing to press. The sheet dismisses itself — putting a button between
+      // the user and the app they were already using is the tap this whole
+      // change exists to remove.
       EmptyView()
-    case .saved:
-      VStack(spacing: 10) {
-        primaryButton("Done", action: onDone)
-        // Not "Cancel" — the link is already saved, and saying otherwise would
-        // misdescribe what the button does. Undo removes it from the queue.
-        secondaryButton("Undo", action: onUndo)
-      }
-    case .unsupported, .noLink:
+
+    case .queued:
+      // Not "Cancel" — the link IS saved, and saying otherwise would misdescribe
+      // what the button does. Undo removes it from the queue.
+      secondaryButton("Undo", action: onUndo)
+
+    case .gated, .unsupported, .noLink:
       secondaryButton("Close", action: onCancel)
     }
-  }
-
-  private func primaryButton(_ label: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      Text(label)
-        .font(.body.weight(.semibold))
-        .foregroundColor(cream)
-        .frame(maxWidth: .infinity, minHeight: 48)
-        .background(terracotta)
-        .clipShape(Capsule())
-    }
-    .accessibilityLabel(label)
   }
 
   private func secondaryButton(_ label: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
       Text(label)
-        .font(.body.weight(.medium))
-        .foregroundColor(ink2)
+        .font(.subheadline.weight(.semibold))
+        .foregroundColor(theme.ink2)
         .frame(maxWidth: .infinity, minHeight: 44)
+        .background(
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(theme.surfaceMuted)
+        )
     }
     .accessibilityLabel(label)
   }

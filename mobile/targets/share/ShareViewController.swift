@@ -8,36 +8,55 @@ import UniformTypeIdentifiers
 
  What this does, and just as importantly what it does not:
 
-   • It reads the shared item, validates the link, writes it to the App Group,
-     confirms, and posts a local notification that takes the user back into
-     PlanNplate in one tap. That's the whole job.
-   • It does NOT sign in, hold a session, or call any authenticated service.
-     Nothing sensitive crosses the process boundary, which is why this feature
-     needs no shared Keychain access group.
-   • It does NOT force PlanNplate open. `NSExtensionContext.open` is public API
-     and is still called, but it was tested on device and answers `false`; the
-     `openURL`-through-the-responder-chain workaround is unsupported and is not
-     shipped here. The notification is the sanctioned return path, and the copy
-     says which one the user is getting rather than implying magic.
-   • It does NOT download the post's media. A recipe import needs a link.
+   • It reads the shared item, validates the link, queues it, and then IMPORTS
+     IT — fetching the page here on the device and handing the HTML to the
+     `share-import` edge function, which extracts the recipe and saves it. On
+     success the queued copy is removed and the sheet dismisses itself. That is
+     the whole job, and it is one touch point: choosing PlanNplate.
+   • It does NOT hold a Supabase session. It carries a share-import token
+     (src/lib/share/import-token.ts) that resolves to one user, authorises one
+     action and is revoked on sign-out. A session token would open the whole
+     account, and an extension is launched by arbitrary third-party apps with
+     whatever content they choose to hand it.
+   • It does NOT force PlanNplate open, and no longer needs to. Apple offers no
+     sanctioned way for an extension to launch its containing app —
+     `NSExtensionContext.open` answers `false` for share extensions — which is
+     precisely why the import had to stop depending on the app being open.
+   • It does NOT download the post's media. A recipe import needs a link; the
+     server pulls the hero image from the page's own meta tags.
+
+ THE QUEUE IS STILL WRITTEN FIRST, BEFORE THE NETWORK. If the import succeeds
+ the entry is removed; if anything at all goes wrong — offline, signed out,
+ allowance spent, server down, this process killed mid-request — the entry
+ survives and the app imports it on next open, exactly as it did before. There
+ is no path through this file that can lose a user's link.
 
  Lifecycle discipline matters here — a share extension is memory-constrained and
- killed without ceremony. The UI renders on the first frame from cached state
- and never blocks on the network; the optional title lookup is capped and
- cancelled the moment the sheet goes away.
+ killed without ceremony. The UI renders on the first frame and never blocks;
+ every network task is cancelled the moment the sheet goes away.
  */
 class ShareViewController: UIViewController {
-  private var state: ShareSheetState = .loading {
+  private var state: ShareSheetState = .importing(ShareContext(host: "", title: nil, imageURL: nil)) {
     didSet { render() }
   }
 
+  /// What the user shared, accumulated as we learn it: host and title on the
+  /// first frame, the post's photo a second or two later once the page has been
+  /// read. Held here so a late arrival can update the state without the callback
+  /// needing to know which state we're in.
+  private var context = ShareContext(host: "", title: nil, imageURL: nil)
+
   private var hosting: UIHostingController<ShareSheetView>?
-  private var titleTask: URLSessionDataTask?
+  /// Owns the in-flight fetch/import so it dies with the sheet.
+  private let importer = RecipeImportClient()
   /// Guards against completing the extension request twice — see `finish()`.
   private var hasCompleted = false
   /// Minted here, at capture. It is the idempotency key for the whole flow —
   /// see lib/share/import-orchestrator.ts.
   private let shareId = UUID().uuidString
+  /// Set once the link is in the App Group queue, so `undo` knows there is
+  /// something to remove.
+  private var queued = false
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -48,7 +67,7 @@ class ShareViewController: UIViewController {
 
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated)
-    titleTask?.cancel()
+    importer.cancel()
   }
 
   // MARK: - UI
@@ -57,8 +76,7 @@ class ShareViewController: UIViewController {
     let sheet = ShareSheetView(
       state: state,
       onUndo: { [weak self] in self?.undo() },
-      onCancel: { [weak self] in self?.cancel() },
-      onDone: { [weak self] in self?.finish() }
+      onCancel: { [weak self] in self?.cancel() }
     )
 
     if let hosting {
@@ -86,12 +104,21 @@ class ShareViewController: UIViewController {
   private func announce() {
     let message: String
     switch state {
-    case .loading: message = "Checking the recipe"
-    case let .saved(host, _, hint):
+    case let .importing(context):
+      message = context.host.isEmpty
+        ? "Saving your recipe"
+        : "Saving your recipe from \(context.host)"
+    case let .imported(_, recipe):
+      message = "Saved to PlanNplate. \(recipe.name). It's in your recipes."
+    case let .duplicate(_, recipe):
+      message = "Already in PlanNplate. \(recipe.name)."
+    case let .queued(context, hint):
       // The hint carries the only instruction on the sheet, so it has to be
       // spoken — it arrives after the save and would otherwise never be read.
-      let parts: [String?] = ["Saved to PlanNplate. From \(host).", hint]
-      message = parts.compactMap { $0 }.joined(separator: " ")
+      message = ["Saved to PlanNplate. From \(context.host).", hint]
+        .compactMap { $0 }.joined(separator: " ")
+    case .gated:
+      message = "You've used your free imports. We've kept this link."
     case .unsupported: message = "This link isn’t supported yet"
     case .noLink: message = "We couldn’t find a recipe link"
     }
@@ -162,90 +189,16 @@ class ShareViewController: UIViewController {
 
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
-      // Save FIRST, render second. Choosing PlanNplate in the share sheet is the
-      // decision; asking the user to confirm it again bought nothing and cost a
-      // tap at exactly the moment they want to get back to what they were doing.
-      self.save(url: url, host: host, title: seedTitle?.isEmpty == false ? seedTitle : nil)
-      self.lookUpTitle(for: url, host: host, existing: seedTitle)
+      // Queue FIRST, import second. Choosing PlanNplate in the share sheet is
+      // the decision; capturing the link is harmless, reversible, and the only
+      // thing standing between a killed process and a lost recipe.
+      self.queue(url: url, host: host, title: seedTitle?.isEmpty == false ? seedTitle : nil)
     }
   }
 
-  // MARK: - Optional preview title
+  // MARK: - Import
 
-  /**
-   Best-effort `og:title` for the preview line.
-
-   Hard caps, because this runs inside a share sheet: 2.5 seconds, https only,
-   the first 256 KB of the response, no retry, cancelled on dismiss. A failure
-   is silent — the sheet already shows the domain, which is enough to know what
-   is about to be saved.
-   */
-  private func lookUpTitle(for url: URL, host: String, existing: String?) {
-    guard existing?.isEmpty != false, url.scheme?.lowercased() == "https" else { return }
-
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.timeoutIntervalForRequest = 2.5
-    configuration.timeoutIntervalForResource = 2.5
-    configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-
-    var request = URLRequest(url: url)
-    request.setValue(
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-      forHTTPHeaderField: "User-Agent"
-    )
-    request.setValue("text/html", forHTTPHeaderField: "Accept")
-
-    let task = URLSession(configuration: configuration).dataTask(with: request) { [weak self] data, _, _ in
-      guard let self, let data else { return }
-      let head = data.prefix(256 * 1024)
-      guard let html = String(data: head, encoding: .utf8),
-            let title = Self.ogTitle(in: html) else { return }
-
-      DispatchQueue.main.async {
-        // Decoration only — the link is already saved, so a late title just
-        // improves what's on screen and never changes what happens. It is
-        // deliberately NOT pushed into the notification: re-posting under the
-        // same identifier would replace an already-delivered banner with a
-        // second one, and a nicer title isn't worth buzzing the user twice.
-        if case let .saved(_, _, hint) = self.state {
-          self.state = .saved(host: host, title: title, hint: hint)
-        }
-      }
-    }
-    titleTask = task
-    task.resume()
-  }
-
-  private static func ogTitle(in html: String) -> String? {
-    let patterns = [
-      "<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"']",
-      "<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:title[\"']",
-      "<title[^>]*>([^<]+)</title>",
-    ]
-    for pattern in patterns {
-      guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-            let match = regex.firstMatch(
-              in: html,
-              range: NSRange(html.startIndex..<html.endIndex, in: html)
-            ),
-            match.numberOfRanges > 1,
-            let range = Range(match.range(at: 1), in: html) else { continue }
-      // Meta-tag attribute values arrive HTML-encoded — an Instagram title
-      // otherwise renders as `&quot;Comment &#x201c;AUDIENCE&#x201d;…`.
-      let decoded = SharedLinkExtractor.decodingHTMLEntities(String(html[range]))
-      let title = decoded.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !title.isEmpty { return String(title.prefix(120)) }
-    }
-    return nil
-  }
-
-  // MARK: - Completion
-
-  /// How long the confirmation stays up before dismissing itself. Long enough to
-  /// read "Saved to PlanNplate" and reach Undo, short enough not to be in the way.
-  private static let autoDismissDelay: TimeInterval = 1.8
-
-  private func save(url: URL, host: String, title: String?) {
+  private func queue(url: URL, host: String, title: String?) {
     let stored = PendingShareQueue.append(id: shareId, url: url, title: title)
     guard stored else {
       // A failed write means the App Group isn't reachable — almost always a
@@ -254,97 +207,146 @@ class ShareViewController: UIViewController {
       state = .unsupported
       return
     }
+    queued = true
+    context = ShareContext(host: host, title: title, imageURL: nil)
+    state = .importing(context)
 
-    state = .saved(host: host, title: title, hint: nil)
-    // Scheduled unconditionally: if `open` never calls back, the sheet must
-    // still go away on its own.
+    importer.run(
+      url: url,
+      onPreviewImage: { [weak self] imageURL in
+        // The post's own photo, pulled from the page we just read. Arrives
+        // mid-import and upgrades the sheet in place — the layout already
+        // reserved the space, so nothing jumps.
+        guard let self, !self.hasCompleted else { return }
+        self.context.imageURL = imageURL
+        if case .importing = self.state {
+          self.state = .importing(self.context)
+        }
+      },
+      completion: { [weak self] outcome in
+        guard let self, !self.hasCompleted else { return }
+        switch outcome {
+        case let .imported(recipe):
+          self.settle(.imported(self.context, self.named(recipe, fallback: title)))
+        case let .duplicate(recipe):
+          self.settle(.duplicate(self.context, self.named(recipe, fallback: title)))
+        case .unsupported:
+          // A page that will never yield a recipe. Drop it rather than ask the
+          // user about the same dead post on every launch.
+          self.discardQueued()
+          self.state = .unsupported
+        case .gated:
+          // The link stays queued on purpose: upgrading and opening the app
+          // resumes it through the existing /share-import screen.
+          self.state = .gated
+        case .fallback:
+          self.fallBackToQueue()
+        }
+      }
+    )
+  }
+
+  /// A card with no name reads as a bug. If the server returned an empty one,
+  /// fall back to the post's own title, then to a plain statement of fact.
+  private func named(_ recipe: SavedRecipe, fallback: String?) -> SavedRecipe {
+    guard recipe.name.isEmpty else { return recipe }
+    var patched = recipe
+    let trimmed = fallback?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    patched.name = trimmed.isEmpty ? "Recipe saved" : trimmed
+    return patched
+  }
+
+  /// A terminal success. The queued copy has done its job, the sheet has said
+  /// so, and both get out of the way.
+  private func settle(_ terminal: ShareSheetState) {
+    discardQueued()
+    // Fires as the card lands, not when the request returned — the confirmation
+    // the user feels should coincide with the one they see.
+    UINotificationFeedbackGenerator().notificationOccurred(.success)
+    state = terminal
     scheduleAutoDismiss()
-    postNotification(host: host, title: title)
-
-    openContainingApp { [weak self] opened in
-      guard let self, opened else { return }
-      // The app is coming to the front. Leaving our sheet up would get in its
-      // way, and a notification pointing at an app the user is already looking
-      // at is just noise.
-      ShareNotification.withdraw(shareId: self.shareId)
-      self.finish()
-    }
   }
 
   /**
-   The notification is what actually carries the user back, so what the sheet
-   promises has to depend on whether one was really posted. The user may have
-   declined notifications for PlanNplate and an extension cannot ask — in that
-   case the link still imports, just on their next launch, and the closing line
-   says so rather than promising a tap that will never come.
+   The pre-existing behaviour, reached only when the direct import can't run.
+
+   What the sheet promises has to depend on whether a notification was really
+   posted. The user may have declined notifications for PlanNplate and an
+   extension cannot ask — in that case the link still imports, just on their next
+   launch, and the closing line says so rather than promising a tap that will
+   never come.
    */
-  private func postNotification(host: String, title: String?) {
-    ShareNotification.post(host: host, title: title, shareId: shareId) { [weak self] posted in
+  private func fallBackToQueue() {
+    state = .queued(context, hint: nil)
+
+    ShareNotification.post(host: context.host, title: context.title, shareId: shareId) { [weak self] posted in
       guard let self, !self.hasCompleted else { return }
-      // Re-reads the state rather than closing over it: a late `og:title` may
-      // have landed in between, and this must not undo it.
-      guard case let .saved(currentHost, currentTitle, _) = self.state else { return }
-      self.state = .saved(
-        host: currentHost,
-        title: currentTitle,
+      // Re-reads the state rather than closing over it, so a race can't undo it.
+      guard case let .queued(currentContext, _) = self.state else { return }
+      self.state = .queued(
+        currentContext,
         hint: posted
           ? "Tap the notification to add it now."
           : "We’ll add it next time you open PlanNplate."
       )
     }
+
+    scheduleAutoDismiss()
   }
 
+  private func discardQueued() {
+    guard queued else { return }
+    PendingShareQueue.remove(id: shareId)
+    queued = false
+  }
+
+  // MARK: - Completion
+
   /**
-   Ask iOS to open PlanNplate.
+   How long a result stays up before the sheet dismisses itself.
 
-   `NSExtensionContext.open(_:)` is PUBLIC API. Apple documents it for Today
-   widgets and iMessage apps, and it has historically answered `false` for share
-   extensions. Tested on device here: it answers `false`. It is kept because it
-   costs nothing and would start working on its own if that ever changes, and
-   because calling a public method that may decline is not a workaround. What we
-   deliberately do NOT do is walk the responder chain to reach
-   `UIApplication.shared`, which is the unsupported trick this project rules out.
+   Scaled to what there is to read. A success card now carries a photo, the
+   recipe's name and its ingredient count — the 1.6s that was right for a bare
+   "Saved" would flash past all of it. The queued card carries an instruction,
+   which the user has to act on, so it gets longer still.
 
-   Answers asynchronously, and must: the completion handler can be delivered on
-   the main queue, so blocking the main thread on a semaphore waiting for it
-   would deadlock until the timeout and then report `false` even where iOS had
-   said yes — which would have turned the experiment into a guaranteed negative.
+   All of them stay short enough not to be in the way of the app the user was
+   actually using. Nobody shares a recipe in order to look at our sheet.
    */
-  private func openContainingApp(completion: @escaping (Bool) -> Void) {
-    guard let context = extensionContext,
-          let url = URL(string: "plannplate://share-import") else {
-      completion(false)
-      return
-    }
-
-    context.open(url) { success in
-      DispatchQueue.main.async { completion(success) }
+  private func autoDismissDelay(for state: ShareSheetState) -> TimeInterval {
+    switch state {
+    case .imported, .duplicate: return 2.4
+    case .queued: return 2.8
+    default: return 1.8
     }
   }
 
   private func scheduleAutoDismiss() {
-    DispatchQueue.main.asyncAfter(deadline: .now() + Self.autoDismissDelay) { [weak self] in
+    let delay = autoDismissDelay(for: state)
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
       self?.finish()
     }
   }
 
   /**
-   Completing the request more than once is a programmer error, and there are now
-   three racing routes to it: the auto-dismiss timer, the `open` callback, and the
-   Done button. The flag makes whichever arrives first the only one that counts.
+   Completing the request more than once is a programmer error, and there are
+   several racing routes to it: the auto-dismiss timer, a late import callback,
+   and the buttons. The flag makes whichever arrives first the only one that
+   counts.
    */
   private func finish() {
     guard !hasCompleted else { return }
     hasCompleted = true
-    titleTask?.cancel()
+    importer.cancel()
     extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
   }
 
-  /// Undo — the link is already queued and a notification may already be on
-  /// screen, so backing out has to retract both. Leaving the notification would
-  /// invite the user to tap into an import that no longer exists.
+  /// Undo — offered only in the queued state, where nothing has been imported
+  /// yet. The link is in the queue and a notification may already be on screen,
+  /// so backing out has to retract both; leaving the notification would invite
+  /// the user to tap into an import that no longer exists.
   private func undo() {
-    PendingShareQueue.remove(id: shareId)
+    discardQueued()
     ShareNotification.withdraw(shareId: shareId)
     cancel()
   }
@@ -352,7 +354,7 @@ class ShareViewController: UIViewController {
   private func cancel() {
     guard !hasCompleted else { return }
     hasCompleted = true
-    titleTask?.cancel()
+    importer.cancel()
     extensionContext?.cancelRequest(
       withError: NSError(domain: "app.plannplate.share", code: NSUserCancelledError)
     )

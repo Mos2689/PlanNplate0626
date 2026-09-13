@@ -25,6 +25,10 @@ public class PlanNplateShareTargetModule: Module {
   private static let appGroupIdentifier = "group.com.vibecode.planplate.8ctfq2"
   private static let queueFileName = "pending-shares.json"
 
+  /// Read by targets/share/ShareImportConfig.swift. Keep the names in step.
+  private static let endpointKey = "plannplate.share.import-endpoint"
+  private static let accessGroupKey = "plannplate.share.keychain-access-group"
+
   public func definition() -> ModuleDefinition {
     Name("PlanNplateShareTarget")
 
@@ -60,6 +64,33 @@ public class PlanNplateShareTargetModule: Module {
      */
     Function("isContainerReachable") { () -> Bool in
       return Self.containerDirectory() != nil
+    }
+
+    /**
+     Tell the share extension where the backend is.
+
+     The extension imports recipes by itself now, which means it needs the
+     Supabase functions URL — and that URL differs between .env and
+     .env.production. Compiling it into the extension would silently point a
+     TestFlight build at the wrong project, so the app publishes whichever one
+     it was actually configured with, on every launch.
+
+     The Keychain access group travels the same way because it must carry the
+     team prefix (`TEAMID.bundle.id`); a bare bundle id matches nothing and
+     fails silently.
+
+     Neither value is a secret. The functions URL ships in the JS bundle already,
+     and the access group is in the entitlements of every copy of the app. The
+     credential itself never comes through here — it goes in the Keychain.
+
+     Returns false when the container isn't reachable, which is the same signal
+     `isContainerReachable` gives and means the App Groups entitlement is missing.
+     */
+    Function("configureShareImport") { (endpoint: String, keychainAccessGroup: String) -> Bool in
+      guard let defaults = UserDefaults(suiteName: Self.appGroupIdentifier) else { return false }
+      defaults.set(endpoint, forKey: Self.endpointKey)
+      defaults.set(keychainAccessGroup, forKey: Self.accessGroupKey)
+      return true
     }
   }
 

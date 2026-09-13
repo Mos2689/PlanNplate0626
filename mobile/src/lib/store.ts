@@ -771,10 +771,36 @@ interface MealPlanStore {
   // a previous month) and record one use (resets the period on a new month).
   getMonthlyFeatureCount: (feature: MonthlyFeature) => number;
   recordMonthlyFeatureUse: (feature: MonthlyFeature) => void;
+  /**
+   * Adopt the server's import count (lib/share/share-import-setup.ts).
+   *
+   * The iOS share extension spends the import allowance through an edge
+   * function, with no React state anywhere near it, so the server keeps the
+   * authoritative copy for that path. Monotonic — it only ever raises — because
+   * the reconciliation already took the higher of the two and a lower value
+   * here could only come from a stale response.
+   */
+  setImportAllowanceUsed: (count: number) => void;
 
   // Recipes
   recipes: Recipe[];
   addRecipe: (recipe: Recipe) => string;
+  /**
+   * Fold recipes that already exist in the database into local state.
+   *
+   * NOT `addRecipe`. That one writes: it calls `db.insertRecipe`, which builds
+   * its payload without an `id`, so handing it a row that came FROM the
+   * database would create a second copy of it. This merges by id and writes
+   * nothing back.
+   *
+   * Ingredients are re-validated on the way in, exactly as `loadUserData` does
+   * for the rows it fetches — the iOS share extension saves through an edge
+   * function that intentionally carries no copy of the unit rules, so this is
+   * where those recipes get their canonical units.
+   *
+   * Returns how many were genuinely new.
+   */
+  mergeRemoteRecipes: (recipes: Recipe[]) => number;
   updateRecipe: (id: string, updates: Partial<Recipe>) => void;
   deleteRecipe: (id: string) => void;
   toggleSaveRecipe: (id: string) => void;
@@ -3116,6 +3142,60 @@ export const useMealPlanStore = create<MealPlanStore>()(
         const period = currentMonthKey();
         if (!usage || usage.period !== period) return 0;
         return usage[feature] ?? 0;
+      },
+
+      mergeRemoteRecipes: (incoming) => {
+        if (!incoming.length) return 0;
+
+        const validate = (recipe: Recipe): Recipe => ({
+          ...recipe,
+          ingredients: (recipe.ingredients || []).map((ing) => {
+            if (!ing || typeof ing !== 'object' || !ing.name) return ing;
+            try {
+              const validated = validateIngredient(ing);
+              return { ...ing, quantity: validated.quantity, unit: validated.unit };
+            } catch (validationError) {
+              console.warn(
+                `[STORE] Failed to validate ingredient ${ing.name}:`,
+                validationError,
+              );
+              return ing;
+            }
+          }),
+        });
+
+        let added = 0;
+        set((state) => {
+          const byId = new Map(state.recipes.map((r) => [r.id, r]));
+          for (const recipe of incoming) {
+            if (!recipe?.id) continue;
+            // A row the app already knows about is left alone: local edits made
+            // since the last sync are newer than anything this fetch carries.
+            if (byId.has(recipe.id)) continue;
+            // Content-level guard for the same recipe under a different id —
+            // the share extension and a queued replay can both save one.
+            if (findExistingRecipe(Array.from(byId.values()), recipe)) continue;
+            byId.set(recipe.id, validate(recipe));
+            added++;
+          }
+          return added > 0 ? { recipes: Array.from(byId.values()) } : state;
+        });
+
+        return added;
+      },
+
+      setImportAllowanceUsed: (count) => {
+        const next = Math.max(0, Math.floor(count));
+        set((state) => {
+          const cur = state.preferences.lifetimeFeatureUsage ?? {};
+          if ((cur.importRecipe ?? 0) >= next) return state;
+          return {
+            preferences: {
+              ...state.preferences,
+              lifetimeFeatureUsage: { ...cur, importRecipe: next },
+            },
+          };
+        });
       },
 
       recordMonthlyFeatureUse: (feature) => {

@@ -6,6 +6,7 @@ import { useMealPlanStore } from '@/lib/store';
 import { swallow } from '@/lib/failure';
 import { useAuthStore } from '@/lib/auth-store';
 import { reclassifyAllRecipes } from '@/lib/recipe-reclassifier';
+import { prepareShareImport, teardownShareImport } from '@/lib/share/share-import-setup';
 import { prefetchPlanHeroImages, prefetchRecipeImages } from '@/lib/image-prefetch';
 import { track } from '@/lib/analytics';
 
@@ -115,6 +116,17 @@ export function StoreHydration({ children }: StoreHydrationProps) {
     isLoadingRef.current = true;
 
     console.log('Loading user data for:', userId);
+
+    // Fire-and-forget, and deliberately BEFORE the load rather than after it.
+    // This gives the iOS share extension its endpoint, its credential and a
+    // reconciled import allowance so it can save a shared recipe without the app
+    // being opened at all — none of which depends on the user's recipes having
+    // loaded. Sequencing it after `await loadUserData` would mean one failed
+    // load silently cost the user the direct-import path until the next launch
+    // that happened to succeed. Never awaited: a share feature must not be able
+    // to delay launch.
+    void prepareShareImport(userId);
+
     try {
       await loadUserData(userId);
       setHasLoadedUserData(true);
@@ -150,6 +162,11 @@ export function StoreHydration({ children }: StoreHydrationProps) {
       !isSigningUpNow()
     ) {
       console.log('Clearing user data - session invalid or user logged out');
+      // Revoke the share extension's credential BEFORE forgetting who it
+      // belonged to. On a shared device a live token would keep resolving to the
+      // previous account, and the next person's shared link would land in their
+      // library.
+      void teardownShareImport(previousUserIdRef.current);
       clearAllData();
       previousUserIdRef.current = null;
       setHasLoadedUserData(false);

@@ -12,7 +12,7 @@ const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour in milliseconds
  * @param {string} userId
  * @returns {Promise<{allowed: boolean, remaining: number, resetsAt: string, error?: string}>}
  */
-export async function checkRateLimit(userId) {
+export async function checkRateLimit(userId: string) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 

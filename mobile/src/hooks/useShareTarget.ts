@@ -31,7 +31,9 @@ import {
   type NativeSharePayload,
 } from '../../modules/plannplate-share-target';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
+import { useAuthStore } from '@/lib/auth-store';
 import { useMealPlanStore } from '@/lib/store';
+import { refreshSharedRecipes } from '@/lib/share/refresh-shared-recipes';
 import { pendingShares, type PendingShare } from '@/lib/share/pending-share';
 import { ingestSharedPayload } from '@/lib/share/url-ingest';
 import { reasonForIngest } from '@/lib/share/outcome';
@@ -129,6 +131,17 @@ export function useShareTarget(): void {
 
   const drain = useCallback(async () => {
     if (!FEATURE_FLAGS.shareToPlanNplate) return;
+
+    // The iOS extension imports on its own now, through the `share-import` edge
+    // function, so the recipe may already be saved and simply not in this
+    // process's memory. Pick those up BEFORE draining the queue: a share that
+    // succeeded server-side but left its queue entry behind (the extension was
+    // killed before it could tidy up) then matches the orchestrator's duplicate
+    // check instead of importing a second time.
+    if (Platform.OS === 'ios') {
+      const userId = useAuthStore.getState().currentUser?.id;
+      if (userId) await refreshSharedRecipes(userId);
+    }
 
     // Both ways this can fail are SILENT: an unregistered native module returns
     // an empty list, and an App Group the profile doesn't grant makes

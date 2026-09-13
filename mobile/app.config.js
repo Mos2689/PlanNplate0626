@@ -58,6 +58,18 @@ module.exports = function ({ config }) {
   // Nothing sensitive travels through it — see the note in PendingShareQueue.swift.
   const shareAppGroup = "group.com.vibecode.planplate.8ctfq2";
 
+  // The share extension imports recipes itself, which needs a credential — and a
+  // credential must not travel through the App Group container (that carries the
+  // link and nothing else, by design). It goes in the Keychain instead, in a
+  // group both processes can reach.
+  //
+  // `$(AppIdentifierPrefix)` expands at build time to the team prefix with its
+  // trailing dot. It is REQUIRED: iOS matches Keychain access groups on the full
+  // prefixed string, and a bare bundle id matches nothing — silently, with every
+  // read coming back empty. The runtime constant that has to agree with this is
+  // SHARE_KEYCHAIN_ACCESS_GROUP in src/lib/share/import-token.ts.
+  const shareKeychainGroup = "$(AppIdentifierPrefix)com.vibecode.planplate.8ctfq2";
+
   config.ios = {
     ...config.ios,
     googleServicesFile: "./GoogleService-Info.plist",
@@ -78,6 +90,12 @@ module.exports = function ({ config }) {
         new Set([
           ...(config.ios?.entitlements?.["com.apple.security.application-groups"] ?? []),
           shareAppGroup,
+        ]),
+      ),
+      "keychain-access-groups": Array.from(
+        new Set([
+          ...(config.ios?.entitlements?.["keychain-access-groups"] ?? []),
+          shareKeychainGroup,
         ]),
       ),
     },
