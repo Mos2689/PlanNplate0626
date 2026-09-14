@@ -37,7 +37,10 @@ import UniformTypeIdentifiers
  */
 class ShareViewController: UIViewController {
   private var state: ShareSheetState = .importing(ShareContext(host: "", title: nil, imageURL: nil)) {
-    didSet { render() }
+    // `announce` is driven by STATE only, never by `dispatch`. The send-off
+    // advances through five phases in under a second, and announcing each one
+    // would read the same sentence five times over.
+    didSet { render(); announce() }
   }
 
   /// What the user shared, accumulated as we learn it: host and title on the
@@ -57,12 +60,51 @@ class ShareViewController: UIViewController {
   /// Set once the link is in the App Group queue, so `undo` knows there is
   /// something to remove.
   private var queued = false
+  /// Where the send-off has got to. Advanced by `beginDispatch`; the view reads
+  /// it and derives every transform from it.
+  private var dispatch: DispatchPhase = .idle {
+    didSet { render() }
+  }
 
   override func viewDidLoad() {
     super.viewDidLoad()
     view.backgroundColor = .clear
+    view.isOpaque = false
     render()
     loadSharedItem()
+  }
+
+  override func viewWillAppear(_ animated: Bool) {
+    super.viewWillAppear(animated)
+    makeContainerTransparent()
+  }
+
+  /**
+   Let the host app show through instead of a grey slab.
+
+   A share extension is presented by the HOST inside a container this process
+   does not own and cannot resize, and every view in that container paints its
+   own opaque background. Clearing `self.view` is not enough — the result is a
+   near-full-screen grey card with our sheet stranded at the bottom of it, which
+   is what shipped in the first build.
+
+   Walking up the chain and clearing those backgrounds is the whole fix. These
+   are ordinary `UIView`s in our own hierarchy — no private API, nothing
+   undocumented — and every step is best-effort. If some future iOS stops
+   honouring it, the container simply goes back to being opaque, which is exactly
+   how it looks today; nothing breaks and the layout is unchanged, because the
+   card is pinned to the bottom either way.
+
+   Runs in `viewWillAppear` rather than `viewDidLoad` because the ancestors do
+   not exist until the view is being added to the window.
+   */
+  private func makeContainerTransparent() {
+    var node: UIView? = view
+    while let current = node {
+      current.backgroundColor = .clear
+      current.isOpaque = false
+      node = current.superview
+    }
   }
 
   override func viewDidDisappear(_ animated: Bool) {
@@ -75,6 +117,7 @@ class ShareViewController: UIViewController {
   private func render() {
     let sheet = ShareSheetView(
       state: state,
+      dispatch: dispatch,
       onUndo: { [weak self] in self?.undo() },
       onCancel: { [weak self] in self?.cancel() }
     )
@@ -96,8 +139,6 @@ class ShareViewController: UIViewController {
       controller.didMove(toParent: self)
       hosting = controller
     }
-
-    announce()
   }
 
   /// VoiceOver would otherwise stay on the state it read when the sheet opened.
@@ -264,7 +305,58 @@ class ShareViewController: UIViewController {
     // the user feels should coincide with the one they see.
     UINotificationFeedbackGenerator().notificationOccurred(.success)
     state = terminal
-    scheduleAutoDismiss()
+
+    // Only a genuine save gets the send-off. A duplicate saved nothing, so
+    // flying something into the library would be a lie.
+    if case .imported = terminal, !UIAccessibility.isReduceMotionEnabled {
+      beginDispatch()
+    } else {
+      scheduleAutoDismiss()
+    }
+  }
+
+  /**
+   The send-off.
+
+   TIMING IS THE WHOLE DESIGN HERE. The animation is not the point — the recipe
+   name and its ingredient count are, and they need to be READ before anything
+   moves. So the sequence spends more than half its budget standing still:
+
+     0.00s  result lands, haptic, tick springs in
+     1.20s  ── hold. the only part that matters to a user ──
+     1.20s  name and counts fade toward the disc          (0.22s)
+     1.42s  disc dissolves, capsule widens                (0.28s)
+     1.70s  pull back left — anticipation                 (0.14s)
+     1.84s  fires right, stretching                       (0.40s)
+     1.92s  card collapses in its wake                    (0.30s)
+     2.30s  extension completes
+
+   Shortening the hold is what would make this overwhelming: the motion would
+   start before the eye had landed on the name, and the whole thing would read as
+   a flash rather than a confirmation followed by a send-off.
+
+   Reduce Motion never reaches here — `settle` routes those users to the plain
+   hold-and-dismiss instead.
+   */
+  private func beginDispatch() {
+    let steps: [(DispatchPhase, TimeInterval)] = [
+      (.converging, 1.20),
+      (.capsule, 1.42),
+      (.windUp, 1.70),
+      (.launched, 1.84),
+      (.cleared, 1.92),
+    ]
+
+    for (phase, at) in steps {
+      DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in
+        guard let self, !self.hasCompleted else { return }
+        self.dispatch = phase
+      }
+    }
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.30) { [weak self] in
+      self?.finish()
+    }
   }
 
   /**

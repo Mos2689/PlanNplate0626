@@ -174,7 +174,12 @@ async function resolveImage(
     const contentType = response.headers.get('content-type') ?? 'image/jpeg';
     const ext = contentType.includes('png') ? 'png' : 'jpg';
     const bytes = new Uint8Array(await response.arrayBuffer());
-    const path = `recipe-images/${userId}-${Date.now()}.${ext}`;
+    // The random suffix is load-bearing. Two imports running concurrently — the
+    // user shares one recipe, then another before the first finishes — can reach
+    // this line inside the same millisecond, and `upsert: true` means the second
+    // would silently overwrite the first's photo. One recipe would then show the
+    // other's dish, with nothing logged and no error raised.
+    const path = `recipe-images/${userId}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
 
     const { error } = await supabase.storage
       .from('user-uploads')
@@ -260,6 +265,50 @@ function toRecipeRow(
   };
 }
 
+/**
+ * Take the claim for this URL, or report that another run holds it.
+ *
+ * Atomic in one statement — see `claim_share_import` in migration
+ * 20260914120000. Returns false when someone else is mid-import.
+ *
+ * **Fails CLOSED, unlike the entitlement checks.** If the RPC errors or has not
+ * been deployed yet, we report "not claimed", which routes the share to the
+ * queue and lets the app import it. The alternative — treating an unavailable
+ * lock as permission to proceed — would restore exactly the double-insert this
+ * exists to prevent, and a queued share costs the user nothing.
+ */
+async function claimImport(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  userId: string,
+  sourceUrl: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('claim_share_import', {
+    p_user_id: userId,
+    p_source_url: sourceUrl,
+  });
+
+  if (error) {
+    console.error('[ShareImport] claim_share_import failed:', error);
+    return false;
+  }
+  return data === true;
+}
+
+/** Give the claim back. Best-effort: a stranded lock is taken over after 60s. */
+async function releaseImport(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  userId: string,
+  sourceUrl: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('release_share_import', {
+    p_user_id: userId,
+    p_source_url: sourceUrl,
+  });
+  if (error) console.error('[ShareImport] release_share_import failed:', error);
+}
+
 /** Everything after authentication. Separated so it can be handed to `waitUntil`. */
 async function runImport(
   // deno-lint-ignore no-explicit-any
@@ -297,6 +346,59 @@ async function runImport(
     };
   }
 
+  // ── Concurrency ─────────────────────────────────────────────────────────
+  // The duplicate check above is check-then-act, and until this claim exists
+  // nothing backs it: two invocations for the same URL inside the extraction
+  // window both read an empty result and both insert. See migration
+  // 20260914120000 for why this is a lock table rather than a unique index.
+  const claimed = await claimImport(supabase, userId, sourceUrl);
+  if (!claimed) {
+    // Someone else is importing this exact link right now. They may have
+    // finished between our SELECT and this call, so look once more before
+    // giving up — that turns a race into an honest "already saved".
+    const { data: racing } = await supabase
+      .from('recipes')
+      .select('id, name, ingredients, prep_time, cook_time, image_url')
+      .eq('user_id', userId)
+      .eq('source_url', sourceUrl)
+      .limit(1)
+      .maybeSingle();
+
+    if (racing) {
+      return {
+        outcome: 'duplicate',
+        recipeId: racing.id,
+        recipeName: racing.name,
+        ingredientCount: Array.isArray(racing.ingredients) ? racing.ingredients.length : 0,
+        totalMinutes: (racing.prep_time ?? 0) + (racing.cook_time ?? 0),
+        imageUrl: racing.image_url ?? null,
+      };
+    }
+
+    // Still in flight. The link stays queued and the app finishes the job,
+    // which by then will find the other run's row and treat it as a duplicate.
+    return { outcome: 'fallback', reason: 'import-in-flight' };
+  }
+
+  try {
+    return await importClaimed(supabase, userId, url, sourceUrl, html, previewImageUrl);
+  } finally {
+    // Every exit path, successful or not. A lock that outlives its import makes
+    // that URL un-importable until the staleness timeout takes it over.
+    await releaseImport(supabase, userId, sourceUrl);
+  }
+}
+
+/** The import itself, once this invocation owns the claim for `sourceUrl`. */
+async function importClaimed(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  userId: string,
+  url: string,
+  sourceUrl: string,
+  html: string,
+  previewImageUrl?: string,
+): Promise<Outcome> {
   // ── Entitlement ─────────────────────────────────────────────────────────
   const { state, spent } = await claimImportAllowance(supabase, userId);
   if (state === 'gated') return { outcome: 'gated' };

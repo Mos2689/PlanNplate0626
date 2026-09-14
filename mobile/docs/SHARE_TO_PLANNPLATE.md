@@ -236,6 +236,32 @@ Pending links live in AsyncStorage under `plannplate.share.v1`. **Only the link 
 shared text is run through ingestion at collection time and the caption is discarded immediately.
 Entries expire after **7 days**; the user can cancel; `reset()` wipes everything on sign-out.
 
+### Concurrency — two shares at once
+
+Only one share sheet can be on screen at a time, so "at once" means: share one
+recipe, dismiss the sheet early, share another while the first is still finishing
+server-side. What makes that safe:
+
+| | |
+|---|---|
+| Separate extension instances | Each share has its own `shareId`, context and state. The only shared surfaces are the App Group file (`NSFileCoordinator`-guarded) and the Keychain (read-only). |
+| Queue removal is **per id** | `discardQueued()` calls `PendingShareQueue.remove(id: shareId)`. B completing cannot delete A's pending entry — that is the difference between this working and A silently vanishing. |
+| The meter is atomic | `spend_import_allowance` puts the limit inside the `UPDATE` predicate, so two simultaneous shares cannot both spend the last allowance. |
+| Cancelling doesn't lose the recipe | Dismissing the sheet cancels the `URLSession` task but not the server: if the POST landed, `EdgeRuntime.waitUntil` finishes it. `refreshSharedRecipes` then pulls it **before** the queue drains, so the leftover queue entry hits the duplicate check instead of importing twice. That ordering is deliberate. |
+| Same URL twice | `claim_share_import` (migration 20260914120000). One statement, so there is no window between check and write. The loser re-checks `recipes` — the winner may have finished in between — and otherwise falls back to the queue. |
+| Image paths are random-suffixed | Two imports finishing in the same millisecond would otherwise `upsert` to the same storage path and one recipe would show the other's dish, silently. |
+
+Two known weaknesses, both pre-existing and neither blocking:
+
+- **`checkRateLimit` undercounts under concurrency.** `_shared/rate-limit.ts` reads
+  then upserts, so simultaneous callers can both read the same count. It affects every
+  caller, not just this one, and it fails *lenient*.
+- **Only the newest queued share is imported.** `useShareTarget.collect()` takes
+  `payloads[payloads.length - 1]`. The native queue holds ten; the app takes one. This
+  only bites when several shares fall back at once (offline, or the kill switch off) —
+  which overlapping shares make more likely than the original "vanishingly rare" note
+  assumed. Fixing it means `pending-share.ts` storing a list rather than one record.
+
 ### Idempotency — three layers
 
 1. **Share id.** Minted natively at capture (`UUID` in Swift/Kotlin), checked against a bounded
