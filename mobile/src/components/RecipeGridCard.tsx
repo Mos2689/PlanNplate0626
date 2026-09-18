@@ -40,6 +40,14 @@ export interface RecipeGridCardProps {
   onLongPress?: (recipe: Recipe) => void;
   isDark: boolean;
   index: number;
+  /**
+   * Set false when this card is replacing a reserved onboarding tile
+   * (RecipePrepCard). That tile already showed the same placeholder art and the
+   * same title in the same place, so the spring below would fire on something
+   * the user perceives as already present — a pop, not an entrance. Defaults to
+   * true, so every other caller is unaffected.
+   */
+  animateEntrance?: boolean;
 }
 
 function RecipeGridCardImpl({
@@ -51,6 +59,7 @@ function RecipeGridCardImpl({
   onLongPress,
   isDark,
   index,
+  animateEntrance = true,
 }: RecipeGridCardProps) {
   const colors = getThemeColors(isDark);
   const totalMin = (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);
@@ -78,7 +87,11 @@ function RecipeGridCardImpl({
 
   return (
     <Animated.View
-      entering={index < ANIMATE_FIRST_N ? FadeInUp.delay(index * 60).springify() : undefined}
+      entering={
+        animateEntrance && index < ANIMATE_FIRST_N
+          ? FadeInUp.delay(index * 60).springify()
+          : undefined
+      }
       style={{ width: GRID_CARD_W, marginBottom: 12 }}
     >
       <Pressable

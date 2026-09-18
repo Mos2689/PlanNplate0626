@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeOutDown, FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { CloudOff, RefreshCw, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import * as Linking from 'expo-linking';
 import { designTokens, getThemeColors } from '@/lib/design-tokens';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
@@ -58,6 +59,20 @@ export function FailureHost({ isDark = false }: FailureHostProps) {
           intent: 'bug',
           feature: failure.feature,
           entry: 'failure',
+        });
+        return;
+      }
+
+      // `open-settings` had the same problem: in the catalogue since the
+      // failure system was written, chosen by 'permission-denied' and by the
+      // voice/photo overrides — and wired to nothing, so it fell through to the
+      // retry below and silently re-ran the call the OS had already refused.
+      // An OS permission can only be changed in Settings, so that is where the
+      // button goes.
+      if (failure.action.kind === 'open-settings') {
+        resolveFailure(failure, 'action');
+        Linking.openSettings().catch((e) => {
+          console.warn('[FailureHost] could not open settings', e);
         });
         return;
       }

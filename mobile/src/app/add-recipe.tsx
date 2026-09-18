@@ -21,7 +21,6 @@ import {
   CirclePlus,
   UsersRound,
   FileUp,
-  MicVocal,
   ScrollText,
   Tag,
   Hash,
@@ -29,7 +28,7 @@ import {
   Wand2,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import Animated, { FadeInDown, FadeIn, useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeIn, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -47,6 +46,8 @@ import { TagPicker } from '@/components/TagPicker';
 import { isMealTypeTag } from '@/lib/recipe-categories';
 import { validateIngredients } from '@/lib/ingredient-validator';
 import { useRecipeFeatureGate } from '@/hooks/useRecipeFeatureGate';
+import { useMicPermissionGate } from '@/hooks/useMicPermissionGate';
+import { VoiceOrb } from '@/components/voice/VoiceOrb';
 import { apiCall, apiFormCall } from '@/lib/api-router';
 import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 
@@ -411,6 +412,19 @@ export default function AddRecipeScreen() {
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [transcribedText, setTranscribedText] = useState('');
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  // True when the OS will no longer prompt for the microphone, so the modal's
+  // error view offers Settings instead of a retry that can't succeed.
+  const [micBlocked, setMicBlocked] = useState(false);
+
+  // Voice-FIRST capture. Arriving via `?action=speak` means the user asked to
+  // talk, not to look at a form — but the recording sheet is a translucent
+  // modal, so they got the voice card floating over a full-page skeleton of
+  // empty inputs they had not filled in and could not reach. While this is on
+  // the sheet paints an opaque background: the speak UI IS the screen, and the
+  // form appears only once there is a recipe in it. Tapping the mic from INSIDE
+  // the form keeps the translucent backdrop, because there the work showing
+  // through is the user's own and worth seeing.
+  const [voiceFirst, setVoiceFirst] = useState(action === 'speak');
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -451,20 +465,42 @@ export default function AddRecipeScreen() {
 
   const recordingRef = useRef<Audio.Recording | null>(null);
 
-  // Animation for recording indicator
-  const pulseScale = useSharedValue(1);
-  const pulseAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseScale.value }],
-  }));
+  // Microphone permission, including the trip out to the OS settings page and
+  // back. `startRecording` is defined below, so the gate reaches it by ref.
+  const startRecordingRef = useRef<() => void>(() => {});
+  const micGate = useMicPermissionGate({
+    surface: 'add-recipe',
+    onGranted: () => {
+      setMicBlocked(false);
+      setVoiceError(null);
+      startRecordingRef.current();
+    },
+  });
+
+  // Live mic amplitude, 0-1, feeding VoiceOrb's waveform. The old indicator was
+  // a scale loop on a timer — it looked identical whether the user was talking
+  // or had put the phone down. This is the signal that makes the bars mean
+  // something, so the recorder below now reports metering.
+  const micLevel = useSharedValue(0);
 
   const startRecording = useCallback(async () => {
     try {
       setVoiceError(null);
+      setMicBlocked(false);
 
-      // Request permissions
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        setVoiceError('Microphone permission is required');
+      const outcome = await micGate.check();
+      if (outcome !== 'granted') {
+        // The modal used to be opened further down, AFTER this early return —
+        // so a denied microphone set an error into a view that was never
+        // mounted and the mic button simply looked broken. Open it here: the
+        // permission state IS the thing the user needs to see.
+        setMicBlocked(outcome === 'blocked');
+        setVoiceError(
+          outcome === 'blocked'
+            ? 'Turn on microphone access to dictate your recipe. You can always type it instead.'
+            : 'We need the microphone to hear your recipe. Allow access, or type it instead.',
+        );
+        setShowVoiceModal(true);
         return;
       }
 
@@ -477,15 +513,24 @@ export default function AddRecipeScreen() {
       setIsRecording(true);
       setShowVoiceModal(true);
 
-      // Start pulse animation
-      pulseScale.value = withRepeat(
-        withTiming(1.2, { duration: 800, easing: Easing.inOut(Easing.ease) }),
-        -1,
-        true
-      );
-
       const recording = new Audio.Recording();
       await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      // HIGH_QUALITY already sets isMeteringEnabled; the default report interval
+      // is 500ms, which is far too coarse to animate against — 80ms matches
+      // onboarding and is what makes the bars track the voice rather than lag it.
+      recording.setProgressUpdateInterval(80);
+      recording.setOnRecordingStatusUpdate((status) => {
+        if (typeof status.metering === 'number') {
+          // −60dB (near silence) → 0, 0dB (clipping) → 1.
+          micLevel.value = withTiming(Math.max(0, Math.min(1, (status.metering + 60) / 60)), {
+            duration: 90,
+          });
+        } else {
+          // Some Android devices never report metering. Hold a constant envelope
+          // so the bars still move rather than collapsing to a flat line.
+          micLevel.value = 0.45;
+        }
+      });
       await recording.startAsync();
       recordingRef.current = recording;
     } catch (error) {
@@ -493,13 +538,16 @@ export default function AddRecipeScreen() {
       setVoiceError('Failed to start recording');
       setIsRecording(false);
     }
-  }, [pulseScale]);
+  }, [micGate, micLevel]);
+
+  // Kept current so the permission gate can resume recording when the user
+  // comes back from Settings with the microphone switched on.
+  startRecordingRef.current = startRecording;
 
   const stopRecording = useCallback(async () => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setIsRecording(false);
-      pulseScale.value = 1;
 
       const recording = recordingRef.current;
       if (!recording) {
@@ -554,6 +602,10 @@ export default function AddRecipeScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowVoiceModal(false);
+      // The form now holds a recipe, so it is worth showing. This is the
+      // hand-off the voice-first flow exists for: speak, then land on a filled
+      // form rather than an empty one.
+      setVoiceFirst(false);
     } catch (error) {
       console.error('Failed to process recording:', error);
       setVoiceError('Failed to process your voice. Please try again or type manually.');
@@ -561,7 +613,7 @@ export default function AddRecipeScreen() {
     } finally {
       setIsProcessing(false);
     }
-  }, [pulseScale]);
+  }, []);
 
   const cancelRecording = useCallback(async () => {
     try {
@@ -573,13 +625,17 @@ export default function AddRecipeScreen() {
       setIsRecording(false);
       setIsProcessing(false);
       setShowVoiceModal(false);
+      // Backing out of a voice-first capture drops the user into the form to
+      // type instead of bouncing them off the screen — "Type instead" has to
+      // lead somewhere.
+      setVoiceFirst(false);
       setTranscribedText('');
       setVoiceError(null);
-      pulseScale.value = 1;
+      setMicBlocked(false);
     } catch (error) {
       swallow(error, 'recording teardown is cleanup-only', 'voice');
     }
-  }, [pulseScale]);
+  }, []);
 
   // Helper to fill form with parsed recipe data
   const fillFormWithRecipe = useCallback((parsedRecipe: ParsedRecipe) => {
@@ -1142,6 +1198,12 @@ export default function AddRecipeScreen() {
           </Pressable>
         </Animated.View>
 
+        {/* Voice-first capture owns the screen until it produces a recipe.
+            The auto-start path waits for the screen transition plus a 450ms
+            settle before the sheet appears, and without this the empty form
+            flashed up in that gap — the exact skeleton the flow is meant to
+            skip. Unmounting it also means the form mounts already populated. */}
+        {!voiceFirst && (
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           className="flex-1"
@@ -1921,6 +1983,7 @@ export default function AddRecipeScreen() {
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
+        )}
       </SafeAreaView>
 
       {/* ── Voice Recording Modal ───────────────────────────── */}
@@ -1933,7 +1996,12 @@ export default function AddRecipeScreen() {
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.55)',
+            // Opaque in voice-first mode so the empty form never shows through.
+            backgroundColor: voiceFirst
+              ? isDark
+                ? '#1a1a1a'
+                : colors.bg
+              : 'rgba(0,0,0,0.55)',
             alignItems: 'center',
             justifyContent: 'center',
             paddingHorizontal: 24,
@@ -1943,43 +2011,32 @@ export default function AddRecipeScreen() {
             style={{
               width: '100%',
               borderRadius: 24,
-              backgroundColor: colors.bg,
-              borderWidth: 1,
-              borderColor: colors.hair,
               padding: 24,
               alignItems: 'center',
+              // A card needs edges only when it floats over something. Sitting
+              // on its own opaque screen, the border and fill just draw a box
+              // around empty space.
+              ...(voiceFirst
+                ? { backgroundColor: 'transparent' }
+                : { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.hair }),
             }}
           >
             {isRecording ? (
               <>
-                <View
-                  style={{
-                    width: 140,
-                    height: 140,
-                    borderRadius: 999,
-                    backgroundColor: 'rgba(228,109,70,0.10)',
-                    borderWidth: 1.5,
-                    borderColor: 'rgba(228,109,70,0.30)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: 22,
-                  }}
-                >
-                  <Animated.View
-                    style={[
-                      pulseAnimatedStyle,
-                      {
-                        width: 72,
-                        height: 72,
-                        borderRadius: 999,
-                        backgroundColor: designTokens.colors.charcoal,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      },
-                    ]}
-                  >
-                    <MicVocal size={28} color={designTokens.colors.cream} strokeWidth={1.8} />
-                  </Animated.View>
+                {/* The onboarding stage, scaled for a modal: aurora + staggered
+                    rings behind a gradient disc, bars driven by real metering.
+                    Replaces a static terracotta ring around a charcoal puck.
+                    Onboarding runs a 156px disc because the stage is the whole
+                    page there; at that scale in a dialog it dominated everything
+                    around it, so this sits at 104 — big enough to read as the
+                    subject, small enough that the copy and buttons still count. */}
+                <View style={{ marginBottom: 2, marginTop: -14 }}>
+                  <VoiceOrb
+                    phase="listening"
+                    level={micLevel}
+                    size={104}
+                    accessibilityLabel="Listening to your recipe"
+                  />
                 </View>
                 <Text
                   style={{
@@ -2052,22 +2109,18 @@ export default function AddRecipeScreen() {
               </>
             ) : isProcessing ? (
               <>
-                <View
-                  style={{
-                    width: 72,
-                    height: 72,
-                    borderRadius: 999,
-                    backgroundColor: '#E8ECDF',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: 18,
-                    position: 'relative',
-                  }}
-                >
-                  <Sparkles size={22} color={designTokens.colors.olive} strokeWidth={1.8} />
-                  <View style={{ position: 'absolute', bottom: -4, right: -4 }}>
-                    <ActivityIndicator size="small" color={designTokens.colors.brand} />
-                  </View>
+                {/* Same orb, thinking: the disc stays put and morphs into the
+                    loading indicator (cooking icons + orbiting arcs) instead of
+                    swapping to an unrelated pastel tile with a spinner pinned
+                    to its corner. Transcription is 1-3s — the stretch where the
+                    old treatment read most dated. */}
+                <View style={{ marginBottom: 0, marginTop: -14 }}>
+                  <VoiceOrb
+                    phase="thinking"
+                    level={micLevel}
+                    size={92}
+                    accessibilityLabel="Turning your voice into a recipe"
+                  />
                 </View>
                 <Text
                   style={{
@@ -2169,7 +2222,7 @@ export default function AddRecipeScreen() {
                     marginBottom: 6,
                   }}
                 >
-                  Couldn't hear that
+                  {micBlocked ? 'Microphone access is off' : "Couldn't hear that"}
                 </Text>
                 <Text
                   style={{
@@ -2207,8 +2260,15 @@ export default function AddRecipeScreen() {
                       Type instead
                     </Text>
                   </Pressable>
+                  {/* A retry can't help once the OS has stopped prompting —
+                      only Settings can. The gate brings the user back here
+                      (or MicReadyNudge does, if iOS restarted the app). */}
                   <Pressable
                     onPress={() => {
+                      if (micBlocked) {
+                        void micGate.openSettings();
+                        return;
+                      }
                       setVoiceError(null);
                       startRecording();
                     }}
@@ -2228,7 +2288,7 @@ export default function AddRecipeScreen() {
                         letterSpacing: -0.14,
                       }}
                     >
-                      Try again
+                      {micBlocked ? 'Open Settings' : 'Try again'}
                     </Text>
                   </Pressable>
                 </View>

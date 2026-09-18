@@ -21,6 +21,7 @@ import {
 import { computeBehaviorInsights } from './behavior-insights';
 import { getSkipReasonEffect } from './skip-reason-handler';
 import { findExistingRecipe, normalizeRecipeSourceUrl } from './recipe-identity';
+import { keepsPlaceholderImage } from './recipe-image';
 import { CURATED_GROCERY_CACHE } from './curated-grocery-cache';
 import { track } from './analytics';
 import { classifyFailure, reportFailure, swallow, type Failure } from './failure';
@@ -513,6 +514,22 @@ export interface PendingGenerationState {
   error?: string;
 }
 
+/**
+ * One dish the user named during onboarding, while it is being built.
+ *
+ * The Recipes tab reserves a grid slot per entry, in this order, so the tile
+ * showing "Butter chicken" is already on screen when the user lands and simply
+ * becomes the real card once `recipeId` is filled in. Order is the order the
+ * user spoke them — it is what makes the slot stable.
+ */
+export interface RecipePrepDish {
+  /** Exactly what the user said or typed. Rendered on the reserved tile. */
+  name: string;
+  /** Null until the recipe row exists. A failed dish stays null and its slot
+   *  disappears when `clearRecipePrep` runs — see markRecipePrepProgress. */
+  recipeId: string | null;
+}
+
 // One recipe's contribution to the current grocery list. There can be multiple
 // entries for the same recipeId (e.g. the same dish cooked on two days, each
 // with its own serving multiplier).
@@ -993,10 +1010,24 @@ interface MealPlanStore {
   // once completed >= total the banner gives way to the "recipes are ready"
   // nudge. NOT persisted: if the app is killed mid-build the in-flight promises
   // die with it, so a stale "active" state must never survive a restart.
-  recipePrep: { total: number; completed: number; startedAt: string } | null;
-  // Start a prep run for `total` dishes (no-op if total <= 0). Resets any prior
+  //
+  // `dishes` carries the NAMES in the order the user spoke them, so the Recipes
+  // tab can reserve a grid slot per dish the instant it lands there. Without it
+  // each dish was inserted at index 0 as it finished (the grid sorts by
+  // createdAt DESC), shoving every card down a row — up to five unannounced
+  // jumps while the user was reading.
+  recipePrep: {
+    total: number;
+    completed: number;
+    startedAt: string;
+    dishes: RecipePrepDish[];
+  } | null;
+  // Start a prep run for the named dishes (no-op if empty). Resets any prior
   // run so a second onboarding pass starts clean.
-  beginRecipePrep: (total: number) => void;
+  beginRecipePrep: (names: string[]) => void;
+  // Point a reserved slot at the recipe row it produced. The slot stops being a
+  // skeleton and renders the real card WITHOUT changing position.
+  resolveRecipePrepDish: (name: string, recipeId: string) => void;
   // Mark one dish done (call in the build loop's finally, success or fail).
   markRecipePrepProgress: () => void;
   // Clear the prep state (banner disappears). Called once the user has seen the
@@ -1045,6 +1076,26 @@ interface MealPlanStore {
 
 // Helper to generate unique IDs
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+
+/**
+ * Should an AUTOMATICALLY sourced photo be written onto this recipe?
+ *
+ * Onboarding dishes deliberately carry no image, and there are three places a
+ * stock photo could still reach them long after onboarding — the two meal-plan
+ * image jobs below, and the image backfill in `addRecipe`. All three run on a
+ * recipe id returned by `addRecipe`, which UPSERTS: plan a week containing a
+ * dish the user already named during onboarding and the ids are the same row.
+ * Without this guard the placeholder would survive the first screen and then
+ * silently turn into a Pexels photo days later, which is the inconsistency in
+ * its most confusing form.
+ *
+ * Only automatic assignment is gated. Explicit `updateRecipe` calls from the
+ * photo picker are untouched.
+ */
+function acceptsAutoImage(recipes: Recipe[], recipeId: string): boolean {
+  const target = recipes.find((r) => r.id === recipeId);
+  return !target || !keepsPlaceholderImage(target);
+}
 
 // When a meal is removed from the calendar, other slots that DEPEND on it no
 // longer make sense and should be cleared alongside it. This returns the ids of
@@ -1697,16 +1748,33 @@ export const useMealPlanStore = create<MealPlanStore>()(
 
       // ───── First-run recipe preparation (ephemeral) ─────
       recipePrep: null,
-      beginRecipePrep: (total) => {
-        if (!Number.isFinite(total) || total <= 0) return;
+      beginRecipePrep: (names) => {
+        const dishNames = (names ?? []).filter((n) => !!n && !!n.trim());
+        if (dishNames.length === 0) return;
         set({
           recipePrep: {
-            total,
+            total: dishNames.length,
             completed: 0,
             startedAt: new Date().toISOString(),
+            dishes: dishNames.map((name) => ({ name, recipeId: null })),
           },
         });
       },
+      resolveRecipePrepDish: (name, recipeId) =>
+        set((state) => {
+          if (!state.recipePrep || !recipeId) return {};
+          // Match the FIRST still-unresolved slot with this name. Two dishes can
+          // share a name (onboarding dedupes case-insensitively, but a rename
+          // can still collide), and resolving by name alone would otherwise
+          // overwrite the slot that already has its recipe.
+          const idx = state.recipePrep.dishes.findIndex(
+            (d) => d.recipeId === null && d.name === name,
+          );
+          if (idx < 0) return {};
+          const dishes = state.recipePrep.dishes.slice();
+          dishes[idx] = { ...dishes[idx], recipeId };
+          return { recipePrep: { ...state.recipePrep, dishes } };
+        }),
       markRecipePrepProgress: () =>
         set((state) => {
           if (!state.recipePrep) return {};
@@ -2173,7 +2241,11 @@ export const useMealPlanStore = create<MealPlanStore>()(
                 recipe.ingredients,
               )
                 .then((url) => {
-                  if (url) get().updateRecipe(recipeId, { imageUrl: url });
+                  // Skip dishes the user named in onboarding — addRecipe may
+                  // have upserted this id onto one of their rows.
+                  if (url && acceptsAutoImage(get().recipes, recipeId)) {
+                    get().updateRecipe(recipeId, { imageUrl: url });
+                  }
                 })
                 .catch(() => {
                   /* stock image stays — graceful degradation */
@@ -2486,7 +2558,10 @@ export const useMealPlanStore = create<MealPlanStore>()(
                     recipe.ingredients,
                   )
                     .then((url) => {
-                      if (url) get().updateRecipe(recipeId, { imageUrl: url });
+                      // Same guard as the daily path above.
+                      if (url && acceptsAutoImage(get().recipes, recipeId)) {
+                        get().updateRecipe(recipeId, { imageUrl: url });
+                      }
                     })
                     .catch(() => {});
                   pendingImageJobs.push(job);
@@ -3254,7 +3329,9 @@ export const useMealPlanStore = create<MealPlanStore>()(
           // mutate the shared row's serving/ingredients. Per-plan serving lives
           // on the meal SLOT (servingOverride), so the same recipe can appear in
           // different plans at different servings without conflict.
-          if (!existing.imageUrl && recipe.imageUrl) {
+          // An onboarding dish has an empty imageUrl ON PURPOSE, so "lacks one"
+          // is not an invitation to fill it from an incoming copy.
+          if (!existing.imageUrl && recipe.imageUrl && !keepsPlaceholderImage(existing)) {
             get().updateRecipe(existing.id, { imageUrl: recipe.imageUrl });
           }
           return existing.id;

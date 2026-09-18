@@ -96,7 +96,9 @@ import { getTasteSampleRecipes } from '@/lib/inspired-plan-source';
 import { profileAndSuggest, profileFrequentCooks } from '@/lib/frequent-cook-profiling';
 import { inspiredToRecipe } from '@/lib/inspired-adapters';
 import { splitDishNames } from '@/lib/voice-dishes';
-import { generateRecipe, generateRecipeImage, type MealType } from '@/lib/openai';
+import { generateRecipe, type MealType } from '@/lib/openai';
+import { FREQUENT_COOK_TAG } from '@/lib/recipe-image';
+import { prepCreatedAt } from '@/lib/recipe-prep-grid';
 import {
   classifyMealTypeFromName,
   classifyRecipeByContent,
@@ -680,6 +682,7 @@ export default function OnboardingScreen() {
   const addRecipe = useMealPlanStore((s) => s.addRecipe);
   const beginRecipePrep = useMealPlanStore((s) => s.beginRecipePrep);
   const markRecipePrepProgress = useMealPlanStore((s) => s.markRecipePrepProgress);
+  const resolveRecipePrepDish = useMealPlanStore((s) => s.resolveRecipePrepDish);
   const [frequentCooks, setFrequentCooks] = useState<string[]>([]);
 
   // Which capture paths this user actually used, in first-use order. Reported
@@ -726,9 +729,19 @@ export default function OnboardingScreen() {
   // the flow — failures are logged and skipped.
   const buildFrequentCookRecipes = useCallback(
     (names: string[], prefs: typeof preferences) => {
-      // Open the progress banner shown on the Recipes tab while these build.
-      beginRecipePrep(names.length);
-      names.forEach(async (dishName) => {
+      // Open the progress banner AND reserve a grid slot per dish on the
+      // Recipes tab. Passing the names (not just a count) is what lets that
+      // screen show "Butter chicken" waiting in its own tile from the first
+      // frame, instead of inserting each finished dish at the top of a
+      // createdAt-sorted grid and shunting everything else down.
+      beginRecipePrep(names);
+
+      // Dishes are stamped by POSITION rather than by when generation happened
+      // to finish, so the grid's createdAt DESC sort reproduces the order the
+      // user spoke them. See `prepCreatedAt` for why the ladder climbs forward.
+      const batchStartedAt = Date.now();
+
+      names.forEach(async (dishName, dishIndex) => {
         try {
           // Classify the dish from its name so generation is guided toward the
           // right meal (e.g. "Avocado smoothie" → breakfast, not dinner) instead
@@ -749,21 +762,21 @@ export default function OnboardingScreen() {
             guessedMealType === 'breakfast' || guessedMealType === 'snack'
               ? guessedMealType
               : classifyRecipeByContent(data);
-          let imageUrl = '';
-          try {
-            imageUrl = await generateRecipeImage(
-              data.name || dishName,
-              data.description || `A delicious ${dishName}`,
-              data.ingredients.map((i) => ({ name: i.name, category: i.category }))
-            );
-          } catch {
-            /* image optional */
-          }
+          // NO automatic photo for a dish the user named themselves.
+          //
+          // This used to call generateRecipeImage(), which searches Pexels and
+          // only falls back to the stock placeholder when the search misses. So
+          // "Butter chicken" came back with a convincing stock photo while
+          // "Mum's Sunday rice" got the placeholder — a library that looked
+          // half-finished, with no rule the user could infer. These are the
+          // user's own dishes; an empty slot reads as "add your photo", which is
+          // true, and it is the same on every card. `keepsPlaceholderImage()`
+          // holds the line afterwards — see lib/recipe-image.ts.
           const recipe: Recipe = {
             id: '',
             name: data.name || dishName,
             description: data.description || `A delicious ${dishName}`,
-            imageUrl,
+            imageUrl: '',
             cookTime: data.cookTime,
             prepTime: data.prepTime,
             servings: data.servings,
@@ -777,14 +790,19 @@ export default function OnboardingScreen() {
                 (t) => !['breakfast', 'lunch', 'dinner', 'snack'].includes(t.toLowerCase()),
               ),
               finalMealType,
-              'frequent-cook',
+              // The marker `keepsPlaceholderImage()` reads to stop any later
+              // pipeline from quietly giving this dish a stock photo.
+              FREQUENT_COOK_TAG,
             ],
             calories: data.calories,
             isAIGenerated: true,
             isSaved: true,
-            createdAt: new Date().toISOString(),
+            createdAt: prepCreatedAt(batchStartedAt, dishIndex, names.length),
           };
-          addRecipe(recipe);
+          // Hand the new row's id back to its reserved slot, which swaps from
+          // skeleton to real card in place — no reflow, no position change.
+          const newRecipeId = addRecipe(recipe);
+          resolveRecipePrepDish(dishName, newRecipeId);
         } catch (e) {
           swallow(e, 'one dish failed to build; the rest of the batch continues', 'onboarding');
         } finally {
@@ -795,7 +813,7 @@ export default function OnboardingScreen() {
         }
       });
     },
-    [addRecipe, beginRecipePrep, markRecipePrepProgress]
+    [addRecipe, beginRecipePrep, markRecipePrepProgress, resolveRecipePrepDish]
   );
 
   // ── Step 2 — "You may also like": Inspired suggestions profiled from the

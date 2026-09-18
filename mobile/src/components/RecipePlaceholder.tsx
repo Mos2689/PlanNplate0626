@@ -14,11 +14,26 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import type { ImageStyle, StyleProp } from 'react-native';
 import { Image } from 'expo-image';
 import { designTokens } from '@/lib/design-tokens';
-import { DEFAULT_RECIPE_IMAGE_ID } from '@/lib/recipe-image';
-
 const CREAM = designTokens.colors.cream; // #FAF7F0
-// The original Unsplash stock photo, reused here purely as a blurred backdrop.
-const STOCK_URL = `https://images.unsplash.com/${DEFAULT_RECIPE_IMAGE_ID}?w=800&q=80&auto=format`;
+
+// BUNDLED, not fetched.
+//
+// This used to download an 800px Unsplash JPEG at render time and blur it. That
+// meant every recipe without a photo waited on the network before its backdrop
+// appeared — and since onboarding dishes deliberately ship with no image (see
+// lib/recipe-image.ts), landing after onboarding meant a whole grid of tiles
+// painting flat and then flipping together as one download completed.
+//
+// It is the same image every time, so it lives in the bundle: 35 KB at 400px,
+// which is far more than a 45px blur can show. Zero network, first frame, works
+// offline. `prefetchPlaceholderArt()` existed only to paper over the fetch and
+// was removed with it.
+const ART = require('../../assets/images/recipe-placeholder.jpg');
+
+// The resting colour under the art, for the frame before it decodes. The source
+// is a bowl on a near-white backdrop, so blurring it under the 45% scrim below
+// settles to a mid warm grey — NOT the dark brown a food photo would give.
+const ART_BASE = '#78766F';
 
 interface RecipePlaceholderProps {
   /** Fills its parent — pass the same style DishImage would give the photo. */
@@ -37,11 +52,14 @@ interface RecipePlaceholderProps {
 }
 
 export function RecipePlaceholder({ style, onPress }: RecipePlaceholderProps) {
-  const containerStyle = [{ backgroundColor: CREAM, overflow: 'hidden' as const }, style as object];
+  const containerStyle = [
+    { backgroundColor: ART_BASE, overflow: 'hidden' as const },
+    style as object,
+  ];
   const content = (
     <>
       <Image
-        source={{ uri: STOCK_URL }}
+        source={ART}
         // Cover + heavy blur turns the stock food into an abstract, out-of-focus
         // backdrop rather than a legible dish.
         contentFit="cover"

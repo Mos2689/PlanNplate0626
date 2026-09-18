@@ -34,6 +34,7 @@ import { InstrumentSerif_400Regular_Italic } from '@expo-google-fonts/instrument
 import { initializeMetaSDK } from '@/lib/meta-sdk';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { FailureHost } from '@/components/failure';
+import { MicReadyNudge } from '@/components/MicReadyNudge';
 import { SupportComposer } from '@/components/support/SupportComposer';
 import { setCurrentScreen, startConnectivityMonitoring } from '@/lib/failure';
 import { useShareTarget } from '@/hooks/useShareTarget';
@@ -590,6 +591,11 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           Same pattern as PaywallSheet above: mounted once, driven from
           anywhere via presentFailure(). Rendered last so it stacks on top. */}
       <FailureHost isDark={colorScheme === 'dark'} />
+      {/* One-tap way back after a trip to the OS settings page. iOS kills the
+          app when the microphone switch is toggled, so the voice surface that
+          sent the user there can't restore itself — this reads the breadcrumb
+          left behind and offers the return trip. Self-gates on there being one. */}
+      <MicReadyNudge />
     </ThemeProvider>
       {holdForRedirect && (
         <View

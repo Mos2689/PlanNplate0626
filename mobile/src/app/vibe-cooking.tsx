@@ -74,6 +74,7 @@ import {
 } from '@/lib/vibe-theme';
 import { validateIngredients } from '@/lib/ingredient-validator';
 import { generateRecipeImage } from '@/lib/openai';
+import { keepsPlaceholderImage } from '@/lib/recipe-image';
 import { VibeHero } from '@/components/VibeHero';
 import { IngredientCheckRow } from '@/components/IngredientCheckRow';
 import { CookStepCard } from '@/components/CookStepCard';
@@ -373,7 +374,13 @@ export default function VibeCookingScreen() {
       validatedIngredients.map((ing) => ({ name: ing.name, category: ing.category })),
     )
       .then((url) => {
-        if (url) updateRecipe(realRecipeId, { imageUrl: url });
+        if (!url) return;
+        // addRecipe upserts, so `realRecipeId` can be an existing row — possibly
+        // a dish the user named during onboarding, which keeps its placeholder
+        // on purpose. Re-read it rather than trusting the id to be new.
+        const target = useMealPlanStore.getState().recipes.find((r) => r.id === realRecipeId);
+        if (target && keepsPlaceholderImage(target)) return;
+        updateRecipe(realRecipeId, { imageUrl: url });
       })
       .catch(() => {});
 

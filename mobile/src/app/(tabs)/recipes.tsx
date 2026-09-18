@@ -54,6 +54,8 @@ import { t } from '@/lib/platform-tokens';
 import { CURATED_MEAL_PLANS } from '@/lib/curated-meal-plans';
 import { FILTER_CATEGORIES } from '@/lib/recipe-categories';
 import { RecipeGridCard } from '@/components/RecipeGridCard';
+import { RecipePrepCard } from '@/components/RecipePrepCard';
+import { composePrepGrid, type PrepGridItem } from '@/lib/recipe-prep-grid';
 import { RecipePrepBanner } from '@/components/RecipePrepBanner';
 import { DuplicateRecipeModal, findDuplicateGroups } from '@/components/DuplicateRecipeModal';
 import { NewCollectionModal } from '@/components/NewCollectionModal';
@@ -78,6 +80,15 @@ type CollectionId = SmartCollectionId | `custom:${string}`;
 const customSelection = (id: string): CollectionId => `custom:${id}`;
 const customIdOf = (sel: CollectionId): string | null =>
   sel.startsWith('custom:') ? sel.slice('custom:'.length) : null;
+
+/**
+ * What one cell of the grid holds.
+ *
+ * A union rather than a Recipe-shaped stand-in on purpose: a fake Recipe would
+ * flow into `findDuplicateGroups`, the category counts and every other consumer
+ * of the library. Placeholders exist ONLY in the FlatList's data.
+ */
+type GridItem = PrepGridItem<Recipe>;
 
 /** "Recently Added" window — recipes saved within this many days. */
 const RECENTLY_ADDED_DAYS = 30;
@@ -575,6 +586,36 @@ export default function RecipesScreen() {
   // bar — visible above the keyboard, instead of pushed off-screen behind it.
   const isSearching = searchQuery.trim().length > 0;
 
+  // ── First-run grid: reserved slots for the dishes named in onboarding ──────
+  //
+  // `filteredRecipes` sorts by createdAt DESC, and each onboarding dish is
+  // stamped createdAt at the moment it finishes building. So every dish that
+  // resolved was inserted at index 0 and pushed the whole grid down a row —
+  // up to five unannounced jumps over ~15s, some while the user was reading.
+  //
+  // While a prep run is active we instead lay the named dishes out FIRST, in
+  // the order the user spoke them, each rendering as either its finished
+  // recipe or a named skeleton. Slot i is always dish i, so a dish resolving
+  // swaps its own tile and moves nothing else. Once `clearRecipePrep` fires
+  // the pinning drops and the list returns to plain createdAt order.
+  //
+  // Only in the unfiltered default view: a skeleton must never show up under a
+  // category chip or inside search results, where it would be a lie about what
+  // matched.
+  const pinPrepSlots =
+    recipePrepActive && collection === 'all' && selectedCategory === 'all' && !isSearching;
+
+  const gridData = useMemo<GridItem[]>(() => {
+    if (!pinPrepSlots || !recipePrep) {
+      return filteredRecipes.map((recipe) => ({
+        kind: 'recipe' as const,
+        recipe,
+        pinned: false,
+      }));
+    }
+    return composePrepGrid(recipePrep.dishes, filteredRecipes);
+  }, [pinPrepSlots, recipePrep, filteredRecipes]);
+
   // Signature of a group = its sorted member recipe ids. Adding a NEW similar
   // recipe changes the membership → new signature → the group is shown again.
   const allDuplicateGroups = useMemo(() => findDuplicateGroups(recipes), [recipes]);
@@ -732,18 +773,28 @@ export default function RecipesScreen() {
   // useCallback-stable, so every prop the card receives keeps its identity
   // between renders unless the recipe itself changed.
   const renderRecipeCard = useCallback(
-    ({ item, index }: { item: Recipe; index: number }) => (
-      <RecipeGridCard
-        recipe={item}
-        onPress={handleRecipePress}
-        onToggleSave={handleToggleSave}
-        onAddToPlan={handleAddToPlan}
-        onAddToGrocery={handleAddToGrocery}
-        onLongPress={handleOpenSaveSheet}
-        isDark={isDark}
-        index={index}
-      />
-    ),
+    ({ item, index }: { item: GridItem; index: number }) => {
+      // A dish from onboarding that hasn't finished building. Same footprint as
+      // the real card, so the swap costs no layout.
+      if (item.kind === 'pending') {
+        return <RecipePrepCard name={item.name} isDark={isDark} />;
+      }
+      return (
+        <RecipeGridCard
+          recipe={item.recipe}
+          onPress={handleRecipePress}
+          onToggleSave={handleToggleSave}
+          onAddToPlan={handleAddToPlan}
+          onAddToGrocery={handleAddToGrocery}
+          onLongPress={handleOpenSaveSheet}
+          isDark={isDark}
+          index={index}
+          // A pinned card is taking over a tile that already looked like it —
+          // let it appear rather than spring in. See PrepGridItem.pinned.
+          animateEntrance={!item.pinned}
+        />
+      );
+    },
     [handleRecipePress, handleToggleSave, handleAddToPlan, handleAddToGrocery, handleOpenSaveSheet, isDark],
   );
 
@@ -769,8 +820,17 @@ export default function RecipesScreen() {
         <Animated.FlatList
           onScroll={stickyScrollHandler}
           scrollEventThrottle={16}
-          data={filteredRecipes}
-          keyExtractor={(item) => item.id}
+          data={gridData}
+          keyExtractor={(item) =>
+            item.kind === 'pending' ? `pending:${item.key}` : item.recipe.id
+          }
+          // NO itemLayoutAnimation here on purpose. It would have smoothed the
+          // hand-off when clearRecipePrep drops the pinning — but it applies to
+          // EVERY list mutation (search, filter, delete), which is an app-wide
+          // behaviour change on a 2-column grid where Reanimated's layout
+          // animations are known to misbehave. The hand-off is instead made a
+          // no-op at the source: buildFrequentCookRecipes stamps createdAt in
+          // spoken order, so the natural sort already matches the pinned one.
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           // With the keyboard up during search: let a tap on a result register

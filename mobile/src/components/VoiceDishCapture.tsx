@@ -23,23 +23,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import {
   Check,
-  ChefHat,
   ChevronRight,
   CirclePlus,
   CookingPot,
-  Croissant,
   Keyboard as KeyboardIcon,
   Mic,
+  MicOff,
   Pencil,
-  Salad,
-  Soup,
-  UtensilsCrossed,
   X,
 } from 'lucide-react-native';
 import Animated, {
   cancelAnimation,
   Easing,
-  Extrapolation,
   FadeInDown,
   interpolate,
   runOnJS,
@@ -47,14 +42,12 @@ import Animated, {
   useFrameCallback,
   useReducedMotion,
   useSharedValue,
-  withDelay,
   withRepeat,
   withSequence,
   withSpring,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { designTokens, easing, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
 import { apiFormCall } from '@/lib/api-router';
 import { parseDishNamesFromTranscript, splitDishNames } from '@/lib/voice-dishes';
@@ -71,6 +64,22 @@ import {
   trackVoiceTranscribeFailed,
   trackVoiceTranscribeSucceeded,
 } from '@/lib/onboarding-analytics';
+import { useMicPermissionGate } from '@/hooks/useMicPermissionGate';
+// The stage's motion vocabulary. These used to live in this file; they moved so
+// add-recipe and grocery could stop running a first-generation mic animation and
+// share this one. The composition below is unchanged — only the definitions left.
+import {
+  ARC_INNER_MS,
+  ARC_OUTER_MS,
+  Aurora,
+  AURORA_SPIN_MS,
+  BlinkDot,
+  CookingIconCycle,
+  Halo,
+  PulseRing,
+  ThinkingArc,
+  WaveBar,
+} from '@/components/voice/primitives';
 import type { DishInputMethod } from '@/lib/onboarding-analytics-policy';
 
 // ── Stage geometry (verbatim from the prototype) ─────────────────────────────
@@ -82,19 +91,13 @@ const MIC_LISTENING = 156;
 const MIC_COMPACT = 96;
 const RING = 190;
 const HALO = 196;
-const RING_CYCLE_MS = 2600;
-const AURORA_SPIN_MS = 9000;
 const BREATHE_MS = 4200;
 
 // ── Processing ("thinking") motion ───────────────────────────────────────────
 // Whisper + the dish splitter take 1-3s. Without motion the screen reads as
 // crashed, so the mic disc becomes the loading indicator: cooking icons drift
 // through it while two arcs orbit outside, and the copy advances.
-const THINKING_ICONS = [CookingPot, ChefHat, Soup, Salad, Croissant, UtensilsCrossed];
-const ICON_SLOT_MS = 900;
 const ARC_SIZE = 132;
-const ARC_OUTER_MS = 2600;
-const ARC_INNER_MS = 3800;
 const THINKING_LINES = ['Making sense of that…', 'Picking out the dishes…', 'Almost there…'];
 const THINKING_LINE_MS = 1900;
 
@@ -106,7 +109,6 @@ const HERO_HOLD_MS = 620;
 const HERO_OUT_MS = 280;
 
 const OUT_STRONG = Easing.bezier(...easing.outStrong);
-const RING_EASE = Easing.bezier(0.22, 1, 0.36, 1);
 const HERO_OUT_EASE = Easing.bezier(0.4, 0, 0.7, 0.2);
 // The prototype's mic-resize curve is cubic-bezier(.34,1.4,.5,1) — an overshoot.
 // A light spring is the honest RN equivalent.
@@ -144,287 +146,6 @@ function paletteFor(isDark: boolean): Palette {
         chip: designTokens.colors.hair2,
         chipHair: 'rgba(84,100,69,0.14)',
       };
-}
-
-// ── Aurora — two soft colour blobs that rotate behind the mic while listening ─
-// The prototype blurs two radial gradients by 26px. react-native-svg has no
-// blur we can lean on cheaply, but a radial gradient that fades to zero over
-// its whole radius reads the same at this scale.
-const Aurora = React.memo(function Aurora() {
-  return (
-    <Svg width={STAGE_W} height={STAGE_W} viewBox="0 0 100 100">
-      <Defs>
-        <RadialGradient id="auroraWarm" cx="50%" cy="50%" r="50%">
-          <Stop offset="0" stopColor={designTokens.colors.olive} stopOpacity={0.5} />
-          <Stop offset="1" stopColor={designTokens.colors.olive} stopOpacity={0} />
-        </RadialGradient>
-        <RadialGradient id="auroraSage" cx="50%" cy="50%" r="50%">
-          <Stop offset="0" stopColor={designTokens.colors.brand} stopOpacity={0.42} />
-          <Stop offset="1" stopColor={designTokens.colors.brand} stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      <Circle cx="32" cy="30" r="58" fill="url(#auroraWarm)" />
-      <Circle cx="70" cy="68" r="58" fill="url(#auroraSage)" />
-    </Svg>
-  );
-});
-
-// ── Halo — the faint terracotta glow that sits under the resting mic ─────────
-const Halo = React.memo(function Halo() {
-  return (
-    <Svg width={HALO} height={HALO} viewBox="0 0 100 100">
-      <Defs>
-        <RadialGradient id="halo" cx="50%" cy="50%" r="50%">
-          <Stop offset="0" stopColor={designTokens.colors.olive} stopOpacity={0.13} />
-          <Stop offset="0.62" stopColor={designTokens.colors.olive} stopOpacity={0.05} />
-          <Stop offset="1" stopColor={designTokens.colors.olive} stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      <Circle cx="50" cy="50" r="50" fill="url(#halo)" />
-    </Svg>
-  );
-});
-
-// ── Pulse ring — one of three concentric rings expanding out of the mic ──────
-// Keyframe from the prototype: scale .72 → 1.28 and opacity .55 → 0 by 70%,
-// then held until the cycle restarts.
-function PulseRing({
-  delay,
-  color,
-  active,
-  reduced,
-}: {
-  delay: number;
-  color: string;
-  active: boolean;
-  reduced: boolean;
-}) {
-  const p = useSharedValue(0);
-
-  useEffect(() => {
-    // Idle is where the user spends most of their time — don't burn UI-thread
-    // frames on rings nobody can see.
-    if (reduced || !active) {
-      cancelAnimation(p);
-      p.value = 0;
-      return;
-    }
-    p.value = withDelay(
-      delay,
-      withRepeat(withTiming(1, { duration: RING_CYCLE_MS, easing: RING_EASE }), -1, false)
-    );
-    return () => cancelAnimation(p);
-  }, [delay, p, active, reduced]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: interpolate(p.value, [0, 0.7, 1], [0.55, 0, 0]),
-    transform: [{ scale: interpolate(p.value, [0, 0.7, 1], [0.72, 1.28, 1.28]) }],
-  }));
-
-  return (
-    <Animated.View
-      style={[
-        style,
-        {
-          position: 'absolute',
-          width: RING,
-          height: RING,
-          borderRadius: RING / 2,
-          borderWidth: 1.5,
-          borderColor: color,
-        },
-      ]}
-    />
-  );
-}
-
-// ── Cooking-icon carousel ───────────────────────────────────────────────────
-// One linear clock walks through the icon list; every icon derives its own
-// opacity / drift / scale from its distance to the clock, so neighbours cross-
-// fade into each other and nothing ever mounts or unmounts mid-animation.
-function CookingIcon({
-  Icon,
-  index,
-  count,
-  clock,
-  size,
-}: {
-  Icon: typeof CookingPot;
-  index: number;
-  count: number;
-  clock: SharedValue<number>;
-  size: number;
-}) {
-  const style = useAnimatedStyle(() => {
-    // Distance from the clock to this icon's slot, wrapped the short way round
-    // so the hand-off from the last icon back to the first is seamless.
-    let local = clock.value - index;
-    const half = count / 2;
-    if (local > half) local -= count;
-    if (local < -half) local += count;
-    return {
-      opacity: interpolate(local, [-1, -0.34, 0.34, 1], [0, 1, 1, 0], Extrapolation.CLAMP),
-      transform: [
-        { translateY: interpolate(local, [-1, 0, 1], [13, 0, -13], Extrapolation.CLAMP) },
-        { scale: interpolate(local, [-1, 0, 1], [0.7, 1, 0.7], Extrapolation.CLAMP) },
-      ],
-    };
-  });
-
-  return (
-    <Animated.View style={[style, { position: 'absolute' }]}>
-      <Icon size={size} color="#F6F2E9" strokeWidth={1.7} />
-    </Animated.View>
-  );
-}
-
-function CookingIconCycle({ size, reduced }: { size: number; reduced: boolean }) {
-  const clock = useSharedValue(0);
-
-  useEffect(() => {
-    if (reduced) return; // a single resting icon is enough
-    clock.value = withRepeat(
-      withTiming(THINKING_ICONS.length, {
-        duration: THINKING_ICONS.length * ICON_SLOT_MS,
-        easing: Easing.linear,
-      }),
-      -1,
-      false
-    );
-    return () => cancelAnimation(clock);
-  }, [clock, reduced]);
-
-  return (
-    <View
-      style={{ alignItems: 'center', justifyContent: 'center' }}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-    >
-      {THINKING_ICONS.map((Icon, i) => (
-        <CookingIcon
-          key={i}
-          Icon={Icon}
-          index={i}
-          count={THINKING_ICONS.length}
-          clock={clock}
-          size={size}
-        />
-      ))}
-    </View>
-  );
-}
-
-// ── Orbiting arcs — the "we're working" ring around the disc ─────────────────
-function ThinkingArc({
-  duration,
-  reverse,
-  radius,
-  dash,
-  color,
-  width,
-  active,
-  reduced,
-}: {
-  duration: number;
-  reverse: boolean;
-  radius: number;
-  dash: number;
-  color: string;
-  width: number;
-  active: boolean;
-  reduced: boolean;
-}) {
-  const spin = useSharedValue(0);
-
-  useEffect(() => {
-    if (reduced || !active) {
-      cancelAnimation(spin);
-      return;
-    }
-    spin.value = withRepeat(withTiming(1, { duration, easing: Easing.linear }), -1, false);
-    return () => cancelAnimation(spin);
-  }, [duration, spin, active, reduced]);
-
-  const style = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${spin.value * (reverse ? -360 : 360)}deg` }],
-  }));
-
-  const circumference = 2 * Math.PI * radius;
-
-  return (
-    <Animated.View style={[style, { position: 'absolute' }]} pointerEvents="none">
-      <Svg width={ARC_SIZE} height={ARC_SIZE} viewBox="0 0 100 100">
-        <Circle
-          cx="50"
-          cy="50"
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={width}
-          strokeLinecap="round"
-          strokeDasharray={`${circumference * dash} ${circumference}`}
-        />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-// ── Waveform bar ────────────────────────────────────────────────────────────
-// Same maths as the prototype's rAF loop, except `env` is the live mic level
-// instead of a constant — so the bars genuinely track the user's voice.
-function WaveBar({
-  index,
-  clock,
-  level,
-}: {
-  index: number;
-  clock: SharedValue<number>;
-  level: SharedValue<number>;
-}) {
-  const style = useAnimatedStyle(() => {
-    const env = 0.35 + level.value * 0.65;
-    const wobble = Math.abs(Math.sin(clock.value * (2.1 + index * 0.55) + index));
-    const scaleY = 0.18 + wobble * 0.82 * env * (index === 2 ? 1 : 0.8);
-    return { transform: [{ scaleY }] };
-  });
-
-  return (
-    <Animated.View
-      style={[
-        style,
-        {
-          width: 5,
-          height: '100%',
-          borderRadius: 3,
-          backgroundColor: index === 2 ? '#FFFFFF' : 'rgba(255,255,255,0.92)',
-        },
-      ]}
-    />
-  );
-}
-
-// ── Blinking dot — the "we're working on it" caret next to the transcript ────
-function BlinkDot({ delay, reduced }: { delay: number; reduced: boolean }) {
-  const p = useSharedValue(reduced ? 1 : 0.25);
-
-  useEffect(() => {
-    if (reduced) return;
-    p.value = withDelay(
-      delay,
-      withRepeat(withTiming(1, { duration: 550, easing: Easing.inOut(Easing.ease) }), -1, true)
-    );
-  }, [delay, p, reduced]);
-
-  const style = useAnimatedStyle(() => ({ opacity: p.value }));
-
-  return (
-    <Animated.View
-      style={[
-        style,
-        { width: 4, height: 4, borderRadius: 2, backgroundColor: designTokens.colors.olive },
-      ]}
-    />
-  );
 }
 
 // ── Captured dish chip ──────────────────────────────────────────────────────
@@ -571,12 +292,27 @@ export function VoiceDishCapture({
   const [hero, setHero] = useState<{ name: string; extra: number } | null>(null);
   const [heroLeaving, setHeroLeaving] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  // The OS has stopped prompting for the microphone — a distinct state from a
+  // one-off failure, because tapping the mic again cannot fix it.
+  const [permissionBlocked, setPermissionBlocked] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [thinkLine, setThinkLine] = useState(0);
   const [typing, setTyping] = useState(false);
   const [typeDraft, setTypeDraft] = useState('');
   const [editingDish, setEditingDish] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
+
+  // Microphone permission, including the Settings round trip. `startVoice` is
+  // defined further down, so the gate reaches it through a ref.
+  const startVoiceRef = useRef<() => void>(() => {});
+  const micGate = useMicPermissionGate({
+    surface: 'onboarding-dishes',
+    onGranted: () => {
+      setPermissionBlocked(false);
+      setVoiceError(null);
+      startVoiceRef.current();
+    },
+  });
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   // Guards against a double-tap / rapid re-render launching two createAsync
@@ -944,13 +680,21 @@ export function VoiceDishCapture({
       setVoiceError(null);
       setElapsed(0);
       trackDishCaptureStarted('voice');
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
+      const outcome = await micGate.check();
+      if (outcome !== 'granted') {
         // The single biggest silent drop-off in a voice-first step — a user who
         // declines the mic here has no obvious way forward except noticing the
         // TYPE IT card, so this needs to be visible in the funnel.
         trackVoicePermissionDenied();
-        setVoiceError('Microphone permission is required');
+        if (outcome === 'blocked') {
+          // The OS will never prompt again, so the status line's "permission is
+          // required" was a statement with no verb. Raise the card below, which
+          // carries the way out.
+          setPermissionBlocked(true);
+          setVoiceError(null);
+        } else {
+          setVoiceError('Microphone access is needed — tap the mic to allow it');
+        }
         return;
       }
       // expo-av allows only ONE active Recording. A recorder left behind by a
@@ -1008,7 +752,11 @@ export function VoiceDishCapture({
     } finally {
       startingRef.current = false;
     }
-  }, [dishes.length, level]);
+  }, [dishes.length, level, micGate]);
+
+  // Kept current so the permission gate can start listening the moment the user
+  // returns from Settings, without a second tap on the mic.
+  startVoiceRef.current = startVoice;
 
   const stopVoice = useCallback(async () => {
     setPhase('thinking');
@@ -1147,11 +895,11 @@ export function VoiceDishCapture({
           ]}
         >
           <Animated.View style={[auroraStyle, { position: 'absolute' }]} pointerEvents="none">
-            <Aurora />
+            <Aurora size={STAGE_W} />
           </Animated.View>
 
           <Animated.View style={[haloStyle, { position: 'absolute' }]} pointerEvents="none">
-            <Halo />
+            <Halo size={HALO} />
           </Animated.View>
 
           <Animated.View
@@ -1163,9 +911,9 @@ export function VoiceDishCapture({
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants"
           >
-            <PulseRing delay={0} color="rgba(84,100,69,0.35)" active={listening} reduced={reduced} />
-            <PulseRing delay={850} color="rgba(228,109,70,0.32)" active={listening} reduced={reduced} />
-            <PulseRing delay={1700} color="rgba(84,100,69,0.22)" active={listening} reduced={reduced} />
+            <PulseRing delay={0} color="rgba(84,100,69,0.35)" active={listening} reduced={reduced} size={RING} />
+            <PulseRing delay={850} color="rgba(228,109,70,0.32)" active={listening} reduced={reduced} size={RING} />
+            <PulseRing delay={1700} color="rgba(84,100,69,0.22)" active={listening} reduced={reduced} size={RING} />
           </Animated.View>
 
           {/* Orbiting arcs — only while we're waiting on the transcription */}
@@ -1187,6 +935,7 @@ export function VoiceDishCapture({
               color={designTokens.colors.brand}
               active={phase === 'thinking'}
               reduced={reduced}
+              size={ARC_SIZE}
             />
             <ThinkingArc
               duration={ARC_INNER_MS}
@@ -1197,6 +946,7 @@ export function VoiceDishCapture({
               color={designTokens.colors.olive}
               active={phase === 'thinking'}
               reduced={reduced}
+              size={ARC_SIZE}
             />
           </Animated.View>
 
@@ -1436,6 +1186,81 @@ export function VoiceDishCapture({
           </View>
         )}
       </View>
+
+      {/* ── Microphone blocked ────────────────────────────────────────────
+          The OS has stopped asking, so the mic above is inert no matter how
+          many times it's tapped. This is the only way back — and the TYPE IT
+          card directly below stays as the escape hatch for anyone who would
+          rather not leave the app at all. Lives here rather than in the status
+          line, which is a fixed 26pt row with no space for a button. ── */}
+      {!raised && permissionBlocked && (
+        <View style={{ paddingHorizontal: 24, marginBottom: 18 }}>
+          <View
+            style={{
+              padding: 15,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: designTokens.colors.noticeBorder,
+              backgroundColor: designTokens.colors.noticeSurface,
+            }}
+            accessible
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+            accessibilityLabel="Microphone access is off. Turn it on in Settings to speak your dishes, or type them instead."
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+              <MicOff size={16} color={designTokens.colors.notice} strokeWidth={2} />
+              <Text
+                style={{
+                  fontFamily: designTokens.font.medium,
+                  fontSize: 14,
+                  color: designTokens.colors.notice,
+                }}
+              >
+                Microphone access is off
+              </Text>
+            </View>
+            <Text
+              style={{
+                marginTop: 4,
+                fontFamily: designTokens.font.regular,
+                fontSize: 12.5,
+                lineHeight: 18,
+                color: colors.ink2,
+              }}
+            >
+              Turn it on in Settings to speak your dishes — or type them instead.
+            </Text>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void micGate.openSettings();
+              }}
+              style={{
+                marginTop: 12,
+                minHeight: 44,
+                borderRadius: 14,
+                backgroundColor: designTokens.colors.brand,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Enable in Settings"
+            >
+              <Text
+                style={{
+                  fontFamily: designTokens.font.semibold,
+                  fontSize: 14,
+                  letterSpacing: -0.14,
+                  color: '#FFFFFF',
+                }}
+              >
+                Enable in Settings
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       {/* ── OR / TYPE IT / hint — shown whenever the mic isn't actively in play
           (idle or settled). Plain conditional render so it can never get stuck

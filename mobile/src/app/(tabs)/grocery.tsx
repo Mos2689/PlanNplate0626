@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Share, KeyboardAvoidingView as RNKeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Share, KeyboardAvoidingView as RNKeyboardAvoidingView, Platform } from 'react-native';
 import { KeyboardAvoidingView as ControllerKeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 const KeyboardAvoidingView = Platform.OS === 'android' ? ControllerKeyboardAvoidingView : RNKeyboardAvoidingView;
@@ -34,16 +34,15 @@ import {
 } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
-  withRepeat,
   withTiming,
   useSharedValue,
-  useAnimatedStyle,
-  Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useMealPlanStore, MONTHLY_FEATURE_LIMITS, type GroceryItem, type Ingredient, type SavedGroceryList } from '@/lib/store';
 import { classifyFailure, makeFailure, reportFailure, validationFailure, type Failure, reportAndPresent } from '@/lib/failure';
 import { InlineFailure } from '@/components/failure';
+import { useMicPermissionGate } from '@/hooks/useMicPermissionGate';
+import { VoiceOrb } from '@/components/voice/VoiceOrb';
 import { track } from '@/lib/analytics';
 import { SupportPrompt } from '@/components/support/SupportPrompt';
 import { supportCopy } from '@/lib/support/copy';
@@ -254,14 +253,31 @@ function VoiceGroceryCapture({
 }) {
   const [phase, setPhase] = useState<'idle' | 'recording' | 'processing' | 'review'>('idle');
   const [error, setError] = useState<Failure | null>(null);
+  // Separate from `error` so the inline surface knows whether its button should
+  // retry or leave for Settings — the two look identical in a Failure.
+  const [micBlocked, setMicBlocked] = useState(false);
   const [items, setItems] = useState<ParsedGroceryItem[]>([]);
   const recordingRef = useRef<Audio.Recording | null>(null);
+
+  // `startRecording` is defined below; the gate needs it on the return trip
+  // from Settings, so it's reached through a ref rather than reordering.
+  const startRecordingRef = useRef<() => void>(() => {});
+  const mic = useMicPermissionGate({
+    surface: 'grocery',
+    onGranted: () => {
+      setError(null);
+      setMicBlocked(false);
+      startRecordingRef.current();
+    },
+  });
 
   const hasPremiumAccess = useHasPremiumAccess();
   const openPaywallSheet = useSubscriptionStore((s) => s.openPaywallSheet);
 
-  const pulse = useSharedValue(1);
-  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+  // Live mic amplitude, 0-1, driving VoiceOrb's waveform. Previously the mic
+  // disc scaled on a fixed 750ms loop regardless of what it was hearing; the
+  // `pulse` value that drove it is gone, since the orb owns its own motion.
+  const micLevel = useSharedValue(0);
 
   const startRecording = useCallback(async () => {
     try {
@@ -278,9 +294,23 @@ function VoiceGroceryCapture({
         }
       }
       setError(null);
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
+      setMicBlocked(false);
+      // `blocked` means the OS will never prompt again, so the only honest
+      // next step is Settings. `denied` still re-prompts, so it stays a retry.
+      const outcome = await mic.check();
+      if (outcome === 'blocked') {
+        setMicBlocked(true);
         setError(makeFailure('permission-denied', { feature: 'voice' }));
+        return;
+      }
+      if (outcome !== 'granted') {
+        setError(
+          validationFailure(
+            'Microphone access is needed',
+            'Tap the mic and allow access to add items by voice, or type them instead.',
+            'voice',
+          ),
+        );
         return;
       }
       // expo-av allows only ONE active Recording. Unload any recorder left by a
@@ -297,20 +327,36 @@ function VoiceGroceryCapture({
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       // createAsync prepares AND starts atomically — avoids the prepare/start
-      // race that intermittently throws "recorder not prepared".
+      // race that intermittently throws "recorder not prepared". The status
+      // callback is what feeds the waveform: HIGH_QUALITY already sets
+      // isMeteringEnabled, so `metering` (dBFS) arrives every 80ms.
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        (status) => {
+          if (typeof status.metering === 'number') {
+            // −60dB (near silence) → 0, 0dB (clipping) → 1.
+            const next = Math.max(0, Math.min(1, (status.metering + 60) / 60));
+            micLevel.value = withTiming(next, { duration: 90 });
+          } else {
+            // Some Android devices never report metering — hold a constant
+            // envelope so the bars still move.
+            micLevel.value = 0.45;
+          }
+        },
+        80,
       );
       recordingRef.current = recording;
       setPhase('recording');
-      pulse.value = withRepeat(
-        withTiming(1.18, { duration: 750, easing: Easing.inOut(Easing.ease) }),
-        -1,
-        true,
-      );
     } catch (e) {
+      // Was hard-coded to 'permission-denied', which mislabelled every start
+      // failure — a "recorder not prepared" race included. That was merely
+      // confusing while the copy was inert; now that the action really opens
+      // Settings it would send someone to fix a permission that was never the
+      // problem. Classify it, exactly as stopRecording already does.
       console.error('[VoiceGrocery] start failed', e);
-      setError(makeFailure('permission-denied', { feature: 'voice' }));
+      const failure = classifyFailure(e, { feature: 'voice' });
+      reportFailure(failure);
+      setError(failure);
       setPhase('idle');
       if (recordingRef.current) {
         try {
@@ -321,10 +367,13 @@ function VoiceGroceryCapture({
         recordingRef.current = null;
       }
     }
-  }, [pulse, hasPremiumAccess, onClose, openPaywallSheet]);
+  }, [hasPremiumAccess, onClose, openPaywallSheet, mic, micLevel]);
+
+  // Kept current so the permission gate can restart recording when the user
+  // returns from Settings without this callback being a dependency of itself.
+  startRecordingRef.current = startRecording;
 
   const stopRecording = useCallback(async () => {
-    pulse.value = 1;
     const recording = recordingRef.current;
     recordingRef.current = null;
     if (!recording) {
@@ -368,7 +417,7 @@ function VoiceGroceryCapture({
         /* ignore */
       }
     }
-  }, [pulse, hasPremiumAccess]);
+  }, [hasPremiumAccess]);
 
   const removeItem = useCallback((idx: number) => {
     setItems((prev) => prev.filter((_, i) => i !== idx));
@@ -379,30 +428,53 @@ function VoiceGroceryCapture({
   if (phase !== 'review') {
     const recording = phase === 'recording';
     const processing = phase === 'processing';
+    // Tighter than before on purpose: the orb's stage carries ~35px of
+    // transparent aurora on every side, so the old mb-6 under the hint and
+    // py-3 on the container would now read as a hole rather than spacing.
     return (
-      <View className="items-center py-3">
-        <Text className={cn('text-sm text-center mb-6 px-2', labelText)}>
+      <View className="items-center pt-2 pb-1">
+        <Text className={cn('text-sm text-center mb-1 px-2', labelText)}>
           Tap the mic and say your items with quantities — e.g. “two onions, a loaf of bread, 500 grams of chicken, milk”.
         </Text>
-        <Animated.View style={pulseStyle}>
-          <Pressable
-            onPress={recording ? stopRecording : startRecording}
-            disabled={processing}
-            className={cn(
-              'w-24 h-24 rounded-full items-center justify-center',
-              recording ? 'bg-red-500' : 'bg-sage-500',
-              processing && 'opacity-60',
-            )}
-          >
-            {processing ? <ActivityIndicator color="#fff" /> : <Mic size={34} color="#fff" strokeWidth={1.8} />}
-          </Pressable>
-        </Animated.View>
-        <Text className={cn('text-sm font-medium mt-4', isDark ? 'text-white' : 'text-charcoal-800')}>
+        {/* The onboarding stage, scaled for a bottom sheet. Was a flat 96px
+            disc that turned red while recording and swapped its icon for a
+            spinner while processing — one component doing three jobs badly.
+            The orb keeps its place and changes state: breathing mic when idle,
+            metered bars while listening, cooking icons while sorting. */}
+        <VoiceOrb
+          phase={processing ? 'thinking' : recording ? 'listening' : 'idle'}
+          level={micLevel}
+          size={118}
+          onPress={recording ? stopRecording : startRecording}
+          disabled={processing}
+          accessibilityLabel={
+            processing
+              ? 'Sorting your items'
+              : recording
+                ? 'Stop recording'
+                : 'Record your grocery items'
+          }
+        />
+        <Text className={cn('text-sm font-medium mt-1', isDark ? 'text-white' : 'text-charcoal-800')}>
           {processing ? 'Sorting your items…' : recording ? 'Listening… tap to stop' : 'Tap to talk'}
         </Text>
         {error && (
-          <View style={{ marginTop: 12 }}>
-            <InlineFailure failure={error} compact />
+          // `alignSelf: stretch` is the whole fix for the mic-off state showing
+          // as a bare coloured sliver. The parent is `items-center`, which sizes
+          // children to their own content — and InlineFailure's text column is
+          // `flex: 1, minWidth: 0`, so with no width to divide it collapsed to
+          // the width of its 6px dot and squeezed every character out of view.
+          // The message was rendering the whole time; it had nowhere to go.
+          <View style={{ marginTop: 12, alignSelf: 'stretch' }}>
+            {/* `compact` hides the body, and omitting `onAction` hid the
+                button — which is why the catalogue's "Open Settings" copy has
+                never been visible here. A permission failure needs both: the
+                sentence explains the state, the button is the way out. */}
+            <InlineFailure
+              failure={error}
+              compact={!micBlocked}
+              onAction={micBlocked ? () => void mic.openSettings() : undefined}
+            />
           </View>
         )}
       </View>
@@ -478,16 +550,32 @@ interface AddItemModalProps {
   isDark: boolean;
   existingItems: GroceryItem[];
   groceryItems: GroceryItem[];
+  /**
+   * Which tab the modal opens on. Defaults to 'type' — only the post-Settings
+   * resume (`?addItem=voice`) asks for 'talk', so the user lands back on the
+   * voice capture they were sent away from.
+   */
+  initialMode?: 'type' | 'talk';
 }
 
-function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems, groceryItems }: AddItemModalProps) {
+function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems, groceryItems, initialMode = 'type' }: AddItemModalProps) {
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [unit, setUnit] = useState('item');
   const [category, setCategory] = useState<Ingredient['category']>('other');
   const [showUnitPicker, setShowUnitPicker] = useState(false);
-  const [mode, setMode] = useState<'type' | 'talk'>('type');
+  const [mode, setMode] = useState<'type' | 'talk'>(initialMode);
+
+  // This modal stays mounted and keeps whichever tab the user last chose. Only
+  // force the tab when a caller explicitly asks for 'talk' (the post-Settings
+  // resume), so the default open keeps remembering the user's choice.
+  const wasVisibleRef = useRef(visible);
+  useEffect(() => {
+    const justOpened = visible && !wasVisibleRef.current;
+    wasVisibleRef.current = visible;
+    if (justOpened && initialMode === 'talk') setMode('talk');
+  }, [visible, initialMode]);
 
   // Duplicate detection state
   // matchedItems: array of all fuzzy-matching items
@@ -1825,6 +1913,17 @@ export default function GroceryScreen() {
     }
   }, [params.showSavedLists]);
 
+  // `?addItem=voice` — the return trip from the OS settings page, fired by
+  // MicReadyNudge after iOS restarted the app. Reopens the Add Item modal on
+  // the Talk tab so the user is back where the permission prompt interrupted
+  // them. Mirrors the `showSavedLists` deep link above.
+  const [addItemVoiceRequested, setAddItemVoiceRequested] = useState(false);
+  useEffect(() => {
+    if (params.addItem !== 'voice') return;
+    setAddItemVoiceRequested(true);
+    setShowAddModal(true);
+  }, [params.addItem]);
+
   // Return to Profile when a Profile-launched saved-list view is closed.
   // Navigate to the Profile tab explicitly — router.back() pops to the tab
   // navigator's initial route (Meal Plan), not Profile.
@@ -2906,12 +3005,17 @@ export default function GroceryScreen() {
       {/* Add Item Modal */}
       <AddItemModal
         visible={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => {
+          setShowAddModal(false);
+          // One-shot: a later "+" tap opens on whichever tab the user prefers.
+          setAddItemVoiceRequested(false);
+        }}
         onAdd={isSavedListMode ? addCurrentSavedListItem : addCustomGroceryItem}
         onMerge={isSavedListMode ? mergeIntoCurrentSavedListItem : mergeIntoGroceryItem}
         isDark={isDark}
         existingItems={isSavedListMode ? currentSavedListItems : [...groceryItems, ...customGroceryItems]}
         groceryItems={isSavedListMode ? currentSavedListItems : groceryItems}
+        initialMode={addItemVoiceRequested ? 'talk' : 'type'}
       />
 
       {/* Date Range Picker Modal */}
