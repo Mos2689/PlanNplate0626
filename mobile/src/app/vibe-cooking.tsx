@@ -83,6 +83,13 @@ import { VibeTimerCompleteSheet } from '@/components/VibeTimerCompleteSheet';
 import { useTimerChime } from '@/lib/use-timer-chime';
 
 const EASE = Easing.bezier(...easing.outStrong);
+
+// Product decision: recipes saved from "Make your own" (Vibe Cooking) keep
+// the branded placeholder photo instead of being patched with an
+// auto-fetched one. The Pexels lookup below (`ensureRecipeSaved`) is kept
+// fully intact as dead code — flip this back to true to restore it.
+const USE_PEXELS_FOR_VIBE_COOKING = false;
+
 const { width: SCREEN_W } = Dimensions.get('window');
 // Hero takes ~78% of screen width — cinematic but doesn't dominate.
 const HERO_HEIGHT = Math.round(SCREEN_W * 0.78);
@@ -368,21 +375,23 @@ export default function VibeCookingScreen() {
     // otherwise share the same static photo. Fetch a picture that actually
     // matches THIS dish (same Pexels-based pipeline the speak/snap recipes use)
     // and patch it in when it resolves.
-    generateRecipeImage(
-      recipe.name,
-      recipe.description || `A delicious ${recipe.name}`,
-      validatedIngredients.map((ing) => ({ name: ing.name, category: ing.category })),
-    )
-      .then((url) => {
-        if (!url) return;
-        // addRecipe upserts, so `realRecipeId` can be an existing row — possibly
-        // a dish the user named during onboarding, which keeps its placeholder
-        // on purpose. Re-read it rather than trusting the id to be new.
-        const target = useMealPlanStore.getState().recipes.find((r) => r.id === realRecipeId);
-        if (target && keepsPlaceholderImage(target)) return;
-        updateRecipe(realRecipeId, { imageUrl: url });
-      })
-      .catch(() => {});
+    if (USE_PEXELS_FOR_VIBE_COOKING) {
+      generateRecipeImage(
+        recipe.name,
+        recipe.description || `A delicious ${recipe.name}`,
+        validatedIngredients.map((ing) => ({ name: ing.name, category: ing.category })),
+      )
+        .then((url) => {
+          if (!url) return;
+          // addRecipe upserts, so `realRecipeId` can be an existing row — possibly
+          // a dish the user named during onboarding, which keeps its placeholder
+          // on purpose. Re-read it rather than trusting the id to be new.
+          const target = useMealPlanStore.getState().recipes.find((r) => r.id === realRecipeId);
+          if (target && keepsPlaceholderImage(target)) return;
+          updateRecipe(realRecipeId, { imageUrl: url });
+        })
+        .catch(() => {});
+    }
 
     return realRecipeId;
   }, [recipe, vibeId, addRecipe, updateRecipe]);

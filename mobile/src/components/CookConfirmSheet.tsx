@@ -215,10 +215,13 @@ export function CookConfirmSheet({
     setPageIndex(0);
   };
 
+  // Closing (the X, or a backdrop tap) does NOT dismiss the underlying nudge —
+  // the parent just hides the sheet — so the same unresolved "yesterday"
+  // review reappears next time with the same entries. Keep `logs`/`modes`/
+  // `pageIndex` intact here so a partial review (e.g. 3 of 4 meals answered)
+  // resumes where it left off instead of restarting from page one. State is
+  // only cleared in `handleSubmit`, once the review has actually been saved.
   const handleClose = () => {
-    setLogs({});
-    setModes({});
-    setPageIndex(0);
     onClose();
   };
 

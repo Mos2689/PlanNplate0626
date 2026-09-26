@@ -935,6 +935,10 @@ export async function upsertMealSlot(userId: string, slot: MealSlot): Promise<st
     slot.recipeId ? q.eq('recipe_id', slot.recipeId) : q.is('recipe_id', null);
 
   const { data: existingSlot } = await matchRecipe(baseMatch()).maybeSingle();
+  // serving_override is an integer column — round defensively (see
+  // updateMealSlotById for why this can otherwise arrive fractional).
+  const servingOverride =
+    slot.servingOverride != null ? Math.round(slot.servingOverride) : null;
 
   if (existingSlot) {
     // Update existing slot
@@ -942,7 +946,7 @@ export async function upsertMealSlot(userId: string, slot: MealSlot): Promise<st
       .from('meal_slots')
       .update({
         custom_meal_name: slot.customMealName ?? null,
-        serving_override: slot.servingOverride ?? null,
+        serving_override: servingOverride,
         curated_plan_id: slot.curatedPlanId ?? null,
       })
       .eq('id', existingSlot.id);
@@ -962,7 +966,7 @@ export async function upsertMealSlot(userId: string, slot: MealSlot): Promise<st
         meal_type: slot.mealType,
         recipe_id: slot.recipeId || null,
         custom_meal_name: slot.customMealName ?? null,
-        serving_override: slot.servingOverride ?? null,
+        serving_override: servingOverride,
         curated_plan_id: slot.curatedPlanId ?? null,
       })
       .select('id')
@@ -994,7 +998,13 @@ export async function updateMealSlotById(userId: string, slotId: string, updates
   const dbUpdates: Record<string, any> = {};
   if (updates.recipeId !== undefined) dbUpdates.recipe_id = updates.recipeId;
   if (updates.customMealName !== undefined) dbUpdates.custom_meal_name = updates.customMealName;
-  if (updates.servingOverride !== undefined) dbUpdates.serving_override = updates.servingOverride;
+  // serving_override is an integer column — round defensively so a fractional
+  // value computed anywhere upstream (e.g. dividing a leftover batch's total
+  // back out per meal) can never fail the write with a Postgres 22P02 error.
+  if (updates.servingOverride !== undefined) {
+    dbUpdates.serving_override =
+      updates.servingOverride === null ? null : Math.round(updates.servingOverride);
+  }
   if (updates.curatedPlanId !== undefined) dbUpdates.curated_plan_id = updates.curatedPlanId;
 
   const { error } = await supabase

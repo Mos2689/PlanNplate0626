@@ -39,7 +39,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Compass,
-  Wallet,
 } from 'lucide-react-native';
 import Animated, {
   useSharedValue,
@@ -57,7 +56,6 @@ import Animated, {
 import { SvgXml } from 'react-native-svg';
 import { designTokens, easing, elevation, serifItalicFontStyle } from '@/lib/design-tokens';
 import { swallow } from '@/lib/failure';
-import { deviceCurrencySymbol } from '@/lib/currency';
 import { getOptionIcon } from '@/lib/onboarding-icons';
 import { BrandLogo } from '@/components/BrandLogo';
 import { VoiceDishCapture } from '@/components/VoiceDishCapture';
@@ -153,14 +151,6 @@ const HOUSEHOLD_OPTIONS: { id: Household; label: string; icon: string }[] = [
   { id: 'couple', label: 'Couple', icon: '👫' },
   { id: 'family_kids', label: 'Family', icon: '👨‍👩‍👧' },
   { id: 'roommates', label: 'Roommates', icon: '🏠' },
-];
-
-const WEEKNIGHT_OPTIONS: { id: WeeknightMinutes; label: string; icon: string }[] = [
-  { id: 15, label: '15 min', icon: '⚡' },
-  { id: 30, label: '30 min', icon: '⏱️' },
-  { id: 45, label: '45 min', icon: '🍳' },
-  { id: 60, label: '1 hour', icon: '🍲' },
-  { id: 90, label: '90+ min', icon: '👨‍🍳' },
 ];
 
 const EQUIPMENT_OPTIONS = [
@@ -656,9 +646,10 @@ export default function OnboardingScreen() {
   const [cookingDaysPerWeek, setCookingDaysPerWeek] = useState<number>(
     preferences.cookingDaysPerWeek ?? 5
   );
-  const [weeknightMinutes, setWeeknightMinutes] = useState<WeeknightMinutes>(
-    preferences.weeknightMinutes ?? 30
-  );
+  // No live onboarding step lets the user change this — the step that used
+  // to (renderTimeStep) was dropped when onboarding was trimmed to 2 steps,
+  // so this is always the saved preference or the default.
+  const weeknightMinutes: WeeknightMinutes = preferences.weeknightMinutes ?? 30;
 
   // Step 4 — Kitchen & habits
   const [equipment, setEquipment] = useState<string[]>(
@@ -670,12 +661,10 @@ export default function OnboardingScreen() {
 
   // Step 5 — Priorities, goals & budget
   const [priorities, setPriorities] = useState<Priority[]>(preferences.priorities ?? []);
-  const [weeklyBudget, setWeeklyBudget] = useState<string>(
-    preferences.weeklyBudget != null ? String(preferences.weeklyBudget) : ''
-  );
-  const [monthlyBudget, setMonthlyBudget] = useState<string>(
-    preferences.monthlyBudget != null ? String(preferences.monthlyBudget) : ''
-  );
+  // Same as weeknightMinutes above — no live step edits these; they're the
+  // saved preference (or empty) verbatim.
+  const weeklyBudget = preferences.weeklyBudget != null ? String(preferences.weeklyBudget) : '';
+  const monthlyBudget = preferences.monthlyBudget != null ? String(preferences.monthlyBudget) : '';
   const [goals, setGoals] = useState<string[]>(preferences.goals ?? []);
 
   // ── Step 1 — Frequent cooks: dishes the user names (Speak or Type). ──
@@ -1999,108 +1988,6 @@ export default function OnboardingScreen() {
       </View>
     </ScrollView>
   );
-
-  // ── STEP 3: Time ──────────────────────────────────────────────────────────
-  const renderTimeStep = () => {
-    const budgetPlaceholder = household === 'family_kids' ? '200' : '100';
-    const monthlyPlaceholder = household === 'family_kids' ? '800' : '400';
-    const currencySymbol = deviceCurrencySymbol();
-    return (
-      <KeyboardAwareScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 4, paddingBottom: 32 }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bottomOffset={24}
-      >
-        <IdentityRibbon firstName={firstName} avatarUrl={avatarUrl} isDark={isDark} />
-        <StepHeader
-          prefix="How much "
-          italic="time"
-          suffix="?"
-          subtitle="We'll plan around your schedule."
-          isDark={isDark}
-        />
-
-        <SectionEyebrow label="Weeknight time window" isDark={isDark} />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 26 }}>
-          {WEEKNIGHT_OPTIONS.map((opt, idx) => (
-            <OptionTile
-              key={opt.id}
-              emoji={opt.icon}
-              label={opt.label}
-              selected={weeknightMinutes === opt.id}
-              tone="tan"
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setWeeknightMinutes(opt.id);
-              }}
-              isDark={isDark}
-            />
-          ))}
-        </View>
-
-        <SectionEyebrow label="Budget (optional)" isDark={isDark} />
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          {[
-            { label: 'Weekly', value: weeklyBudget, setter: setWeeklyBudget, placeholder: budgetPlaceholder },
-            { label: 'Monthly', value: monthlyBudget, setter: setMonthlyBudget, placeholder: monthlyPlaceholder },
-          ].map((field) => (
-            <View
-              key={field.label}
-              style={{
-                flex: 1,
-                padding: 12,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: isDark ? '#2a2a2a' : designTokens.colors.hair,
-                backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF',
-              }}
-            >
-              <Text
-                style={{
-                  fontFamily: designTokens.font.medium,
-                  fontSize: 10.5,
-                  letterSpacing: 0.55,
-                  textTransform: 'uppercase',
-                  color: isDark ? '#888' : designTokens.colors.ink3,
-                  marginBottom: 6,
-                }}
-              >
-                {field.label}
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Wallet size={14} color={isDark ? '#666' : designTokens.colors.ink3} strokeWidth={1.8} />
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.medium,
-                    fontSize: 15,
-                    color: isDark ? '#fff' : designTokens.colors.ink,
-                  }}
-                >
-                  {currencySymbol}
-                </Text>
-                <TextInput
-                  value={field.value}
-                  onChangeText={(t) => field.setter(t.replace(/[^0-9]/g, ''))}
-                  placeholder={field.placeholder}
-                  placeholderTextColor={isDark ? '#666' : designTokens.colors.ink3}
-                  keyboardType="numeric"
-                  style={{
-                    flex: 1,
-                    fontFamily: designTokens.font.regular,
-                    fontSize: 15,
-                    color: isDark ? '#fff' : designTokens.colors.ink,
-                    padding: 0,
-                  }}
-                />
-              </View>
-            </View>
-          ))}
-        </View>
-      </KeyboardAwareScrollView>
-    );
-  };
 
   // ── STEP 4: Kitchen & habits ──────────────────────────────────────────────
   const renderKitchenStep = () => {

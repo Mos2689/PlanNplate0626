@@ -13,7 +13,7 @@
 // Note: this row subscribes to the measurement-system preference directly.
 // That's deliberate — a store subscription is independent of the memo
 // boundary, so a unit-system change still repaints every row immediately.
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import Animated, { FadeInRight, FadeOutRight, Layout } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -52,6 +52,8 @@ export interface GroceryItemRowProps {
   item: GroceryItem;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  /** Long-press opens the edit sheet for this item (name/quantity/unit/category). */
+  onEdit: (item: GroceryItem) => void;
   isDark: boolean;
   index: number;
   checkColor?: string;
@@ -61,6 +63,7 @@ function GroceryItemRowImpl({
   item,
   onToggle,
   onDelete,
+  onEdit,
   isDark,
   index,
   checkColor,
@@ -75,7 +78,17 @@ function GroceryItemRowImpl({
   // that shared-ingredient planning is working. (recipeIds is deduped upstream.)
   const sharedCount = item.recipeIds?.length ?? 0;
 
+  // RN's Pressable fires `onPress` on release even after `onLongPress` already
+  // fired for the same touch — without this guard, a long-press-to-edit would
+  // ALSO toggle the "at home" checkbox the instant the finger lifts.
+  const longPressFiredRef = useRef(false);
+
+  const handlePressIn = useCallback(() => {
+    longPressFiredRef.current = false;
+  }, []);
+
   const handleToggle = useCallback(() => {
+    if (longPressFiredRef.current) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onToggle(item.id);
   }, [onToggle, item.id]);
@@ -84,6 +97,12 @@ function GroceryItemRowImpl({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onDelete(item.id);
   }, [onDelete, item.id]);
+
+  const handleLongPress = useCallback(() => {
+    longPressFiredRef.current = true;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onEdit(item);
+  }, [onEdit, item]);
 
   const done = item.isChecked;
 
@@ -94,7 +113,10 @@ function GroceryItemRowImpl({
       layout={Layout.springify()}
     >
       <Pressable
+        onPressIn={handlePressIn}
         onPress={handleToggle}
+        onLongPress={handleLongPress}
+        delayLongPress={400}
         style={{
           flexDirection: 'row',
           alignItems: 'center',

@@ -140,6 +140,25 @@ export function PagerSheet({
     [],
   );
 
+  // Fixed-width pages, so layout is known up front without measuring —
+  // this is what lets `initialScrollIndex` below land instantly and
+  // synchronously instead of flashing page 0 first.
+  const getItemLayout = useCallback(
+    (_data: unknown, i: number) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * i, index: i }),
+    [],
+  );
+
+  // On iOS, RN's Modal unmounts its children once the close animation
+  // finishes (Modal.js `isRendered`), so the FlatList here is a BRAND NEW
+  // instance every time the sheet reopens — it always remounts at scroll
+  // offset 0 regardless of what `index`/`internalIndex` say. Without this,
+  // reopening a sheet that was left on page 4 would render page 1's content
+  // while the header/dots (driven by `index`, which persisted) still claimed
+  // page 4. `initialScrollIndex` fixes the FlatList's OWN mount position to
+  // match, so a resumed session opens already on the right page — no jump,
+  // no flash, no swipe needed to get there.
+  const restoreIndex = Math.min(index, Math.max(totalPages - 1, 0));
+
   const renderFooter = () => {
     if (typeof footer === 'function') return footer({ index, isCompletion });
     return footer ?? null;
@@ -233,6 +252,15 @@ export function PagerSheet({
             keyboardShouldPersistTaps="handled"
             decelerationRate="fast"
             removeClippedSubviews={false}
+            getItemLayout={getItemLayout}
+            initialScrollIndex={restoreIndex}
+            onScrollToIndexFailed={({ index: i }) =>
+              // getItemLayout should make this unreachable, but a fallback
+              // avoids ever getting stuck mid-scroll on the wrong page.
+              requestAnimationFrame(() =>
+                listRef.current?.scrollToOffset({ offset: i * SCREEN_WIDTH, animated: false }),
+              )
+            }
             style={{ flexGrow: 0 }}
             contentContainerStyle={{ flexGrow: 0 }}
           />

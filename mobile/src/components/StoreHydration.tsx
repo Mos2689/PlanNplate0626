@@ -224,32 +224,27 @@ export function StoreHydration({ children }: StoreHydrationProps) {
   }, []); // Only run once on mount
 
   useEffect(() => {
-    // Wait for both stores to hydrate
+    // Wait for both stores to hydrate from AsyncStorage — this is a fast local
+    // read, not a network call, so it should never be the thing the user
+    // waits on. Recipes/mealSlots are now persisted as a local cache
+    // (store.ts partialize), so we no longer hold the whole app behind the
+    // Supabase refresh in loadUserData: that fetch still runs in the
+    // background and the screens re-render reactively once it lands, exactly
+    // like any other store update. This is what removes the cold-start delay
+    // on the recipes page — previously isReady waited on `hasLoadedUserData
+    // || !isSyncing`, i.e. the network round-trip, every single launch.
     if (mealPlanHydrated && authHydrated) {
-      const hasValidSession = Boolean(session?.access_token);
-
-      // If user is authenticated WITH a valid session, wait for user data to load
-      // If not authenticated or no valid session, we're ready immediately
-      if (isAuthenticated && hasValidSession) {
-        // Allow some time for data sync, or proceed if already synced
-        if (hasLoadedUserData || !isSyncing) {
-          console.log('[StoreHydration] Ready - authenticated user with loaded data');
-          setIsReady(true);
-          // Fire-and-forget: warm the 5 curated plan hero images so the home
-          // tab + Curated Meal Plans listing render instantly on first open.
-          // Idempotent at the helper level — safe to fire on every re-run.
-          // PERF: deferred until after the first screen has actually rendered.
-          // Firing it synchronously here put 10 image requests on the wire in
-          // the same frame the UI was trying to mount.
-          warmImageCaches();
-        }
-      } else {
-        console.log('[StoreHydration] Ready - unauthenticated or no valid session');
-        setIsReady(true);
-        warmImageCaches();
-      }
+      console.log('[StoreHydration] Ready - local stores hydrated');
+      setIsReady(true);
+      // Fire-and-forget: warm the 5 curated plan hero images so the home
+      // tab + Curated Meal Plans listing render instantly on first open.
+      // Idempotent at the helper level — safe to fire on every re-run.
+      // PERF: deferred until after the first screen has actually rendered.
+      // Firing it synchronously here put 10 image requests on the wire in
+      // the same frame the UI was trying to mount.
+      warmImageCaches();
     }
-  }, [mealPlanHydrated, authHydrated, isAuthenticated, session?.access_token, hasLoadedUserData, isSyncing]);
+  }, [mealPlanHydrated, authHydrated]);
 
   if (initError) {
     return (

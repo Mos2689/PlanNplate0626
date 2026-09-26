@@ -1141,69 +1141,131 @@ function mealRemovalCascadeIds(
   return [...ids];
 }
 
+// The dish name a "Leftovers · <dish>" (AI flow) or "Leftover <dish>"
+// (curated flow, a dedicated variant recipe) placeholder reheats, or null if
+// `s` isn't a leftover placeholder at all.
+function dishNameOfLeftover(s: MealSlot, recipes: Recipe[]): string | null {
+  const aiPrefix = 'Leftovers · ';
+  if (s.recipeId == null && s.customMealName?.startsWith(aiPrefix)) {
+    return s.customMealName.slice(aiPrefix.length);
+  }
+  if (s.recipeId) {
+    const curatedPrefix = 'Leftover ';
+    const name = recipes.find((r) => r.id === s.recipeId)?.name;
+    if (name?.startsWith(curatedPrefix)) return name.slice(curatedPrefix.length);
+  }
+  return null;
+}
+
+// Resolves which cooked slot a specific leftover placeholder reheats, mirroring
+// the placement rule used when it was created:
+//   • lunch leftover  → previous day's DINNER
+//   • dinner leftover → SAME day's LUNCH
+//   • batch / cross-day fallback → the nearest cook of the same dish on or
+//     before the leftover's date.
+// Shared by leftoverServingAdjustment (resolve the removed slot's source) and
+// countMealsFedBySource (resolve EVERY same-named leftover, so only the ones
+// that actually belong to a given cook get counted toward it — a dish name
+// reused in an unrelated earlier/later week must never be attributed here).
+function resolveLeftoverSourceSlot(
+  mealSlots: MealSlot[],
+  recipes: Recipe[],
+  leftover: MealSlot,
+  dish: string,
+): MealSlot | undefined {
+  const [y, m, d] = leftover.date.split('-').map(Number);
+  if (!y || !m || !d) return undefined;
+  const nameOf = (s: MealSlot) => recipes.find((r) => r.id === s.recipeId)?.name;
+
+  if (leftover.mealType === 'lunch' || leftover.mealType === 'dinner') {
+    let srcKey: string;
+    let srcMt: 'lunch' | 'dinner';
+    if (leftover.mealType === 'lunch') {
+      const prevDate = new Date(y, m - 1, d);
+      prevDate.setDate(prevDate.getDate() - 1);
+      srcKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+      srcMt = 'dinner';
+    } else {
+      srcKey = leftover.date;
+      srcMt = 'lunch';
+    }
+    const exact = mealSlots.find(
+      (s) => s.date === srcKey && s.mealType === srcMt && s.recipeId && nameOf(s) === dish,
+    );
+    if (exact) return exact;
+  }
+
+  return mealSlots
+    .filter((s) => s.recipeId && s.date <= leftover.date && nameOf(s) === dish)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))[0];
+}
+
+// How many meals (the cook itself + every currently-existing leftover slot
+// that ACTUALLY resolves back to it — not just any same-named leftover
+// anywhere on the calendar) a cooked slot is feeding right now.
+// `servingOverride` is always kept as perMeal × this count by every write
+// site (batch-cook, leftover-add, leftover-remove), so dividing it out below
+// recovers the EXACT per-meal serving size the user chose for this batch —
+// without relying on `preferences.servingSize`, which is just the current
+// global default and can drift away from what a specific plan was cooked at
+// (e.g. a per-plan "cook for 5" override while the saved default stays 2).
+function countMealsFedBySource(mealSlots: MealSlot[], recipes: Recipe[], srcSlot: MealSlot): number {
+  let count = 1; // the cook itself
+  for (const s of mealSlots) {
+    if (s.id === srcSlot.id) continue;
+    const dish = dishNameOfLeftover(s, recipes);
+    if (!dish) continue;
+    const resolved = resolveLeftoverSourceSlot(mealSlots, recipes, s, dish);
+    if (resolved?.id === srcSlot.id) count++;
+  }
+  return count;
+}
+
 // Reverse of the leftover serving-scale. When a "Leftovers · <dish>" placeholder
 // is removed, the cook it reheated no longer needs to feed that extra meal, so
 // we shrink that cook back down. Returns the source cook's slot id + its new
 // servingOverride (undefined → drop the override once no leftovers remain).
-// The source cook mirrors the placement rule, matched by recipe name:
-//   • lunch leftover  → previous day's DINNER
-//   • dinner leftover → SAME day's LUNCH
 function leftoverServingAdjustment(
   mealSlots: MealSlot[],
   recipes: Recipe[],
   removed: MealSlot | undefined,
   servingSize: number | undefined,
 ): { slotId: string; servingOverride: number | undefined } | null {
-  const prefix = 'Leftovers · ';
-  if (!removed || removed.recipeId || !removed.customMealName) return null;
-  if (!removed.customMealName.startsWith(prefix)) return null;
-  const dish = removed.customMealName.slice(prefix.length);
+  if (!removed) return null;
+  const dish = dishNameOfLeftover(removed, recipes);
+  if (!dish) return null;
 
-  const [y, m, d] = removed.date.split('-').map(Number);
-  if (!y || !m || !d) return null;
-  const nameOf = (s: MealSlot) => recipes.find((r) => r.id === s.recipeId)?.name;
-
-  // Preferred (daily) source by exact date + meal type, matched by name:
-  //   • lunch leftover  → previous day's DINNER
-  //   • dinner leftover → SAME day's LUNCH
-  let srcSlot: MealSlot | undefined;
-  if (removed.mealType === 'lunch' || removed.mealType === 'dinner') {
-    let srcKey: string;
-    let srcMt: 'lunch' | 'dinner';
-    if (removed.mealType === 'lunch') {
-      const prevDate = new Date(y, m - 1, d);
-      prevDate.setDate(prevDate.getDate() - 1);
-      srcKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
-      srcMt = 'dinner';
-    } else {
-      srcKey = removed.date;
-      srcMt = 'lunch';
-    }
-    srcSlot = mealSlots.find(
-      (s) => s.date === srcKey && s.mealType === srcMt && s.recipeId && nameOf(s) === dish,
-    );
-  }
-
-  // Fallback (batch / cross-day): the nearest cooked slot by name on or before
-  // the leftover's date. Batch leftovers reheat the block's cook-day dish, which
-  // can be several days back and in a different meal slot — the exact-date rule
-  // above won't find it, so we match by name and take the most recent cook.
-  if (!srcSlot) {
-    srcSlot = mealSlots
-      .filter((s) => s.recipeId && s.date <= removed.date && nameOf(s) === dish)
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))[0];
-  }
+  const srcSlot = resolveLeftoverSourceSlot(mealSlots, recipes, removed, dish);
 
   if (!srcSlot || !srcSlot.recipeId) return null;
   const recipeServings = recipes.find((r) => r.id === srcSlot.recipeId)?.servings;
   if (!recipeServings || recipeServings <= 0) return null;
 
-  // Per-meal serving count = the user's chosen serving size (people per meal) —
-  // the same amount the forward leftover-scaling adds. Falls back to the
-  // recipe's authored servings only when no preference is set.
-  const perMeal = servingSize && servingSize > 0 ? servingSize : recipeServings;
-  const current = srcSlot.servingOverride ?? perMeal;
-  const next = current - perMeal;
+  // Per-meal serving count = however many people THIS batch was actually
+  // cooked for, recovered from the cook's own servingOverride (see
+  // countMealsFedBySource above) rather than the current global default —
+  // that default may not be what was chosen for this specific plan/batch.
+  // Only falls back to the passed-in `servingSize` / recipe's authored
+  // servings when there's no servingOverride to reverse-engineer from.
+  const current = srcSlot.servingOverride;
+  const mealsFed = current ? countMealsFedBySource(mealSlots, recipes, srcSlot) : 1;
+  // Rounded: `servingOverride` is stored as a Postgres integer column, and
+  // dividing it back out isn't guaranteed to land on a whole number even
+  // with an accurate `mealsFed` — e.g. plans created before this batch-cook
+  // generation fix may still have a servingOverride that doesn't evenly
+  // divide by the number of meals it feeds. Round rather than crash or drift.
+  const perMeal = Math.max(
+    1,
+    Math.round(
+      current && mealsFed > 0
+        ? current / mealsFed
+        : servingSize && servingSize > 0
+          ? servingSize
+          : recipeServings,
+    ),
+  );
+  const currentTotal = current ?? perMeal;
+  const next = Math.round(currentTotal - perMeal);
   // Floor at a single cook (perMeal) — every cooked slot carries at least the
   // base serving-size override, so we keep it rather than dropping to undefined.
   return { slotId: srcSlot.id, servingOverride: next > perMeal ? next : perMeal };
@@ -2628,24 +2690,41 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   continue;
                 }
 
-                // The household eats exactly 2 × blockDays main meals this block
-                // (one lunch + one dinner per day). The cooked dishes collectively
-                // cover those — and ONLY those — so the sum of their serving sizes
-                // equals the block's real need. Distribute the meals round-robin
-                // across the dishes; each dish's serving = base × meals it covers.
-                // (Previously each dish also counted a "+1 fresh lunch", so N
-                // dishes over-counted the cook-day lunch by N−1 meals.)
-                const totalMainMeals = 2 * blockDays;
-                const mealsByDish = new Array(dishes.length).fill(0);
-                for (let i = 0; i < totalMainMeals; i++) mealsByDish[i % dishes.length]++;
-
+                // How many REAL "Leftovers · <dish>" placeholder rows this block
+                // will actually create, from the exact create-pattern below:
+                // the cook day (k=0) creates only its dinner as a placeholder
+                // (lunch is `dishes.length` real cook rows instead — every dish
+                // cooked that day gets its OWN lunch slot, which is more slots
+                // than a plain "1 lunch + 1 dinner per day" count would assume);
+                // every gap day (k=1..blockDays-1) creates two (lunch + dinner).
+                // Deriving this from the actual loop shape — instead of the old
+                // `2 × blockDays` estimate, which implicitly assumed only ONE
+                // lunch row per day and so undercounted by `dishes.length - 1`
+                // whenever more than one dish was cooked per cook day — is what
+                // keeps this number and the placeholders physically created
+                // below in exact agreement.
+                const leftoverSlotsTotal = 1 + 2 * Math.max(0, blockDays - 1);
                 const dishNames = dishes.map((dish) => dish.name);
+                // Round-robin the ACTUAL leftover slots across dishes, then
+                // read back how many each dish got — rather than assuming a
+                // distribution and creating placeholders to match it. This
+                // makes `mealsByDish` (= 1 cook meal + however many leftovers
+                // that dish landed) describe reality by construction, so
+                // `servingOverride = base × mealsByDish[di]` can never drift
+                // from the placeholders actually on the calendar — which is
+                // what silently over/under-bought groceries per dish, and what
+                // made deleting a leftover later divide out the wrong (or
+                // non-integer) serving count.
+                const leftoverQueue: string[] = [];
+                const leftoverCountByDish = new Array(dishes.length).fill(0);
+                for (let i = 0; i < leftoverSlotsTotal; i++) {
+                  const di = i % dishes.length;
+                  leftoverQueue.push(dishNames[di]);
+                  leftoverCountByDish[di]++;
+                }
+                const mealsByDish = leftoverCountByDish.map((c: number) => c + 1);
                 let leftIdx = 0;
-                const nextLeftoverName = () => {
-                  const n = dishNames[leftIdx % dishNames.length];
-                  leftIdx++;
-                  return n;
-                };
+                const nextLeftoverName = () => leftoverQueue[leftIdx++] ?? dishNames[0];
 
                 for (let k = 0; k < blockDays; k++) {
                   const d = block.cookOffset + k;
@@ -3004,8 +3083,12 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   // also feeds `count` leftover meals totals servingSize × (1 + count).
                   // Falls back to the recipe's own servings only if no preference set.
                   const recipeServings = get().recipes.find((r) => r.id === slot.recipeId)?.servings;
+                  // Use the effective (merged) `preferences.servingSize` — the
+                  // per-plan override picked on this screen — not the raw
+                  // global default, which stays whatever the user's saved
+                  // preference is regardless of what they chose for THIS plan.
                   const perMeal =
-                    get().preferences.servingSize || (recipeServings && recipeServings > 0 ? recipeServings : 1);
+                    preferences.servingSize || (recipeServings && recipeServings > 0 ? recipeServings : 1);
                   get().updateMealSlot(slot.id, {
                     servingOverride: perMeal * (1 + count),
                   });
@@ -4993,10 +5076,15 @@ export const useMealPlanStore = create<MealPlanStore>()(
       name: 'meal-plan-storage',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
-        // Only persist user preferences and profile - NOT recipes/meals
-        // Recipes and mealSlots are loaded from Supabase on app startup
+        // Persist recipes/mealSlots as a LOCAL CACHE so cold start can render
+        // instantly instead of showing a blocking spinner for the whole
+        // Supabase round-trip. loadUserData() still runs on every launch and
+        // overwrites these with the fresh server copy — this only changes
+        // what's on screen in the gap before that response lands.
         userProfile: state.userProfile,
         preferences: state.preferences,
+        recipes: state.recipes,
+        mealSlots: state.mealSlots,
         // Nudge engine data — offline-first, also synced to Supabase
         cookingLogs: state.cookingLogs,
         recipeRatings: state.recipeRatings,

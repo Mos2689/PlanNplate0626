@@ -1140,6 +1140,166 @@ function AddItemModal({ visible, onClose, onAdd, onMerge, isDark, existingItems,
   );
 }
 
+// ── Edit Item Modal ──────────────────────────────────────────────────────
+// Opened by a long-press on a grocery row (see GroceryItemRow's onLongPress).
+// Deliberately smaller than AddItemModal — no voice mode, no duplicate
+// detection (we're editing a single existing item in place, not merging it
+// into another line). Unit is free text, matching how the rest of the app
+// already treats units ("bag", "bunch", etc. are stored verbatim).
+interface EditItemModalProps {
+  visible: boolean;
+  item: GroceryItem | null;
+  onClose: () => void;
+  onSave: (id: string, updates: Pick<GroceryItem, 'name' | 'quantity' | 'unit' | 'category'>) => void;
+  isDark: boolean;
+}
+
+function EditItemModal({ visible, item, onClose, onSave, isDark }: EditItemModalProps) {
+  const [name, setName] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [unit, setUnit] = useState('');
+  const [category, setCategory] = useState<Ingredient['category']>('other');
+
+  // Re-seed the form fields every time a different item is opened. Some items
+  // carry the unit embedded in `quantity` itself (e.g. quantity: "250 g",
+  // unit: "") rather than split out — same situation handleAdd's "combine"
+  // path already deals with, so split it the same way here.
+  useEffect(() => {
+    if (item) {
+      const rawQuantity = item.quantity || '';
+      setName(item.name);
+      setNameError('');
+      setQuantity(extractNumericQuantity(rawQuantity));
+      const explicitUnit = item.unit && item.unit !== 'item' ? item.unit : extractUnitFromQuantity(rawQuantity);
+      setUnit(explicitUnit);
+      setCategory(item.category);
+    }
+  }, [item]);
+
+  const inputBg = isDark ? 'bg-charcoal-700' : 'bg-cream-100';
+  const inputText = isDark ? 'text-white' : 'text-charcoal-900';
+  const labelText = isDark ? 'text-charcoal-300' : 'text-charcoal-600';
+
+  const handleSave = useCallback(() => {
+    if (!item) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setNameError('Item name is required');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onSave(item.id, {
+      name: trimmedName,
+      quantity: quantity.trim() || '1',
+      unit: unit.trim() || 'item',
+      category,
+    });
+  }, [item, name, quantity, unit, category, onSave]);
+
+  if (!visible || !item) return null;
+
+  return (
+    <View className="absolute inset-0 z-50">
+      <Pressable onPress={onClose} className="absolute inset-0 bg-black/50" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        className="absolute bottom-0 left-0 right-0"
+      >
+        <Animated.View
+          entering={FadeInDown.springify()}
+          className={cn('rounded-t-3xl p-6 pb-10', isDark ? 'bg-charcoal-800' : 'bg-white')}
+        >
+          {/* Header */}
+          <View className="flex-row items-center justify-between mb-6">
+            <Text className={cn('text-xl font-bold', isDark ? 'text-white' : 'text-charcoal-900')}>
+              Edit Item
+            </Text>
+            <Pressable onPress={onClose}>
+              <X size={24} color={isDark ? '#fff' : '#262626'} />
+            </Pressable>
+          </View>
+
+          {/* Category */}
+          <Text className={cn('text-base font-semibold mb-3', isDark ? 'text-white' : 'text-charcoal-900')}>
+            Category
+          </Text>
+          <View className="mb-5">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+              {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+                <Pressable
+                  key={key}
+                  onPress={() => setCategory(key as Ingredient['category'])}
+                  className={cn(
+                    'px-4 py-2 rounded-full mr-2',
+                    category === key ? 'bg-sage-500' : isDark ? 'bg-charcoal-700' : 'bg-cream-100',
+                  )}
+                >
+                  <Text
+                    className={cn(
+                      'text-sm font-medium',
+                      category === key ? 'text-white' : isDark ? 'text-charcoal-300' : 'text-charcoal-600',
+                    )}
+                  >
+                    {config.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Item Name */}
+          <View className="mb-3">
+            <Text className={cn('text-sm font-medium mb-2', labelText)}>Item Name</Text>
+            <TextInput
+              value={name}
+              onChangeText={(t) => {
+                setName(t);
+                if (nameError) setNameError('');
+              }}
+              placeholder="e.g., Avocado"
+              placeholderTextColor={isDark ? '#6d6d6d' : '#888888'}
+              className={cn('px-4 py-3 rounded-xl text-base', inputBg, inputText)}
+            />
+            {!!nameError && (
+              <Text className="text-xs mt-1.5 text-red-500">{nameError}</Text>
+            )}
+          </View>
+
+          {/* Quantity + Unit */}
+          <View className="flex-row mb-6 space-x-3">
+            <View className="flex-1">
+              <Text className={cn('text-sm font-medium mb-2', labelText)}>Quantity</Text>
+              <TextInput
+                value={quantity}
+                onChangeText={setQuantity}
+                keyboardType="numeric"
+                className={cn('px-4 py-3 rounded-xl text-base', inputBg, inputText)}
+              />
+            </View>
+            <View className="flex-1">
+              <Text className={cn('text-sm font-medium mb-2', labelText)}>Unit</Text>
+              <TextInput
+                value={unit}
+                onChangeText={setUnit}
+                placeholder="e.g., g, cup, bag"
+                placeholderTextColor={isDark ? '#6d6d6d' : '#888888'}
+                className={cn('px-4 py-3 rounded-xl text-base', inputBg, inputText)}
+              />
+            </View>
+          </View>
+
+          {/* Save Button */}
+          <Pressable onPress={handleSave} className="py-4 rounded-2xl items-center bg-sage-500">
+            <Text className="text-base font-semibold text-white">Save Changes</Text>
+          </Pressable>
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
+
 interface DateRangePickerModalProps {
   visible: boolean;
   onClose: () => void;
@@ -1767,6 +1927,9 @@ export default function GroceryScreen() {
   const clearSimilarIngredients = useMealPlanStore((s) => s.clearSimilarIngredients);
 
   const [showAddModal, setShowAddModal] = useState(false);
+  // Long-press on a grocery row opens this — edit name/quantity/unit/category
+  // in place. null = closed.
+  const [editingItem, setEditingItem] = useState<GroceryItem | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   // "From Recipes" picker + the "+" source chooser sheet (Meal Plan / Recipes /
   // Manual). The chooser is the persistent entry point once a list exists.
@@ -1775,6 +1938,9 @@ export default function GroceryScreen() {
   // Refresh confirm sheet + a brief bottom toast (e.g. after saving a list).
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // Optional leading icon for the toast — 'home' for the pantry-complete
+  // message, undefined for the plain save-confirmation toast.
+  const [toastIcon, setToastIcon] = useState<'home' | undefined>(undefined);
   const [showSavedListsModal, setShowSavedListsModal] = useState(false);
   const [showSaveListModal, setShowSaveListModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -1791,7 +1957,10 @@ export default function GroceryScreen() {
   // Auto-dismiss the bottom toast after a short beat.
   useEffect(() => {
     if (!toastMsg) return;
-    const t = setTimeout(() => setToastMsg(null), 2400);
+    const t = setTimeout(() => {
+      setToastMsg(null);
+      setToastIcon(undefined);
+    }, 2400);
     return () => clearTimeout(t);
   }, [toastMsg]);
 
@@ -2029,6 +2198,34 @@ export default function GroceryScreen() {
       removeCurrentSavedListItem,
       removeCustomGroceryItem,
       removeGroceryItem,
+    ],
+  );
+
+  // Long-press → open the edit sheet for that item.
+  const handleEditItem = useCallback((item: GroceryItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setEditingItem(item);
+  }, []);
+
+  // Edit sheet save — routed to whichever store slice actually owns this item,
+  // same dispatch rule as toggle/delete above.
+  const handleSaveEditedItem = useCallback(
+    (id: string, updates: Pick<GroceryItem, 'name' | 'quantity' | 'unit' | 'category'>) => {
+      if (isSavedListMode) {
+        updateCurrentSavedListItem(id, updates);
+      } else if (customItemIds.has(id)) {
+        updateCustomGroceryItem(id, updates);
+      } else {
+        updateGroceryItem(id, updates);
+      }
+      setEditingItem(null);
+    },
+    [
+      isSavedListMode,
+      customItemIds,
+      updateCurrentSavedListItem,
+      updateCustomGroceryItem,
+      updateGroceryItem,
     ],
   );
 
@@ -2288,6 +2485,7 @@ export default function GroceryScreen() {
     items: GroceryItem[],
     onToggle: (id: string) => void,
     onDelete: (id: string) => void,
+    onEdit: (item: GroceryItem) => void,
     expansionKey: string,
     delayIdx: number,
   ) => {
@@ -2390,6 +2588,7 @@ export default function GroceryScreen() {
                     item={item}
                     onToggle={onToggle}
                     onDelete={onDelete}
+                    onEdit={onEdit}
                     isDark={isDark}
                     index={idx}
                     checkColor={isSavedListMode ? designTokens.colors.brand : designTokens.colors.olive}
@@ -2446,6 +2645,7 @@ export default function GroceryScreen() {
                       item={item}
                       onToggle={onToggle}
                       onDelete={onDelete}
+                      onEdit={onEdit}
                       isDark={isDark}
                       index={idx}
                       checkColor={isSavedListMode ? designTokens.colors.brand : designTokens.colors.olive}
@@ -2667,7 +2867,17 @@ export default function GroceryScreen() {
                 total={stats.total}
                 checked={stats.checked}
                 mode={isSavedListMode ? 'shopping' : 'pantry'}
-                onSave={() => setShowSaveListModal(true)}
+                onSave={() => {
+                  // Nothing left to buy — saving would just create an empty
+                  // shopping list. Say so instead of opening the naming modal.
+                  if (stats.remaining === 0) {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                    setToastIcon('home');
+                    setToastMsg('All items at home — nothing to save for next time.');
+                    return;
+                  }
+                  setShowSaveListModal(true);
+                }}
                 onReset={resetCurrentSavedListChecks}
                 isDark={isDark}
               />
@@ -2743,6 +2953,7 @@ export default function GroceryScreen() {
                   items,
                   handleToggleItem,
                   handleDeleteItem,
+                  handleEditItem,
                   `cat-${category}`,
                   idx,
                 ),
@@ -2880,6 +3091,20 @@ export default function GroceryScreen() {
                     setShowAddModal(true);
                   },
                 })}
+                {renderSourceCard({
+                  icon: <BookmarkCheck size={20} color={designTokens.colors.cream} strokeWidth={1.9} />,
+                  iconBg: designTokens.colors.ink3,
+                  cardBg: colors.hair2,
+                  cardBorderColor: colors.hair,
+                  title: 'Reload a Saved List',
+                  subtitle: 'Pick up a previously saved shopping list',
+                  disabled: savedGroceryLists.length === 0,
+                  disabledNote: savedGroceryLists.length === 0 ? 'No saved lists yet' : undefined,
+                  onPress: () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setShowSavedListsModal(true);
+                  },
+                })}
               </View>
             </Animated.View>
           )}
@@ -2975,21 +3200,42 @@ export default function GroceryScreen() {
         <Animated.View
           entering={FadeInDown.springify()}
           pointerEvents="none"
-          style={{ position: 'absolute', left: 0, right: 0, bottom: 96, alignItems: 'center' }}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 120, alignItems: 'center', paddingHorizontal: 24 }}
         >
           <View
             style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+              maxWidth: 340,
               backgroundColor: '#201C17',
               paddingHorizontal: 16,
-              paddingVertical: 10,
-              borderRadius: 999,
+              paddingVertical: 12,
+              borderRadius: 20,
               ...elevation.card,
             }}
           >
+            {toastIcon === 'home' && (
+              <View
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 999,
+                  backgroundColor: 'rgba(255,255,255,0.14)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Home size={13} color="#fff" strokeWidth={2} />
+              </View>
+            )}
             <Text
               style={{
+                flexShrink: 1,
                 fontFamily: designTokens.font.medium,
                 fontSize: 13,
+                lineHeight: 18,
                 color: '#fff',
                 letterSpacing: -0.1,
               }}
@@ -3016,6 +3262,15 @@ export default function GroceryScreen() {
         existingItems={isSavedListMode ? currentSavedListItems : [...groceryItems, ...customGroceryItems]}
         groceryItems={isSavedListMode ? currentSavedListItems : groceryItems}
         initialMode={addItemVoiceRequested ? 'talk' : 'type'}
+      />
+
+      {/* Edit Item Modal — opened by long-pressing a grocery row */}
+      <EditItemModal
+        visible={!!editingItem}
+        item={editingItem}
+        onClose={() => setEditingItem(null)}
+        onSave={handleSaveEditedItem}
+        isDark={isDark}
       />
 
       {/* Date Range Picker Modal */}
@@ -3131,6 +3386,21 @@ export default function GroceryScreen() {
                   setShowAddModal(true);
                 },
               })}
+              {renderSourceCard({
+                icon: <BookmarkCheck size={20} color={designTokens.colors.cream} strokeWidth={1.9} />,
+                iconBg: designTokens.colors.ink3,
+                cardBg: colors.hair2,
+                cardBorderColor: colors.hair,
+                title: 'Reload a Saved List',
+                subtitle: 'Pick up a previously saved shopping list',
+                disabled: savedGroceryLists.length === 0,
+                disabledNote: savedGroceryLists.length === 0 ? 'No saved lists yet' : undefined,
+                onPress: () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setShowSourceChooser(false);
+                  setShowSavedListsModal(true);
+                },
+              })}
             </View>
           </Animated.View>
         </View>
@@ -3148,6 +3418,7 @@ export default function GroceryScreen() {
           if (success) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setShowSaveListModal(false);
+            setToastIcon(undefined);
             setToastMsg(`Saved to “${name}”`);
           } else {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);

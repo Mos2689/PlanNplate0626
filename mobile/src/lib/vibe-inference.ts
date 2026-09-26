@@ -65,7 +65,7 @@ export const VIBES: VibeDefinition[] = [
     // Warm stew / braise hero
     imageUrl:
       'https://images.unsplash.com/photo-1547592180-85f173990554?w=600&q=80',
-    localImage: require('../../assets/images/MoodBoardVibecook/Comfort Blanket - Slow, warming, familiar..png'),
+    localImage: require('../../assets/images/MoodBoardVibecook/vibe-comfort.png'),
     promptSnippet:
       'The user is in a "Comfort Blanket" mood. Lean into braises, stews, mac & cheese, lentil soup, or risotto. Choose familiar, slow, warming dishes. Avoid anything spicy, sour, or adventurous. Long-and-low techniques are welcome even if they take more time.',
   },
@@ -77,7 +77,7 @@ export const VIBES: VibeDefinition[] = [
     // One-pan / sheet-pan hero
     imageUrl:
       'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=600&q=80',
-    localImage: require('../../assets/images/MoodBoardVibecook/Tired but Hungry - 15 minutes, max payoff..png'),
+    localImage: require('../../assets/images/MoodBoardVibecook/vibe-tired.png'),
     promptSnippet:
       'The user is in a "Tired but Hungry" mood. Single-pan, sheet-pan, or scramble-style recipes ONLY. Ingredient count ≤ 7. Total time (prep + cook) ≤ 20 minutes. No multi-step techniques. Comfort flavors over novelty.',
   },
@@ -89,7 +89,7 @@ export const VIBES: VibeDefinition[] = [
     // Plated restaurant dish hero
     imageUrl:
       'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80',
-    localImage: require('../../assets/images/MoodBoardVibecook/Showoff Plate - Restaurant-level for an audience..png'),
+    localImage: require('../../assets/images/MoodBoardVibecook/vibe-showoff.png'),
     promptSnippet:
       'The user is in a "Showoff Plate" mood. Recipe should plate beautifully and impress guests. Multi-component, restaurant-level techniques (sear-then-finish-in-oven, beurre monté, plated garnish, chef-style swoosh). Complexity is the point. Total time can be ≥ 60 minutes.',
   },
@@ -101,7 +101,7 @@ export const VIBES: VibeDefinition[] = [
     // Colorful bowl / grain bowl hero
     imageUrl:
       'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600&q=80',
-    localImage: require('../../assets/images/MoodBoardVibecook/Glow-up Bowl - Bright, nutrient-dense, photogenic..png'),
+    localImage: require('../../assets/images/MoodBoardVibecook/vibe-glow.png'),
     promptSnippet:
       'The user is in a "Glow-up Bowl" mood. Build a grain or veg bowl with at least 4 distinct colors, a fermented or pickled element (kimchi / pickled onion / sauerkraut / capers), a bright acid finish (lemon / lime / vinegar), and a creamy or tahini-based drizzle. Nutrient-dense and visually striking.',
   },
@@ -113,7 +113,7 @@ export const VIBES: VibeDefinition[] = [
     // Pasta / wine-friendly dish hero
     imageUrl:
       'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=600&q=80',
-    localImage: require('../../assets/images/MoodBoardVibecook/Date Night - Romantic, shareable, indulgent..png'),
+    localImage: require('../../assets/images/MoodBoardVibecook/vibe-date.png'),
     promptSnippet:
       'The user is in a "Date Night" mood. Recipe should be romantic, indulgent, and shareable across two portions. Lean toward fresh pasta, a wine-friendly protein (steak / duck / salmon), a charcuterie-adjacent starter, or a rich risotto. Plating should suggest "made with intention." Assume 2 servings.',
   },
@@ -125,7 +125,7 @@ export const VIBES: VibeDefinition[] = [
     // Healthy bowl / protein + veg hero
     imageUrl:
       'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=600&q=80',
-    localImage: require('../../assets/images/MoodBoardVibecook/Energy Reboot - Quick protein + smart carbs..png'),
+    localImage: require('../../assets/images/MoodBoardVibecook/vibe-reboot.png'),
     promptSnippet:
       'The user is in an "Energy Reboot" mood (post-workout / rough day). Build a recipe with a lean protein (chicken, tofu, fish, beans), a complex carb (rice, quinoa, sweet potato), and at least 2 colorful vegetables. Total time ≤ 25 minutes. Skip heavy fats and rich sauces. Function over indulgence.',
   },
@@ -137,7 +137,7 @@ export const VIBES: VibeDefinition[] = [
     // Breakfast / brunch hero (eggs / hash)
     imageUrl:
       'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=600&q=80',
-    localImage: require('../../assets/images/MoodBoardVibecook/Hangover Healer - Greasy, salty, soothing..png'),
+    localImage: require('../../assets/images/MoodBoardVibecook/vibe-hangover.png'),
     promptSnippet:
       'The user is in a "Hangover Healer" mood. Lean into greasy, salty, soothing classics: eggs benedict, breakfast hash, pho, congee, ramen, breakfast burrito. Sodium-forward. Easy on the gut. Comfort over creativity.',
   },
@@ -149,7 +149,7 @@ export const VIBES: VibeDefinition[] = [
     // Exotic cuisine hero (curry / tagine / etc)
     imageUrl:
       'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=600&q=80',
-    localImage: require('../../assets/images/MoodBoardVibecook/Adventurous Cook - Try a cuisine you don\'t usually do.png'),
+    localImage: require('../../assets/images/MoodBoardVibecook/vibe-adventurous.png'),
     promptSnippet:
       'The user is in an "Adventurous Cook" mood. Recommend a recipe from a cuisine OUTSIDE the user\'s usual rotation — if their cooking history leans Italian/Mediterranean, suggest Korean, West African, Sichuan, Levantine, or Filipino. Aim for one new technique or one new ingredient the user likely hasn\'t cooked before. Provide enough hand-holding in instructions to keep it accessible.',
   },

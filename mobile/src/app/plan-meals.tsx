@@ -149,11 +149,19 @@ const WEEKDAYS: { idx: number; short: string }[] = [
 const MAX_COOK_DAYS = 3;
 const MAX_PLAN_DAYS = 14;
 
+// Product decision: hide the special-instructions free-text field from the
+// plan-meals screen. Everything it feeds (state, the parsing effect, and the
+// specialInstructions field sent to generation) is left in place as dead
+// code — flip this back to true to restore the UI.
+const SPECIAL_INSTRUCTIONS_UI_ENABLED = false;
+
 // Cook-time slider stops. Mirrors the `WeeknightMinutes` union so the slider
-// snaps to values the preference model already understands — 15 min is the
-// floor. The slider drives an index into this list rather than raw minutes,
-// which keeps the (uneven) 60→90 gap evenly spaced on screen.
-const COOK_MINUTE_STEPS: WeeknightMinutes[] = [15, 30, 45, 60, 90];
+// snaps to values the preference model already understands — 30 min is the
+// floor on this screen (onboarding/EditProfileModal still offer 15 for the
+// saved default preference; this screen's per-plan override starts at 30).
+// The slider drives an index into this list rather than raw minutes, which
+// keeps the (uneven) 60→90 gap evenly spaced on screen.
+const COOK_MINUTE_STEPS: WeeknightMinutes[] = [30, 45, 60, 90];
 
 // Daypart palette — the selected colour traces the arc of the day
 // (sunrise → midday → dusk). Mirrors curated-plan-setup.tsx.
@@ -618,14 +626,18 @@ export default function PlanMealsScreen() {
     [],
   );
 
-  // Cook time snaps to the WeeknightMinutes ladder (15 is the floor).
-  const cookMinutes: WeeknightMinutes =
+  // Cook time snaps to the WeeknightMinutes ladder (30 is the floor on this
+  // screen). A saved preference of 15 — still offered in onboarding /
+  // EditProfileModal — is clamped up to 30 rather than falling off the front
+  // of this screen's ladder.
+  const rawCookMinutes: WeeknightMinutes =
     effectivePreferences.weeknightMinutes ??
     (effectivePreferences.mealPrepTime === 'quick'
       ? 30
       : effectivePreferences.mealPrepTime === 'elaborate'
         ? 90
         : 60);
+  const cookMinutes: WeeknightMinutes = rawCookMinutes === 15 ? 30 : rawCookMinutes;
   const cookMinutesIndex = Math.max(
     0,
     COOK_MINUTE_STEPS.indexOf(cookMinutes as WeeknightMinutes),
@@ -638,6 +650,23 @@ export default function PlanMealsScreen() {
       weeknightMinutes: next,
       mealPrepTime: mealPrepTimeFromMinutes(next),
     }));
+  }, []);
+
+  // `cookMinutes` above only clamps the on-screen value — `overrides` (what
+  // actually reaches `startBackgroundGeneration`) stays empty until the user
+  // touches the slider. A legacy saved preference of 15 would otherwise show
+  // "30 min" here but still generate a 15-minute plan. Write the clamp into
+  // `overrides` once so the submitted value always matches what's displayed,
+  // even if the user never moves the slider.
+  useEffect(() => {
+    if (rawCookMinutes === 15) {
+      setOverrides((o) =>
+        o.weeknightMinutes === undefined
+          ? { ...o, weeknightMinutes: 30, mealPrepTime: mealPrepTimeFromMinutes(30) }
+          : o,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Derived ──
@@ -1278,7 +1307,7 @@ export default function PlanMealsScreen() {
                 >
                   Cook on
                 </Text>
-                <View style={{ flexDirection: 'row', gap: 5, marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', gap: 5, marginBottom: 6 }}>
                   {WEEKDAYS.map(({ idx, short }) => {
                     const sel = batch.cookDays.includes(idx);
                     return (
@@ -1315,6 +1344,16 @@ export default function PlanMealsScreen() {
                     );
                   })}
                 </View>
+                <Text
+                  style={{
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 11.5,
+                    color: inkTertiary,
+                    marginBottom: 14,
+                  }}
+                >
+                  If your start date isn't one of your cook days, we'll cook fresh there too, then follow your selected days from then on.
+                </Text>
 
                 {/* Recipes per cook day */}
                 <View
@@ -1712,57 +1751,63 @@ export default function PlanMealsScreen() {
               </View>
             )}
 
-            {/* Special instructions free-text */}
-            <View style={{ marginTop: 12 }}>
-              <TextInput
-                value={specialText}
-                onChangeText={setSpecialText}
-                placeholder="Special instructions — e.g. no beef, vegetarian only, more chicken"
-                placeholderTextColor={inkTertiary}
-                multiline
-                style={{
-                  minHeight: 64,
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: cardBorder,
-                  backgroundColor: cardBg,
-                  fontFamily: designTokens.font.regular,
-                  fontSize: 14.5,
-                  color: inkPrimary,
-                  textAlignVertical: 'top',
-                }}
-              />
-              {/* Confirmation chip — echoes back what we parsed so a misread is
-                  visible and correctable (exclusions become HARD filters). */}
-              {describeInstructions(parsed) ? (
-                <View
+            {/* Special instructions free-text — hidden from the UI by product
+                decision. The state (specialText/parsed), the parsing effect,
+                and the specialInstructions field sent to generation are all
+                left intact below as dead code, so this can be re-enabled by
+                just flipping this flag back on. */}
+            {SPECIAL_INSTRUCTIONS_UI_ENABLED && (
+              <View style={{ marginTop: 12 }}>
+                <TextInput
+                  value={specialText}
+                  onChangeText={setSpecialText}
+                  placeholder="Special instructions — e.g. no beef, vegetarian only, more chicken"
+                  placeholderTextColor={inkTertiary}
+                  multiline
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    marginTop: 8,
-                    alignSelf: 'flex-start',
-                    paddingHorizontal: 11,
-                    paddingVertical: 6,
-                    borderRadius: 999,
-                    backgroundColor: isDark ? 'rgba(84,100,69,0.18)' : 'rgba(84,100,69,0.10)',
+                    minHeight: 64,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: cardBorder,
+                    backgroundColor: cardBg,
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 14.5,
+                    color: inkPrimary,
+                    textAlignVertical: 'top',
                   }}
-                >
-                  <Check size={12} color={designTokens.colors.brand} strokeWidth={2.4} />
-                  <Text
+                />
+                {/* Confirmation chip — echoes back what we parsed so a misread is
+                    visible and correctable (exclusions become HARD filters). */}
+                {describeInstructions(parsed) ? (
+                  <View
                     style={{
-                      fontFamily: designTokens.font.medium,
-                      fontSize: 12.5,
-                      color: designTokens.colors.brand,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      marginTop: 8,
+                      alignSelf: 'flex-start',
+                      paddingHorizontal: 11,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      backgroundColor: isDark ? 'rgba(84,100,69,0.18)' : 'rgba(84,100,69,0.10)',
                     }}
                   >
-                    Got it — {describeInstructions(parsed)}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
+                    <Check size={12} color={designTokens.colors.brand} strokeWidth={2.4} />
+                    <Text
+                      style={{
+                        fontFamily: designTokens.font.medium,
+                        fontSize: 12.5,
+                        color: designTokens.colors.brand,
+                      }}
+                    >
+                      Got it — {describeInstructions(parsed)}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
           </Animated.View>
         </ScrollView>
 

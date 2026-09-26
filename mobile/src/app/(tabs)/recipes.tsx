@@ -1499,9 +1499,7 @@ export default function RecipesScreen() {
                           letterSpacing: -0.07,
                         }}
                       >
-                        Looks like {totalDuplicates} recipe
-                        {totalDuplicates === 1 ? '' : 's'} may be duplicate
-                        {totalDuplicates === 1 ? '' : 's'}
+                        {totalDuplicates} {totalDuplicates === 1 ? 'recipe looks' : 'recipes look'} alike
                       </Text>
                       <Text
                         style={{
@@ -1511,7 +1509,7 @@ export default function RecipesScreen() {
                           marginTop: 1,
                         }}
                       >
-                        Review when you have a moment.
+                        Might be the same dish — take a look
                       </Text>
                     </View>
                     <Pressable

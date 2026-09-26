@@ -222,9 +222,10 @@ export function PantryProgress({ total, checked, mode, onSave, onReset, isDark }
           )}
         </View>
 
-        {/* Saving a list you've reviewed nothing of isn't a real action, so the
-            CTA only appears once there's something to save. */}
-        {started && (
+        {/* Save is available the moment a list exists — you shouldn't have to
+            tick an item just to save the list as-is. Reset (shopping mode)
+            still needs something ticked, since there'd be nothing to reset. */}
+        {(shopping ? started : total > 0) && (
           <Pressable
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

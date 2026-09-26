@@ -195,7 +195,7 @@ export function DuplicateBanner({ groupCount, totalDuplicates, onPress, isDark }
               isDark ? 'text-amber-200' : 'text-amber-800'
             )}
           >
-            {groupCount} duplicate {groupCount === 1 ? 'group' : 'groups'} found
+            {totalDuplicates} {totalDuplicates === 1 ? 'recipe looks' : 'recipes look'} alike
           </Text>
           <Text
             className={cn(
@@ -203,7 +203,7 @@ export function DuplicateBanner({ groupCount, totalDuplicates, onPress, isDark }
               isDark ? 'text-amber-300/70' : 'text-amber-600'
             )}
           >
-            {totalDuplicates} similar recipes — tap to review
+            Might be the same dish — take a look
           </Text>
         </View>
         <ChevronRight size={18} color={isDark ? '#fbbf24' : '#d97706'} />
@@ -280,7 +280,7 @@ export function DuplicateRecipeModal({
                   isDark ? 'text-white' : 'text-charcoal-900'
                 )}
               >
-                Duplicate Recipes
+                Recipes look alike
               </Text>
               <Text
                 className={cn(
