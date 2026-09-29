@@ -1,0 +1,36 @@
+# Include everything from mobile .gitignore
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+.env*
+*.tsbuildinfo
+/ios
+/android
+.claude/
+.gemini/
+.supabase/
+graphify-out/
+docs/
+scripts/
+
+# Non-build documents
+*.patch
+*.docx
+*.txt
+*.jsonl
+*.log
