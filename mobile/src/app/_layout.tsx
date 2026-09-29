@@ -193,6 +193,13 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     }
   }, [isAuthenticated, isAnonymous, currentUser]);
 
+  // Push token registration on authenticated session
+  useEffect(() => {
+    if (isAuthenticated && currentUser?.id && !isAnonymous) {
+      void registerPushToken();
+    }
+  }, [isAuthenticated, isAnonymous, currentUser?.id]);
+
   // Firebase receives only the internal UUID. PostHog identification above is
   // intentionally unchanged and remains the primary analytics identity flow.
   useEffect(() => {

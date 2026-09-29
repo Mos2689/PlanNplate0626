@@ -38,6 +38,27 @@ if (isNativeNotificationsAvailable) {
 }
 
 /**
+ * Ensure the default Android notification channel exists.
+ * On Android 8.0+ (API 26+) and 13+ (API 33+), notifications without a channel
+ * are dropped or silenced by the operating system.
+ */
+export async function setupNotificationChannels(): Promise<void> {
+  if (!isNativeNotificationsAvailable || Platform.OS !== 'android') return;
+
+  try {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#6a7d56',
+      sound: 'default',
+    });
+  } catch (e) {
+    console.warn('[notifications] setupNotificationChannels failed:', e);
+  }
+}
+
+/**
  * Whether the native notifications module is actually present in this binary.
  *
  * Exported so callers outside this file (the support notification router) can
@@ -53,6 +74,10 @@ export async function requestNotificationPermissions() {
   if (!isNativeNotificationsAvailable) return false;
 
   try {
+    if (Platform.OS === 'android') {
+      await setupNotificationChannels();
+    }
+
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
@@ -199,8 +224,17 @@ async function scheduleMealNotificationAt(
   // Skip anything in the past (or within the next minute) — can't fire it.
   if (when.getTime() <= Date.now() + 60_000) return;
   await Notifications.scheduleNotificationAsync({
-    content: { title, body, data: { kind: 'meal-plan' } },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
+    content: {
+      title,
+      body,
+      sound: true,
+      data: { kind: 'meal-plan' },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: when,
+      channelId: 'default',
+    },
   });
 }
 
@@ -305,11 +339,13 @@ export async function scheduleInactivityNotifications(userName: string = '') {
     content: {
       title: 'PlanNplate',
       body: `Hey ${name}, ready when you are. Tell us how you like to eat and we'll plan your week + shopping list in one go.`,
+      sound: true,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 3 * DAY_IN_SECONDS,
       repeats: false,
+      channelId: 'default',
     },
   });
 
@@ -318,11 +354,13 @@ export async function scheduleInactivityNotifications(userName: string = '') {
     content: {
       title: 'PlanNplate',
       body: `Still thinking it over, ${name}? A few taps sorts your meals and your shopping list. We'll keep it simple.`,
+      sound: true,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 10 * DAY_IN_SECONDS,
       repeats: false,
+      channelId: 'default',
     },
   });
 
@@ -331,11 +369,13 @@ export async function scheduleInactivityNotifications(userName: string = '') {
     content: {
       title: 'PlanNplate',
       body: `No rush, ${name} — whenever you're ready, your meal planner and recipe keeper are right here waiting.`,
+      sound: true,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 17 * DAY_IN_SECONDS,
       repeats: false,
+      channelId: 'default',
     },
   });
   } catch (e) {

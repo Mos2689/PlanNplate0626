@@ -56,6 +56,7 @@ async function sendPush(
       // Read by useSupportNotifications() to route the tap to /help/<threadId>.
       data: { type: 'support_reply', threadId },
       sound: 'default',
+      channelId: 'default',
       // Groups replies per conversation in the tray instead of stacking one
       // entry per reply.
       threadId: `support-${threadId}`,
@@ -69,6 +70,15 @@ async function sendPush(
 
     if (!res.ok) {
       console.warn('[SupportReply] Push send returned', res.status);
+    } else {
+      const tickets = await res.json().catch(() => null);
+      if (tickets?.data && Array.isArray(tickets.data)) {
+        for (const ticket of tickets.data) {
+          if (ticket.status === 'error') {
+            console.warn('[SupportReply] Push ticket error:', ticket.message, ticket.details);
+          }
+        }
+      }
     }
   } catch (e) {
     console.warn('[SupportReply] Push send failed:', e);
