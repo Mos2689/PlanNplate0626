@@ -29,8 +29,12 @@ docs/
 scripts/
 
 # Non-build documents
-*.patch
 *.docx
 *.txt
 *.jsonl
 *.log
+
+# Explicitly include patches for patch-package postinstall
+!patches/
+!patches/**
+

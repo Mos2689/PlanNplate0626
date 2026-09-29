@@ -21,9 +21,13 @@ admin/
 backend/
 
 # Huge patch and dump files
-*.patch
 diff.patch
 init.patch
 *.docx
 *.txt
 *.jsonl
+
+# Explicitly include mobile patches for patch-package
+!mobile/patches/
+!mobile/patches/**
+
