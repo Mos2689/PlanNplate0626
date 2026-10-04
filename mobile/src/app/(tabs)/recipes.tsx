@@ -8,7 +8,7 @@ import { KeyboardAvoidingView as ControllerKeyboardAvoidingView } from 'react-na
 import { DishImage } from '@/components/DishImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   Search,
   Plus,
@@ -57,6 +57,7 @@ import { RecipeGridCard } from '@/components/RecipeGridCard';
 import { RecipePrepCard } from '@/components/RecipePrepCard';
 import { composePrepGrid, type PrepGridItem } from '@/lib/recipe-prep-grid';
 import { RecipePrepBanner } from '@/components/RecipePrepBanner';
+import { TourCard } from '@/components/TourCard';
 import { DuplicateRecipeModal, findDuplicateGroups } from '@/components/DuplicateRecipeModal';
 import { NewCollectionModal } from '@/components/NewCollectionModal';
 import { SaveToCollectionSheet } from '@/components/SaveToCollectionSheet';
@@ -399,6 +400,12 @@ export default function RecipesScreen() {
   // Brief confirmation toast (e.g. after quick-adding a recipe to grocery).
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  // `?openAddSheet=<timestamp>` — deep link from the app tour's "Add a recipe"
+  // button. The timestamp makes every launch a fresh param so the sheet reopens.
+  const { openAddSheet } = useLocalSearchParams<{ openAddSheet?: string }>();
+  useEffect(() => {
+    if (openAddSheet) setAddSheetOpen(true);
+  }, [openAddSheet]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [collection, setCollection] = useState<CollectionId>('all');
@@ -992,6 +999,9 @@ export default function RecipesScreen() {
                   background; self-hides (returns null) once cleared, handing
                   the slot back to the intro nudge below. */}
               <RecipePrepBanner isDark={isDark} />
+
+              {/* ── First-run app tour card (new sign-ups only) ──── */}
+              <TourCard />
 
               {/* ── First-time intro nudge ─────────────────────── */}
               {showRecipesIntro && (

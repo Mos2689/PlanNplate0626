@@ -36,6 +36,7 @@ import {
   Share2,
   Scale,
   LifeBuoy,
+  CirclePlay,
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -61,6 +62,8 @@ import {
 } from '@/lib/behavior-insights';
 
 import { TERMS_OF_USE_URL } from '@/lib/legal';
+import { useTourStore } from '@/lib/tour-store';
+import { TOUR_VIDEOS } from '@/lib/tour-videos';
 
 // ── Share-the-app message ──────────────────────────────────────────────
 // Sent via the native share sheet (WhatsApp / iMessage / SMS / etc.). The
@@ -448,6 +451,7 @@ export default function ProfileScreen() {
   // Drives the dot on the Help & support row. Refreshed on focus, so a reply
   // that arrived while the app was backgrounded shows on return.
   const supportUnread = useSupportUnread();
+  const tourWatchedCount = useTourStore((s) => s.watchedIds.length);
 
   // ── Local state (preserved) ────────────────────────────────────
   const [modalType, setModalType] = useState<'delete' | null>(null);
@@ -1996,6 +2000,21 @@ export default function ProfileScreen() {
                   } else {
                     handleManageSubscription();
                   }
+                }}
+                isDark={isDark}
+              />
+
+              <SettingsRow
+                icon={<CirclePlay size={14} color={designTokens.colors.olive} strokeWidth={1.7} />}
+                label="Take an app tour"
+                summary={
+                  tourWatchedCount > 0
+                    ? `${tourWatchedCount} of ${TOUR_VIDEOS.length} watched`
+                    : `${TOUR_VIDEOS.length} short videos`
+                }
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push('/tour');
                 }}
                 isDark={isDark}
               />
