@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">=16.17.4"
+    "version": ">=16.17.4",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -18,6 +19,7 @@
       "distribution": "internal"
     },
     "production": {
+      "autoIncrement": true,
       "env": {
         "BACKEND_URL": "https://ample-pony.vibecode.run",
         "EXPO_PUBLIC_VIBECODE_REVENUECAT_APPLE_KEY": "appl_twIltSRpbHfdtREIEbywimmFvBp",
