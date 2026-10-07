@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "ycom.plannplate.app",
-      "versionCode": 71,
+      "versionCode": 73,
       "edgeToEdgeEnabled": true,
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
