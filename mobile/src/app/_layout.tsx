@@ -39,7 +39,7 @@ import { SupportComposer } from '@/components/support/SupportComposer';
 import { setCurrentScreen, startConnectivityMonitoring } from '@/lib/failure';
 import { useShareTarget } from '@/hooks/useShareTarget';
 import { useSupportNotifications } from '@/hooks/useSupportNotifications';
-import { scheduleInactivityNotifications, scheduleMealPlanNotifications, cancelAllNotifications, requestNotificationPermissions, registerPushToken } from '@/lib/notifications';
+import { syncScheduledNotifications, requestNotificationPermissions, registerPushToken } from '@/lib/notifications';
 
 
 
@@ -320,38 +320,39 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     return () => sub.remove();
   }, []);
 
-  // Handle inactivity notifications scheduling based on AppState
+  // Keep the daily reminders + inactivity nudges scheduled on the device.
   useEffect(() => {
-    // We optionally request permissions on first mount in this component
-    // so we can schedule them when they leave.
+    const currentUserName = () => {
+      const profileName = useSubscriptionStore.getState().userSubscription?.name;
+      const emailName = useAuthStore.getState().currentUser?.email?.split('@')[0];
+      return profileName || emailName || '';
+    };
+
     // PERF: deferred off the first frame — this triggers a native permission
-    // dialog and its associated bridge work. It still resolves long before the
-    // app can be backgrounded, which is the only place the permission is used.
-    // The AppState listener below is registered synchronously, unchanged.
+    // dialog and its associated bridge work. The AppState listener below is
+    // registered synchronously, unchanged.
     const permissionTask = InteractionManager.runAfterInteractions(() => {
       requestNotificationPermissions()
-        // Register the push token straight after, so a support reply can reach
-        // the user when the app is closed. registerPushToken never prompts on
-        // its own — it no-ops unless permission was already granted above.
+        // Schedule straight away rather than waiting for the first background:
+        // AppState doesn't emit 'active' on launch, and the backgrounding app
+        // is the least reliable moment to be doing native work.
+        .then(() => syncScheduledNotifications(currentUserName()))
+        // Register the push token too, so a support reply can reach the user
+        // when the app is closed. registerPushToken never prompts on its own —
+        // it no-ops unless permission was already granted above.
         .then(() => registerPushToken())
         .catch(() => {});
     });
 
     const handleAppStateChange = (status: AppStateStatus) => {
+      // Sync on BOTH transitions. Foreground keeps the schedule current while
+      // the app is open (so it's already correct if the process is killed from
+      // recents); background picks up anything cooked or re-planned this
+      // session. syncScheduledNotifications is idempotent and serialised.
       if (status === 'active') {
-        // App is foregrounded, cancel all pending inactivity notifications
-        void cancelAllNotifications();
-      } else if (status === 'background' || status === 'inactive') {
-        // App went to background, schedule inactivity notifications
-        const profileName = useSubscriptionStore.getState().userSubscription?.name;
-        const emailName = useAuthStore.getState().currentUser?.email?.split('@')[0];
-        const userName = profileName || emailName || '';
-
-        // Order matters: scheduleInactivityNotifications cancels ALL scheduled
-        // notifications first, so schedule the meal-plan reminders AFTER it.
-        void scheduleInactivityNotifications(userName).then(() =>
-          scheduleMealPlanNotifications(),
-        );
+        void syncScheduledNotifications(currentUserName());
+      } else if (status === 'background') {
+        void syncScheduledNotifications(currentUserName());
       }
     };
 

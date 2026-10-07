@@ -37,25 +37,63 @@ if (isNativeNotificationsAvailable) {
   }
 }
 
-/**
- * Ensure the default Android notification channel exists.
- * On Android 8.0+ (API 26+) and 13+ (API 33+), notifications without a channel
- * are dropped or silenced by the operating system.
- */
-export async function setupNotificationChannels(): Promise<void> {
-  if (!isNativeNotificationsAvailable || Platform.OS !== 'android') return;
+// ─────────────────────────────────────────────────────────────────────────────
+// Android notification channels
+//
+// On Android 8+ every notification needs a channel, and Expo's guidance for
+// Android 13+ is that one exists before the permission prompt and token fetch.
+// Two channels so users can mute meal reminders without also muting support
+// replies (or vice versa) from system settings.
+//
+// Channel ids are a contract with the server: support-reply sends
+// `channelId: 'support'`. Change one, change both.
+//
+// NOTE: Android locks a channel's importance the moment it's created — calling
+// setNotificationChannelAsync again later can rename it but can't raise or
+// lower it. To change importance, ship a NEW channel id and delete the old one.
+// The reminders channel keeps the id 'default' for exactly this reason: it
+// already exists on installed builds.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  try {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Default',
+/** Meal-plan reminders and the inactivity nudges — everything scheduled locally. */
+export const REMINDERS_CHANNEL_ID = 'default';
+/** Remote pushes from support-reply. */
+export const SUPPORT_CHANNEL_ID = 'support';
+
+let channelsReady: Promise<void> | null = null;
+
+/** Create the Android channels once per launch. No-op on iOS/web. */
+export function setupNotificationChannels(): Promise<void> {
+  if (!isNativeNotificationsAvailable || Platform.OS !== 'android') {
+    return Promise.resolve();
+  }
+  if (!channelsReady) {
+    const shared = {
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#6a7d56',
       sound: 'default',
-    });
-  } catch (e) {
-    console.warn('[notifications] setupNotificationChannels failed:', e);
+    };
+    channelsReady = Promise.all([
+      Notifications.setNotificationChannelAsync(REMINDERS_CHANNEL_ID, {
+        ...shared,
+        name: 'Meal reminders',
+        description: "Your day's menu and heads-ups before lunch and dinner.",
+      }),
+      Notifications.setNotificationChannelAsync(SUPPORT_CHANNEL_ID, {
+        ...shared,
+        name: 'Support replies',
+        description: 'When the PlanNplate team replies to your message.',
+      }),
+    ])
+      .then(() => undefined)
+      .catch((e) => {
+        // Let the next caller retry rather than caching the failure.
+        channelsReady = null;
+        console.warn('[notifications] setupNotificationChannels failed:', e);
+      });
   }
+  return channelsReady;
 }
 
 /**
@@ -74,9 +112,9 @@ export async function requestNotificationPermissions() {
   if (!isNativeNotificationsAvailable) return false;
 
   try {
-    if (Platform.OS === 'android') {
-      await setupNotificationChannels();
-    }
+    // Channels first: Expo's guidance for Android 13+ is that a channel exists
+    // before the permission prompt is shown.
+    await setupNotificationChannels();
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
@@ -164,6 +202,9 @@ export async function registerPushToken(): Promise<void> {
     const { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') return;
 
+    // The support channel must exist before a push targeting it arrives.
+    await setupNotificationChannels();
+
     const { useAuthStore } = await import('./auth-store');
     const auth = useAuthStore.getState();
     if (!auth.isAuthenticated || !auth.currentUser?.id) return;
@@ -182,7 +223,7 @@ export async function registerPushToken(): Promise<void> {
     if (!token) return;
 
     const { supabase } = await import('./supabase');
-    await supabase.from('user_push_tokens').upsert(
+    const { error } = await supabase.from('user_push_tokens').upsert(
       {
         token,
         user_id: auth.currentUser.id,
@@ -191,6 +232,11 @@ export async function registerPushToken(): Promise<void> {
       },
       { onConflict: 'token' },
     );
+    // supabase-js returns errors rather than throwing, so without this check
+    // an RLS or network failure would leave the device silently unreachable.
+    if (error) {
+      console.warn('[notifications] push token upsert failed:', error.message);
+    }
   } catch (e) {
     // A device with no push capability, a network blip, or a build without the
     // entitlement. None of these are worth telling the user about — the email
@@ -200,185 +246,197 @@ export async function registerPushToken(): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Meal-plan reminders (for ACTIVE users with a plan)
+// Scheduled local notifications — the daily engagement channel
 //
-// Scheduled alongside the inactivity notifications when the app backgrounds:
-//   • 8am  — morning heads-up of the day's plan (if anything is planned)
-//   • 11am — lunch reminder (only if a lunch is planned + not yet cooked)
-//   • 5pm  — dinner reminder (only if a dinner is planned + not yet cooked)
-// All times are LOCAL: we build each Date from local Y/M/D + hour, so the OS
-// fires it at that wall-clock time in the user's timezone. Any slot the user has
-// already logged (cooked/skipped/swapped) is skipped.
+//   • Meal-plan reminders for the next 7 days, LOCAL wall-clock times:
+//       8am  — morning heads-up of the day's plan (if anything is planned)
+//       11am — lunch reminder (only if a lunch is planned + not yet cooked)
+//       5pm  — dinner reminder (only if a dinner is planned + not yet cooked)
+//     Any slot the user has already logged (cooked/skipped/swapped) is skipped.
+//   • Inactivity nudges 3, 10 and 17 days after the last time the app was used.
+//
+// RELIABILITY — why this is a "sync" rather than cancel-all-then-schedule:
+// the old flow cancelled everything and then re-created ~20 notifications one
+// bridge call at a time, only when the app backgrounded. If Android killed the
+// process mid-way (user swipes the app away from recents), the user was left
+// with NOTHING scheduled. Now every notification has a stable identifier, so
+// scheduling one REPLACES its previous copy (expo-notifications keys both its
+// store and the AlarmManager PendingIntent on the identifier). We schedule
+// first and prune stale ones after, so there is never a window with an empty
+// schedule — an interrupted sync leaves the previous schedule in place.
+//
+// It runs on launch, on every foreground and on every background, so the
+// schedule is already in place before the user leaves rather than depending on
+// the last seconds of a backgrounding app.
 // ─────────────────────────────────────────────────────────────────────────────
+
+type PlannedNotification = {
+  identifier: string;
+  content: Notifications.NotificationContentInput;
+  trigger: Notifications.DateTriggerInput | Notifications.TimeIntervalTriggerInput;
+};
+
+const DAY_IN_SECONDS = 24 * 60 * 60;
 
 const localDateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-async function scheduleMealNotificationAt(
-  day: Date,
-  hour: number,
-  title: string,
-  body: string,
-) {
-  const when = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0, 0);
-  // Skip anything in the past (or within the next minute) — can't fire it.
-  if (when.getTime() <= Date.now() + 60_000) return;
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body,
-      sound: true,
-      data: { kind: 'meal-plan' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: when,
-      channelId: 'default',
-    },
-  });
+function buildMealPlanReminders(): PlannedNotification[] {
+  const planned: PlannedNotification[] = [];
+  const { mealSlots, recipes, cookingLogs } = useMealPlanStore.getState();
+
+  const nameFor = (recipeId: string | null, custom?: string): string | null => {
+    if (recipeId) {
+      const r = recipes.find((x) => x.id === recipeId);
+      if (r?.name) return r.name;
+    }
+    return custom?.trim() || null;
+  };
+  // Any log for a slot means the user has acted on it (cooked/skipped/swapped) —
+  // don't remind them to cook it.
+  const isResolved = (slotId: string) => cookingLogs.some((l) => l.slotId === slotId);
+  const isPlanned = (s: { recipeId: string | null; customMealName?: string; id: string }) =>
+    !!(s.recipeId || s.customMealName) && !isResolved(s.id);
+
+  const add = (day: Date, hour: number, title: string, body: string) => {
+    const when = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0, 0);
+    // Skip anything in the past (or within the next minute) — can't fire it.
+    if (when.getTime() <= Date.now() + 60_000) return;
+    planned.push({
+      identifier: `meal-${localDateKey(day)}-${hour}`,
+      content: { title, body, sound: true, data: { kind: 'meal-plan' } },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: when,
+        channelId: REMINDERS_CHANNEL_ID,
+      },
+    });
+  };
+
+  const now = new Date();
+  const HORIZON_DAYS = 7;
+  for (let i = 0; i < HORIZON_DAYS; i++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    const key = localDateKey(day);
+    const slots = mealSlots.filter((s) => (s.date || '').slice(0, 10) === key);
+    if (slots.length === 0) continue;
+
+    const lunch = slots.find((s) => s.mealType === 'lunch' && isPlanned(s));
+    const dinner = slots.find((s) => s.mealType === 'dinner' && isPlanned(s));
+    const anyPlanned = slots.some((s) => isPlanned(s));
+
+    // Morning heads-up @ 8am
+    if (anyPlanned) {
+      const l = lunch ? nameFor(lunch.recipeId, lunch.customMealName) : null;
+      const d = dinner ? nameFor(dinner.recipeId, dinner.customMealName) : null;
+      const body =
+        l && d
+          ? `Lunch: ${l} · Dinner: ${d}. Here's your plan for today.`
+          : l || d
+            ? `${l ?? d} is on today's plan. Tap to see the details.`
+            : `Your meals are planned for today — tap to take a look.`;
+      add(day, 8, `Today's menu 🍳`, body);
+    }
+
+    // Lunch reminder @ 11am
+    if (lunch) {
+      const n = nameFor(lunch.recipeId, lunch.customMealName);
+      const body = n
+        ? `Today's lunch is ${n}. A little prep now and you're set.`
+        : `You've got lunch planned today — time to start cooking.`;
+      add(day, 11, `Lunch coming up 🥗`, body);
+    }
+
+    // Dinner reminder @ 5pm
+    if (dinner) {
+      const n = nameFor(dinner.recipeId, dinner.customMealName);
+      const body = n
+        ? `Tonight it's ${n}. Start whenever you're ready.`
+        : `Dinner's on tonight's plan — time to start cooking.`;
+      add(day, 17, `Dinner's on the horizon 🍲`, body);
+    }
+  }
+
+  return planned;
 }
 
-export async function scheduleMealPlanNotifications() {
+function buildInactivityNudges(userName: string): PlannedNotification[] {
+  // Fallback to "there" if no name is provided
+  const name = userName || 'there';
+  const nudges: [number, string][] = [
+    [3, `Hey ${name}, ready when you are. Tell us how you like to eat and we'll plan your week + shopping list in one go.`],
+    [10, `Still thinking it over, ${name}? A few taps sorts your meals and your shopping list. We'll keep it simple.`],
+    [17, `No rush, ${name} — whenever you're ready, your meal planner and recipe keeper are right here waiting.`],
+  ];
+
+  // Re-scheduling these on every sync pushes them out again, which is exactly
+  // "N days after the user was last here".
+  return nudges.map(([day, body]) => ({
+    identifier: `nudge-day-${day}`,
+    content: { title: 'PlanNplate', body, sound: true, data: { kind: 'inactivity' } },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: day * DAY_IN_SECONDS,
+      repeats: false,
+      channelId: REMINDERS_CHANNEL_ID,
+    },
+  }));
+}
+
+const describeTrigger = (n: PlannedNotification) =>
+  'date' in n.trigger
+    ? new Date(n.trigger.date).toLocaleString()
+    : `in ${Math.round(n.trigger.seconds / DAY_IN_SECONDS)}d`;
+
+async function runSync(userName: string): Promise<void> {
   if (!isNativeNotificationsAvailable) return;
   try {
     const { status } = await Notifications.getPermissionsAsync();
-    if (status !== 'granted') return;
+    if (status !== 'granted') {
+      if (__DEV__) console.log(`[notifications] permission is "${status}" — nothing scheduled`);
+      return;
+    }
 
-    // Remove any meal-plan reminders we scheduled earlier so repeated calls don't
-    // stack duplicates (identified by content.data.kind).
+    await setupNotificationChannels();
+
+    const planned = [...buildInactivityNudges(userName), ...buildMealPlanReminders()];
+
+    // Schedule first: same identifier replaces the previous copy in place.
+    for (const n of planned) {
+      await Notifications.scheduleNotificationAsync(n);
+    }
+
+    // Then prune anything we no longer want — slots cooked or removed since the
+    // last sync, days that rolled out of the horizon, and the random-id
+    // notifications scheduled by builds before this change.
+    const keep = new Set(planned.map((n) => n.identifier));
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const n of scheduled) {
-      if ((n.content?.data as { kind?: string } | undefined)?.kind === 'meal-plan') {
+      if (!keep.has(n.identifier)) {
         await Notifications.cancelScheduledNotificationAsync(n.identifier);
       }
     }
 
-    const { mealSlots, recipes, cookingLogs } = useMealPlanStore.getState();
-
-    const nameFor = (recipeId: string | null, custom?: string): string | null => {
-      if (recipeId) {
-        const r = recipes.find((x) => x.id === recipeId);
-        if (r?.name) return r.name;
-      }
-      return custom?.trim() || null;
-    };
-    // Any log for a slot means the user has acted on it (cooked/skipped/swapped) —
-    // don't remind them to cook it.
-    const isResolved = (slotId: string) => cookingLogs.some((l) => l.slotId === slotId);
-    const isPlanned = (s: { recipeId: string | null; customMealName?: string; id: string }) =>
-      !!(s.recipeId || s.customMealName) && !isResolved(s.id);
-
-    const now = new Date();
-    const HORIZON_DAYS = 7;
-    for (let i = 0; i < HORIZON_DAYS; i++) {
-      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-      const key = localDateKey(day);
-      const slots = mealSlots.filter((s) => (s.date || '').slice(0, 10) === key);
-      if (slots.length === 0) continue;
-
-      const lunch = slots.find((s) => s.mealType === 'lunch' && isPlanned(s));
-      const dinner = slots.find((s) => s.mealType === 'dinner' && isPlanned(s));
-      const anyPlanned = slots.some((s) => isPlanned(s));
-
-      // Morning heads-up @ 8am
-      if (anyPlanned) {
-        const l = lunch ? nameFor(lunch.recipeId, lunch.customMealName) : null;
-        const d = dinner ? nameFor(dinner.recipeId, dinner.customMealName) : null;
-        const body =
-          l && d
-            ? `Lunch: ${l} · Dinner: ${d}. Here's your plan for today.`
-            : l || d
-              ? `${l ?? d} is on today's plan. Tap to see the details.`
-              : `Your meals are planned for today — tap to take a look.`;
-        await scheduleMealNotificationAt(day, 8, `Today's menu 🍳`, body);
-      }
-
-      // Lunch reminder @ 11am
-      if (lunch) {
-        const n = nameFor(lunch.recipeId, lunch.customMealName);
-        const body = n
-          ? `Today's lunch is ${n}. A little prep now and you're set.`
-          : `You've got lunch planned today — time to start cooking.`;
-        await scheduleMealNotificationAt(day, 11, `Lunch coming up 🥗`, body);
-      }
-
-      // Dinner reminder @ 5pm
-      if (dinner) {
-        const n = nameFor(dinner.recipeId, dinner.customMealName);
-        const body = n
-          ? `Tonight it's ${n}. Start whenever you're ready.`
-          : `Dinner's on tonight's plan — time to start cooking.`;
-        await scheduleMealNotificationAt(day, 17, `Dinner's on the horizon 🍲`, body);
-      }
+    if (__DEV__) {
+      console.log(
+        `[notifications] ${planned.length} scheduled:\n` +
+          planned.map((n) => `  ${n.identifier} → ${describeTrigger(n)}`).join('\n'),
+      );
     }
   } catch (e) {
-    console.warn('[notifications] scheduleMealPlanNotifications failed:', e);
+    console.warn('[notifications] syncScheduledNotifications failed:', e);
   }
 }
 
-export async function scheduleInactivityNotifications(userName: string = '') {
-  if (!isNativeNotificationsAvailable) return;
-  try {
+// Serialises syncs so a foreground and a background firing close together
+// can't interleave their schedule/prune passes.
+let syncQueue: Promise<void> = Promise.resolve();
 
-  // 1. Cancel existing notifications to reset the timer
-  await cancelAllNotifications();
-
-  // Make sure we have permission before attempting to schedule
-  const { status } = await Notifications.getPermissionsAsync();
-  if (status !== 'granted') {
-    return;
-  }
-
-  // Fallback to "there" if no name is provided
-  const name = userName ? userName : 'there';
-  
-  const DAY_IN_SECONDS = 24 * 60 * 60;
-  
-  // Schedule Day 3
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'PlanNplate',
-      body: `Hey ${name}, ready when you are. Tell us how you like to eat and we'll plan your week + shopping list in one go.`,
-      sound: true,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: 3 * DAY_IN_SECONDS,
-      repeats: false,
-      channelId: 'default',
-    },
-  });
-
-  // Schedule Day 10
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'PlanNplate',
-      body: `Still thinking it over, ${name}? A few taps sorts your meals and your shopping list. We'll keep it simple.`,
-      sound: true,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: 10 * DAY_IN_SECONDS,
-      repeats: false,
-      channelId: 'default',
-    },
-  });
-
-  // Schedule Day 17
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'PlanNplate',
-      body: `No rush, ${name} — whenever you're ready, your meal planner and recipe keeper are right here waiting.`,
-      sound: true,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: 17 * DAY_IN_SECONDS,
-      repeats: false,
-      channelId: 'default',
-    },
-  });
-  } catch (e) {
-    console.warn('[notifications] scheduleInactivityNotifications failed:', e);
-  }
+/**
+ * Bring the device's scheduled notifications in line with the current meal
+ * plan and reset the inactivity nudges. Idempotent and safe to call often.
+ */
+export function syncScheduledNotifications(userName: string = ''): Promise<void> {
+  syncQueue = syncQueue.then(() => runSync(userName));
+  return syncQueue;
 }

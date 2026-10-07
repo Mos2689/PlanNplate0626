@@ -23,12 +23,96 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+type PushTokenRow = { token: string; platform: string };
+
+type ExpoPushResult = {
+  status: 'ok' | 'error';
+  id?: string;
+  message?: string;
+  details?: { error?: string };
+};
+
+/**
+ * How long to wait before asking Expo whether FCM/APNs accepted the message.
+ *
+ * A ticket only says Expo queued it; the receipt is where provider failures
+ * surface — including `InvalidCredentials` when the FCM V1 key isn't uploaded
+ * to EAS, which is the most likely way Android push breaks without anyone
+ * noticing. Expo suggests waiting a while; receipts not ready yet are logged
+ * as pending rather than treated as failures.
+ */
+const RECEIPT_DELAY_MS = 30_000;
+
+/**
+ * Remove tokens Expo says will never deliver again (app uninstalled, token
+ * rotated). Without this every future reply keeps retrying dead devices.
+ */
+async function pruneDeadTokens(
+  admin: ReturnType<typeof createClient>,
+  tokens: string[],
+) {
+  if (!tokens.length) return;
+  const { error } = await admin.from('user_push_tokens').delete().in('token', tokens);
+  if (error) {
+    console.warn('[SupportReply] Could not prune dead push tokens:', error.message);
+  } else {
+    console.log('[SupportReply] Pruned', tokens.length, 'dead push token(s)');
+  }
+}
+
+/** Fetch receipts for tickets Expo accepted, log provider failures, prune dead tokens. */
+async function checkReceipts(
+  admin: ReturnType<typeof createClient>,
+  tickets: Map<string, PushTokenRow>,
+) {
+  await new Promise((resolve) => setTimeout(resolve, RECEIPT_DELAY_MS));
+
+  try {
+    const res = await fetch('https://exp.host/--/api/v2/push/getReceipts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ ids: [...tickets.keys()] }),
+    });
+    if (!res.ok) {
+      console.warn('[SupportReply] Push receipts returned', res.status);
+      return;
+    }
+
+    const receipts: Record<string, ExpoPushResult> =
+      (await res.json().catch(() => null))?.data ?? {};
+    const dead: string[] = [];
+
+    for (const [id, row] of tickets) {
+      const receipt = receipts[id];
+      if (!receipt) {
+        console.log('[SupportReply] Push receipt pending', { id, platform: row.platform });
+      } else if (receipt.status === 'error') {
+        console.warn('[SupportReply] Push delivery failed', {
+          platform: row.platform,
+          error: receipt.details?.error,
+          message: receipt.message,
+        });
+        if (receipt.details?.error === 'DeviceNotRegistered') dead.push(row.token);
+      } else {
+        console.log('[SupportReply] Push delivered to provider', { platform: row.platform });
+      }
+    }
+
+    await pruneDeadTokens(admin, dead);
+  } catch (e) {
+    console.warn('[SupportReply] Push receipt check failed:', e);
+  }
+}
+
 /**
  * Best-effort push. Never throws, never blocks the reply.
  *
  * Notifications are the convenience channel; the email is the guarantee. If
  * Expo is unreachable the user still gets the reply — it just arrives in their
  * inbox rather than on their lock screen.
+ *
+ * Expo answers 200 even when individual messages fail, so success is judged
+ * per ticket, never by the HTTP status alone.
  */
 async function sendPush(
   admin: ReturnType<typeof createClient>,
@@ -37,14 +121,18 @@ async function sendPush(
   threadId: string,
 ) {
   try {
-    const { data: tokens } = await admin
+    const { data: rows } = await admin
       .from('user_push_tokens')
-      .select('token')
+      .select('token, platform')
       .eq('user_id', userId);
 
-    if (!tokens?.length) return;
+    const tokens = (rows ?? []) as PushTokenRow[];
+    if (!tokens.length) {
+      console.log('[SupportReply] No push tokens for user — email only');
+      return;
+    }
 
-    const messages = tokens.map((t: { token: string }) => ({
+    const messages = tokens.map((t) => ({
       to: t.token,
       // Says what it is without support jargon, and distinguishes this from the
       // app's meal reminders at a glance. Duplicated wording rather than
@@ -56,7 +144,9 @@ async function sendPush(
       // Read by useSupportNotifications() to route the tap to /help/<threadId>.
       data: { type: 'support_reply', threadId },
       sound: 'default',
-      channelId: 'default',
+      // Android channel created by setupNotificationChannels() in
+      // src/lib/notifications.ts (SUPPORT_CHANNEL_ID). Change one, change both.
+      channelId: 'support',
       // Groups replies per conversation in the tray instead of stacking one
       // entry per reply.
       threadId: `support-${threadId}`,
@@ -68,17 +158,47 @@ async function sendPush(
       body: JSON.stringify(messages),
     });
 
-    if (!res.ok) {
-      console.warn('[SupportReply] Push send returned', res.status);
-    } else {
-      const tickets = await res.json().catch(() => null);
-      if (tickets?.data && Array.isArray(tickets.data)) {
-        for (const ticket of tickets.data) {
-          if (ticket.status === 'error') {
-            console.warn('[SupportReply] Push ticket error:', ticket.message, ticket.details);
-          }
-        }
+    const payload = await res.json().catch(() => null);
+
+    if (!res.ok || !Array.isArray(payload?.data)) {
+      // Request-level failure (malformed body, tokens from mixed projects, …).
+      console.warn('[SupportReply] Push send failed', res.status, payload?.errors ?? payload);
+      return;
+    }
+
+    // Tickets come back in the same order as the messages we sent.
+    const tickets = payload.data as ExpoPushResult[];
+    const accepted = new Map<string, PushTokenRow>();
+    const dead: string[] = [];
+
+    tickets.forEach((ticket, i) => {
+      const row = tokens[i];
+      if (!row) return;
+      if (ticket.status === 'ok' && ticket.id) {
+        accepted.set(ticket.id, row);
+      } else if (ticket.status === 'error') {
+        console.warn('[SupportReply] Push ticket error', {
+          platform: row.platform,
+          error: ticket.details?.error,
+          message: ticket.message,
+        });
+        if (ticket.details?.error === 'DeviceNotRegistered') dead.push(row.token);
       }
+    });
+
+    console.log('[SupportReply] Push tickets', {
+      sent: messages.length,
+      accepted: accepted.size,
+      platforms: tokens.map((t) => t.platform),
+    });
+
+    await pruneDeadTokens(admin, dead);
+
+    // Receipts arrive later; don't hold the agent's reply open for them.
+    if (accepted.size) {
+      const receiptWork = checkReceipts(admin, accepted);
+      // @ts-ignore — EdgeRuntime is provided by the Supabase edge runtime.
+      if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(receiptWork);
     }
   } catch (e) {
     console.warn('[SupportReply] Push send failed:', e);
