@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">=16.17.4",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -19,7 +19,7 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
+      "autoIncrement": false,
       "env": {
         "BACKEND_URL": "https://ample-pony.vibecode.run",
         "EXPO_PUBLIC_VIBECODE_REVENUECAT_APPLE_KEY": "appl_twIltSRpbHfdtREIEbywimmFvBp",
@@ -38,7 +38,11 @@
         "EXPO_PUBLIC_META_CLIENT_TOKEN": "5938fbffd345bc485d7f6be76d0d9982",
         "EXPO_PUBLIC_META_DISPLAY_NAME": "PlanNplate",
         "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_r6o5ybmwrWfKxvgyWFwM9kBi2APgUvwC3QcdUxuTMXWx",
-        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com"
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com",
+        "EXPO_PUBLIC_ADMOB_IOS_APP_ID": "ca-app-pub-6516185368332110~6036431824",
+        "EXPO_PUBLIC_ADMOB_ANDROID_APP_ID": "ca-app-pub-6516185368332110~2850941840",
+        "EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID": "ca-app-pub-6516185368332110/6655203912",
+        "EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_UNIT_ID": "ca-app-pub-6516185368332110/8898223872"
       },
       "ios": {
         "distribution": "store"

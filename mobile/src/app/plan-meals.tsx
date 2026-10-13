@@ -1352,7 +1352,7 @@ export default function PlanMealsScreen() {
                     marginBottom: 14,
                   }}
                 >
-                  If your start date isn't one of your cook days, we'll cook fresh there too, then follow your selected days from then on.
+                  We’ll cook fresh on your start date, then follow your selected cooking days.
                 </Text>
 
                 {/* Recipes per cook day */}

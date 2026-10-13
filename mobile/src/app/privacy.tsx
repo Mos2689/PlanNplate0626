@@ -59,7 +59,7 @@ export default function PrivacyScreen() {
       icon: <Sparkles size={17} color={designTokens.colors.brand} strokeWidth={1.9} />,
       title: 'Why we use it',
       body:
-        'To personalise your meals and run the app. We never sell your data, and we don’t use your content to train third-party AI models.',
+        'To personalise your meals and run the app. We never sell your data, and we don’t use your content to train third-party AI models. If you choose to watch ads to unlock Premium, Google AdMob shows them and may use your device’s advertising ID only if you allow it.',
     },
     {
       icon: <SlidersHorizontal size={17} color={designTokens.colors.brand} strokeWidth={1.9} />,

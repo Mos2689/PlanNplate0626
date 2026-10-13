@@ -52,6 +52,7 @@ import { ServingAdjustmentModal } from '@/components/ServingAdjustmentModal';
 import { PausedFeatureBanner } from '@/components/PausedFeatureBanner';
 import { MonthYearPicker } from '@/components/MonthYearPicker';
 import { PendingGenerationBanner } from '@/components/PendingGenerationBanner';
+import { AdExpiryBanner } from '@/components/AdUnlockStatus';
 import { CookConfirmSheet } from '@/components/CookConfirmSheet';
 import { WeeklyRatingSheet } from '@/components/WeeklyRatingSheet';
 import { UserAvatarDisplay } from '@/components/ProfileSetupModal';
@@ -861,7 +862,7 @@ export default function HomeScreen() {
   const heroWeekday = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
   const heroDateLabel = `${selectedDate.toLocaleDateString('en-US', { weekday: 'short' })} ${selectedDate.getDate()}`;
 
-  // ── Date pill + calendar dropdown (under the "Today" heading) ──────────
+  // ── Date pill + calendar dropdown (left of the day chevrons) ──────────
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   // Pill label matches the mockup: "Tue, 18 June".
   const datePillLabel = `${selectedDate.toLocaleDateString('en-US', { weekday: 'short' })}, ${selectedDate.getDate()} ${selectedDate.toLocaleDateString('en-US', { month: 'long' })}`;
@@ -884,9 +885,6 @@ export default function HomeScreen() {
     return m;
   }, [mealSlots, cookingLogs]);
 
-  const headingLabel = isTodaySelected
-    ? 'Today'
-    : selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
   const headingSubLabel = selectedDate.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'short',
@@ -935,6 +933,9 @@ export default function HomeScreen() {
               PnP-Suggests plan is being streamed in. Self-dismisses
               when complete or on failure tap-to-retry. */}
           <PendingGenerationBanner isDark={isDark} />
+
+          {/* (B) Final 24 h of a free ad week — "ends tomorrow" + Extend. */}
+          <AdExpiryBanner />
 
           {/* Green "cooking today" hero — warm nudge about the selected day's
               plan. Sits above the (now slimmer) date strip. */}
@@ -1079,21 +1080,11 @@ export default function HomeScreen() {
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
-                alignItems: 'baseline',
+                alignItems: 'center',
                 marginBottom: 12,
               }}
             >
               <View>
-                <Text
-                  style={{
-                    fontFamily: designTokens.font.medium,
-                    fontSize: 19,
-                    color: colors.ink,
-                    letterSpacing: -0.38,
-                  }}
-                >
-                  {headingLabel}
-                </Text>
                 <Pressable
                   onPress={() => {
                     Haptics.selectionAsync();
@@ -1105,7 +1096,6 @@ export default function HomeScreen() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 5,
-                    marginTop: 6,
                     alignSelf: 'flex-start',
                     paddingLeft: 12,
                     paddingRight: 10,
@@ -1294,7 +1284,7 @@ export default function HomeScreen() {
         </Animated.ScrollView>
       </SafeAreaView>
 
-      {/* Calendar dropdown opened by the date pill under the "Today" heading. */}
+      {/* Calendar dropdown opened by the date pill. */}
       <DateCalendarSheet
         visible={datePickerOpen}
         onClose={() => setDatePickerOpen(false)}

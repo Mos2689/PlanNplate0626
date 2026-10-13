@@ -183,6 +183,26 @@ module.exports = function ({ config }) {
     ]);
   }
 
+  // Google AdMob — rewarded video for "watch ~30 s of ads, unlock Premium for
+  // 7 days" (src/lib/rewarded-ad.ts). App ids are public (they ship in every
+  // build), so they're committed like the Team ID above; env vars still win.
+  // No userTrackingUsageDescription here: the ATT string stays the one from
+  // app.json / expo-tracking-transparency. delayAppMeasurementInit lets the
+  // consent step run before the SDK starts measuring.
+  if (!hasPlugin("react-native-google-mobile-ads")) {
+    config.plugins.push([
+      "react-native-google-mobile-ads",
+      {
+        iosAppId:
+          process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "ca-app-pub-6516185368332110~6036431824",
+        androidAppId:
+          process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "ca-app-pub-6516185368332110~2850941840",
+        delayAppMeasurementInit: true,
+        skAdNetworkItems: ["cstr6suwn9.skadnetwork"],
+      },
+    ]);
+  }
+
   // 2. Meta SDK configuration plugin
   if (!hasPlugin("react-native-fbsdk-next")) {
     config.plugins.push([

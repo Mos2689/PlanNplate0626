@@ -74,6 +74,7 @@ import { reportAndPresent, swallow } from '@/lib/failure';
 import { designTokens, elevation, getThemeColors, serifItalicFontStyle } from '@/lib/design-tokens';
 import { VibeDeck } from '@/components/VibeDeck';
 import { InferredFridgeChips } from '@/components/InferredFridgeChips';
+import { useFridgeStore, freshFridgeEdits } from '@/lib/fridge-store';
 import {
   inferLikelyFridgeIngredients,
   buildVibePromptAddendum,
@@ -568,21 +569,48 @@ export default function GenerateRecipeScreen() {
   // NOT re-derive on every store change — once the user has started
   // curating the chips (removing items, adding their own), we don't
   // want a background grocery refresh to clobber their edits.
+  //
+  // The user's own edits are persisted (fridge-store) and win over the
+  // inference for 7 days, so leaving and returning keeps their list.
   const fridgeSeededRef = useRef(false);
+  const fridgeHydrated = useFridgeStore((s) => s.hasHydrated);
+  const saveFridgeEdits = useFridgeStore((s) => s.saveEdits);
+  const clearFridgeEdits = useFridgeStore((s) => s.clearEdits);
+  const hasFridgeEdits = useFridgeStore(
+    (s) => freshFridgeEdits(s.items, s.editedAt, Date.now()) !== null,
+  );
+  const inferFridge = useCallback(
+    () =>
+      inferLikelyFridgeIngredients({
+        now: new Date(),
+        cookingLogs: vibeCookingLogs,
+        recipes,
+        savedGroceryLists: vibeSavedGroceryLists,
+        groceryItems: vibeGroceryItems,
+      }),
+    [vibeCookingLogs, recipes, vibeSavedGroceryLists, vibeGroceryItems],
+  );
   useEffect(() => {
-    if (fridgeSeededRef.current) return;
+    if (fridgeSeededRef.current || !fridgeHydrated) return;
     fridgeSeededRef.current = true;
-    const inferred = inferLikelyFridgeIngredients({
-      now: new Date(),
-      cookingLogs: vibeCookingLogs,
-      recipes,
-      savedGroceryLists: vibeSavedGroceryLists,
-      groceryItems: vibeGroceryItems,
-    });
-    setFridgeIngredients(inferred);
-    // intentionally empty deps — seed exactly once per mount
+    const { items, editedAt } = useFridgeStore.getState();
+    const saved = freshFridgeEdits(items, editedAt, Date.now());
+    setFridgeIngredients(saved ?? inferFridge());
+    // seed exactly once per mount, after the saved edits have loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fridgeHydrated]);
+  const handleResetFridge = useCallback(() => {
+    Haptics.selectionAsync();
+    clearFridgeEdits();
+    setFridgeIngredients(inferFridge());
+  }, [clearFridgeEdits, inferFridge]);
+  const handleFridgeChange = useCallback(
+    (items: string[]) => {
+      setFridgeIngredients(items);
+      saveFridgeEdits(items);
+    },
+    [saveFridgeEdits],
+  );
   const [generatedRecipe, setGeneratedRecipe] = useState<GeneratedRecipeResponse | null>(null);
   const [generatedMealPlan, setGeneratedMealPlan] = useState<GeneratedRecipeResponse[]>([]);
   const [showRecipeModal, setShowRecipeModal] = useState(false);
@@ -2175,9 +2203,29 @@ export default function GenerateRecipeScreen() {
               </Text>
               <InferredFridgeChips
                 items={fridgeIngredients}
-                onChange={setFridgeIngredients}
+                onChange={handleFridgeChange}
                 isDark={isDark}
               />
+              {hasFridgeEdits && (
+                <Pressable
+                  onPress={handleResetFridge}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reset to suggested ingredients"
+                  style={{ alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 4, paddingVertical: 4 }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: designTokens.font.medium,
+                      fontSize: 13,
+                      color: designTokens.colors.brand,
+                      textDecorationLine: 'underline',
+                    }}
+                  >
+                    Reset to suggestions
+                  </Text>
+                </Pressable>
+              )}
             </Animated.View>
 
             {/* ── Cooking instructions (hidden — Vibe Cooking pulls prefs from Profile) ─── */}

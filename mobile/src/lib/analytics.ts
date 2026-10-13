@@ -45,6 +45,12 @@ export type KnownAnalyticsEvent =
   // Paywall / purchase
   | 'paywall_viewed'
   | 'paywall_dismissed'
+  | 'ad_unlock_started'
+  | 'ad_unlock_ad_completed'
+  | 'ad_unlock_granted'
+  | 'ad_unlock_unavailable'
+  | 'ad_unlock_prompt_shown'
+  | 'ad_unlock_prompt_dismissed'
   | 'purchase_started'
   | 'purchase_completed'
   | 'purchase_failed'

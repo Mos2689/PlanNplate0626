@@ -56,6 +56,7 @@ import { transcribeAudioToText, parseGroceryItemsFromTranscript, type ParsedGroc
 import { convertToBaseUnit, resolveMeasurementSystem } from '@/lib/unit-conversion';
 import { GroceryItemRow, groceryQuantityLabel } from '@/components/GroceryItemRow';
 import { ShoppingListCompletionModal } from '@/components/ShoppingListCompletionModal';
+import { useAdUnlockStore } from '@/lib/ad-unlock-store';
 import { GroceryRecipePicker } from '@/components/GroceryRecipePicker';
 import { GroceryRecipeStrip } from '@/components/GroceryRecipeStrip';
 import { PantryProgress } from '@/components/PantryProgress';
@@ -2018,6 +2019,7 @@ export default function GroceryScreen() {
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text
+          numberOfLines={1}
           style={{
             fontFamily: designTokens.font.semibold,
             fontSize: 16,
@@ -2038,21 +2040,22 @@ export default function GroceryScreen() {
         >
           {subtitle}
         </Text>
+        {disabled && disabledNote ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+            <Lock size={12} color={colors.ink3} strokeWidth={1.8} />
+            <Text
+              style={{
+                fontFamily: designTokens.font.medium,
+                fontSize: 11.5,
+                color: colors.ink3,
+              }}
+            >
+              {disabledNote}
+            </Text>
+          </View>
+        ) : null}
       </View>
-      {disabled && disabledNote ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Lock size={13} color={colors.ink3} strokeWidth={1.8} />
-          <Text
-            style={{
-              fontFamily: designTokens.font.medium,
-              fontSize: 11.5,
-              color: colors.ink3,
-            }}
-          >
-            {disabledNote}
-          </Text>
-        </View>
-      ) : (
+      {!(disabled && disabledNote) && (
         <ChevronRight size={20} color={colors.ink3} strokeWidth={1.8} />
       )}
     </Pressable>
@@ -3468,8 +3471,8 @@ export default function GroceryScreen() {
         onClose={() => setShowCompletionModal(false)}
         onProceedToCheckout={() => {
           setShowCompletionModal(false);
-          // User can proceed to checkout or continue shopping
-          // For now, just close the modal
+          // (C) Finished a shop in the last 2 days of a free week → offer 7 more.
+          setTimeout(() => useAdUnlockStore.getState().maybePromptSuccess('success-shop'), 500);
         }}
         isDark={isDark}
       />

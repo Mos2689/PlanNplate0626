@@ -36,7 +36,6 @@ import {
   Share2,
   Scale,
   LifeBuoy,
-  CirclePlay,
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -63,7 +62,9 @@ import {
 
 import { TERMS_OF_USE_URL } from '@/lib/legal';
 import { useTourStore } from '@/lib/tour-store';
+import { AdUnlockStatusCard } from '@/components/AdUnlockStatus';
 import { TOUR_VIDEOS } from '@/lib/tour-videos';
+import { TourBanner } from '@/components/TourCard';
 
 // ── Share-the-app message ──────────────────────────────────────────────
 // Sent via the native share sheet (WhatsApp / iMessage / SMS / etc.). The
@@ -892,6 +893,23 @@ export default function ProfileScreen() {
               </LinearGradient>
             </Pressable>
           </Animated.View>
+
+          {/* ── Free week (ad unlock) status ── */}
+          <AdUnlockStatusCard />
+
+          {/* ── App tour ── visible near the top so it isn't buried in Settings. */}
+          <TourBanner
+            title="Take a quick tour"
+            subtitle={
+              tourWatchedCount >= TOUR_VIDEOS.length
+                ? `All ${TOUR_VIDEOS.length} watched · Watch again`
+                : tourWatchedCount > 0
+                  ? `${tourWatchedCount} of ${TOUR_VIDEOS.length} watched`
+                  : `${TOUR_VIDEOS.length} short videos to get started`
+            }
+            paddingHorizontal={16}
+            variant="beige"
+          />
 
           {/* ── Cooking profile card ────────────────────────────── */}
           {SHOW_COOKS_FOR_CARD && (
@@ -2004,20 +2022,6 @@ export default function ProfileScreen() {
                 isDark={isDark}
               />
 
-              <SettingsRow
-                icon={<CirclePlay size={14} color={designTokens.colors.olive} strokeWidth={1.7} />}
-                label="Take an app tour"
-                summary={
-                  tourWatchedCount > 0
-                    ? `${tourWatchedCount} of ${TOUR_VIDEOS.length} watched`
-                    : `${TOUR_VIDEOS.length} short videos`
-                }
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push('/tour');
-                }}
-                isDark={isDark}
-              />
 
               {/* Sits above Privacy and Terms because it's the one row here
                   someone arrives looking for. It is NOT the main way support

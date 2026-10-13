@@ -1726,13 +1726,13 @@ export default function RecipesScreen() {
               >
                 {activeCustom
                   ? `Pick recipes from your library to add to ${activeCustom.name}`
-                  : 'Try adjusting your filters or generate a new recipe'}
+                  : 'Try adjusting your filters or explore new recipes'}
               </Text>
               <Pressable
                 onPress={() =>
                   activeCustom
                     ? handleOpenPicker(activeCustom.id)
-                    : router.push('/generate-recipe')
+                    : router.navigate('/(tabs)/inspired')
                 }
                 style={{
                   marginTop: 18,
@@ -1750,7 +1750,7 @@ export default function RecipesScreen() {
                     letterSpacing: -0.145,
                   }}
                 >
-                  {activeCustom ? 'Add recipes' : 'Generate recipe'}
+                  {activeCustom ? 'Add recipes' : 'Explore recipes'}
                 </Text>
               </Pressable>
             </Animated.View>

@@ -42,6 +42,11 @@ mobile/graphify-out/
 mobile/plan-setup-preview.html
 mobile/welcome-preview.html
 
+# Build artifacts
+*.aab
+*.apk
+*.ipa
+
 # Large local patch dumps
 diff.patch
 init.patch

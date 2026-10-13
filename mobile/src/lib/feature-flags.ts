@@ -17,4 +17,10 @@ export const FEATURE_FLAGS = {
    * screen — which ships in an ordinary update. See docs/SHARE_TO_PLANNPLATE.md.
    */
   shareToPlanNplate: true,
+  /**
+   * "Watch ~30 seconds of ads to unlock Premium for 7 days" on the paywall
+   * (Google AdMob rewarded video). JavaScript-side kill switch: false hides the
+   * option everywhere without a store release. See src/lib/rewarded-ad.ts.
+   */
+  adUnlock: true,
 } as const;

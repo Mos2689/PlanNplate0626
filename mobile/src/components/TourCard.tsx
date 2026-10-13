@@ -7,7 +7,8 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Play, X, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
-import { designTokens } from '@/lib/design-tokens';
+import { designTokens, getThemeColors } from '@/lib/design-tokens';
+import { useColorScheme } from '@/lib/useColorScheme';
 import { useTourStore, selectShowTourCard } from '@/lib/tour-store';
 
 function MiniCard({
@@ -65,17 +66,35 @@ function MiniCard({
   );
 }
 
-export function TourCard() {
-  const router = useRouter();
-  const visible = useTourStore(selectShowTourCard);
-  const dismissCard = useTourStore((s) => s.dismissCard);
+interface TourBannerProps {
+  title: string;
+  subtitle?: string;
+  /** Shows a small × in the corner when provided. */
+  onDismiss?: () => void;
+  paddingHorizontal?: number;
+  /** charcoal = Recipes first-run card; beige = calmer Profile card. */
+  variant?: 'charcoal' | 'beige';
+}
 
-  if (!visible) return null;
+/** Charcoal "take the tour" banner: photo stack, title, chevron. Opens /tour. */
+export function TourBanner({
+  title,
+  subtitle,
+  onDismiss,
+  paddingHorizontal = 20,
+  variant = 'charcoal',
+}: TourBannerProps) {
+  const router = useRouter();
+  const colors = getThemeColors(useColorScheme() === 'dark');
+  const beige = variant === 'beige';
+  const titleColor = beige ? colors.ink : designTokens.colors.cream;
+  const subtitleColor = beige ? colors.ink2 : 'rgba(250,247,240,0.7)';
+  const chevronColor = beige ? colors.ink2 : designTokens.colors.cream;
 
   return (
     <Animated.View
       entering={FadeInDown.delay(60).springify()}
-      style={{ paddingHorizontal: 20, paddingBottom: 12 }}
+      style={{ paddingHorizontal, paddingBottom: 12 }}
     >
       <Pressable
         onPress={() => {
@@ -83,7 +102,7 @@ export function TourCard() {
           router.push('/tour');
         }}
         accessibilityRole="button"
-        accessibilityLabel="New here? Take the tour"
+        accessibilityLabel={subtitle ? `${title}. ${subtitle}` : title}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
@@ -92,27 +111,34 @@ export function TourCard() {
           paddingVertical: 8,
           paddingLeft: 12,
           paddingRight: 12,
+          ...(beige
+            ? { backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.hair }
+            : null),
         }}
       >
-        <LinearGradient
-          pointerEvents="none"
-          colors={['#181612', '#2d1811']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-        />
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            right: -30,
-            bottom: -50,
-            width: 130,
-            height: 130,
-            borderRadius: 65,
-            backgroundColor: 'rgba(255,255,255,0.05)',
-          }}
-        />
+        {!beige && (
+          <>
+            <LinearGradient
+              pointerEvents="none"
+              colors={['#181612', '#2d1811']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            />
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                right: -30,
+                bottom: -50,
+                width: 130,
+                height: 130,
+                borderRadius: 65,
+                backgroundColor: 'rgba(255,255,255,0.05)',
+              }}
+            />
+          </>
+        )}
 
         <View style={{ width: 88, height: 62, marginRight: 10 }}>
           <MiniCard rotate="-12deg" left={0} top={14} width={34} height={46} source={require('../../assets/images/tour/tour-card-baba.jpg')} z={1} />
@@ -153,30 +179,54 @@ export function TourCard() {
               fontFamily: designTokens.font.semibold,
               fontSize: 16,
               lineHeight: 21,
-              color: designTokens.colors.cream,
+              color: titleColor,
               letterSpacing: -0.2,
             }}
           >
-            New here? Take the tour
+            {title}
           </Text>
+          {subtitle ? (
+            <Text
+              style={{
+                fontFamily: designTokens.font.regular,
+                fontSize: 12.5,
+                color: subtitleColor,
+                marginTop: 2,
+              }}
+            >
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
 
-        <ChevronRight size={22} color={designTokens.colors.cream} strokeWidth={1.8} style={{ marginLeft: 6 }} />
+        <ChevronRight size={22} color={chevronColor} strokeWidth={1.8} style={{ marginLeft: 6 }} />
 
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            dismissCard();
-          }}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss tour card"
-          style={{ position: 'absolute', top: 4, right: 6, padding: 4 }}
-        >
-          <X size={13} color="rgba(250,247,240,0.55)" strokeWidth={2} />
-        </Pressable>
+        {onDismiss && (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onDismiss();
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss tour card"
+            style={{ position: 'absolute', top: 4, right: 6, padding: 4 }}
+          >
+            <X size={13} color={beige ? colors.ink3 : 'rgba(250,247,240,0.55)'} strokeWidth={2} />
+          </Pressable>
+        )}
       </Pressable>
     </Animated.View>
   );
+}
+
+/** First-run version on the Recipes tab: new users only, until watched or dismissed. */
+export function TourCard() {
+  const visible = useTourStore(selectShowTourCard);
+  const dismissCard = useTourStore((s) => s.dismissCard);
+
+  if (!visible) return null;
+
+  return <TourBanner title="New here? Take the tour" onDismiss={dismissCard} />;
 }
