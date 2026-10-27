@@ -20,7 +20,9 @@ import {
   nextUnlockUntil,
   shouldShowSuccessPrompt,
   PROACTIVE_SNOOZE_MS,
+  EMPTY_PROGRESS,
   type AdPromptState,
+  type UnlockProgress,
 } from './ad-unlock-logic';
 
 const keyFor = (userId: string) => `ad_unlock_v1_${userId}`;
@@ -45,12 +47,17 @@ export type AdSheetMode =
 interface AdUnlockStore extends AdPromptState {
   userId: string | null;
   sheet: AdSheetMode | null;
+  /** In-memory only (not persisted): survives sheet close/reopen within a
+   *  session but resets on app restart or logout. */
+  sessionProgress: UnlockProgress;
   hydrate: (userId: string) => Promise<void>;
   reset: () => void;
   /** Start (or extend) a week. Returns the new end, or null if not allowed yet. */
   grant: () => Promise<number | null>;
   openSheet: (mode: AdSheetMode) => void;
   closeSheet: () => void;
+  setSessionProgress: (p: UnlockProgress) => void;
+  clearSessionProgress: () => void;
   /** Turned down a proactive prompt (B/C): quiet for 3 days. */
   snoozeProactive: () => void;
   dismissExpiryBanner: () => void;
@@ -111,6 +118,7 @@ export const useAdUnlockStore = create<AdUnlockStore>()((set, get) => {
     ...EMPTY,
     userId: null,
     sheet: null,
+    sessionProgress: EMPTY_PROGRESS,
 
     hydrate: async (userId: string) => {
       if (get().userId !== userId) set({ ...EMPTY, userId, sheet: null });
@@ -136,7 +144,7 @@ export const useAdUnlockStore = create<AdUnlockStore>()((set, get) => {
       persist();
     },
 
-    reset: () => set({ ...EMPTY, userId: null, sheet: null }),
+    reset: () => set({ ...EMPTY, userId: null, sheet: null, sessionProgress: EMPTY_PROGRESS }),
 
     grant: async () => {
       const now = Date.now();
@@ -164,6 +172,8 @@ export const useAdUnlockStore = create<AdUnlockStore>()((set, get) => {
 
     openSheet: (mode) => set({ sheet: mode }),
     closeSheet: () => set({ sheet: null }),
+    setSessionProgress: (p) => set({ sessionProgress: p }),
+    clearSessionProgress: () => set({ sessionProgress: EMPTY_PROGRESS }),
 
     snoozeProactive: () => {
       set({ snoozeUntil: Date.now() + PROACTIVE_SNOOZE_MS });

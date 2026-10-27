@@ -643,19 +643,23 @@ export default function RecipesScreen() {
       for (const id of ids) {
         deleteRecipe(id);
       }
-      setShowDuplicateModal(false);
+      const discarded = new Set(ids);
+      const remaining = duplicateGroups.filter(
+        (g) => g.recipes.filter((r) => !discarded.has(r.id)).length >= 2,
+      );
+      if (remaining.length === 0) setShowDuplicateModal(false);
     },
-    [deleteRecipe],
+    [deleteRecipe, duplicateGroups],
   );
 
   const handleKeepAllGroup = useCallback((groupKey: string) => {
-    // Persist this exact set of recipes as "kept" so it won't be re-flagged next
-    // session. Keyed by member ids — if the user later saves another similar
-    // recipe, the group grows into a new signature and prompts again.
     const group = allDuplicateGroups.find((g) => g.key === groupKey);
     if (!group) return;
     dismissDuplicateRecipeGroup(group.recipes.map((r) => r.id).sort().join('|'));
-  }, [allDuplicateGroups, dismissDuplicateRecipeGroup]);
+    if (duplicateGroups.filter((g) => g.key !== groupKey).length === 0) {
+      setShowDuplicateModal(false);
+    }
+  }, [allDuplicateGroups, duplicateGroups, dismissDuplicateRecipeGroup]);
 
   const handleRecipePress = useCallback(
     (recipe: Recipe) => {

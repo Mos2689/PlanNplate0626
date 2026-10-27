@@ -28,10 +28,8 @@ import { useMealPlanStore } from '@/lib/store';
 import {
   applyAdOutcome,
   leadWithSubscription,
-  EMPTY_PROGRESS,
   REQUIRED_WATCH_SECONDS,
   AD_UNLOCK_DAYS,
-  type UnlockProgress,
 } from '@/lib/ad-unlock-logic';
 
 type Phase = 'idle' | 'playing' | 'need-more' | 'granting' | 'unavailable' | 'closed-early';
@@ -58,7 +56,9 @@ export function AdUnlockSheet() {
   const maybePromptSuccess = useAdUnlockStore((s) => s.maybePromptSuccess);
 
   const [phase, setPhase] = useState<Phase>('idle');
-  const [progress, setProgress] = useState<UnlockProgress>(EMPTY_PROGRESS);
+  const progress = useAdUnlockStore((s) => s.sessionProgress);
+  const setProgress = useAdUnlockStore((s) => s.setSessionProgress);
+  const clearProgress = useAdUnlockStore((s) => s.clearSessionProgress);
   const [weekly, setWeekly] = useState<string | null>(null);
 
   // (C) A finished meal plan, in the last 2 days of a week.
@@ -73,11 +73,13 @@ export function AdUnlockSheet() {
     prevStage.current = genStage;
   }, [genStage, maybePromptSuccess]);
 
-  // Fresh state and the live weekly price each time a sheet opens.
+  // Fresh phase and the live weekly price each time a sheet opens.
+  // Progress is NOT reset here — it lives in the store and persists across
+  // sheet close/reopen within the same app session.
   useEffect(() => {
     if (!sheet || sheet === 'confirm') return;
-    setPhase('idle');
-    setProgress(EMPTY_PROGRESS);
+    const stored = useAdUnlockStore.getState().sessionProgress;
+    setPhase(stored.watchedSeconds > 0 ? 'need-more' : 'idle');
     let alive = true;
     getPackage('$rc_monthly').then((r) => {
       if (alive && r.ok) setWeekly(r.data?.product.pricePerWeekString ?? null);
@@ -135,9 +137,9 @@ export function AdUnlockSheet() {
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setPhase('idle');
-    setProgress(EMPTY_PROGRESS);
+    clearProgress();
     openSheet('confirm');
-  }, [grant, openSheet, progress, sheet]);
+  }, [grant, openSheet, clearProgress, progress, sheet]);
 
   if (!sheet) return null;
 
@@ -172,6 +174,7 @@ export function AdUnlockSheet() {
   }
 
   const watched = Math.min(REQUIRED_WATCH_SECONDS, Math.round(progress.watchedSeconds));
+  const remaining = Math.max(1, REQUIRED_WATCH_SECONDS - watched);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={dismiss} statusBarTranslucent>
@@ -211,7 +214,7 @@ export function AdUnlockSheet() {
                 />
               </View>
               <Text style={{ fontFamily: designTokens.font.regular, fontSize: 13, lineHeight: 18, color: colors.ink2, marginTop: 10 }}>
-                That video was short. Watch one more to unlock your {AD_UNLOCK_DAYS} days.
+                Almost there — {remaining}s left to unlock your {AD_UNLOCK_DAYS} days.
               </Text>
             </View>
           ) : sheet === 'intro' ? (
@@ -238,7 +241,7 @@ export function AdUnlockSheet() {
             ) : sheet === 'intro' || phase === 'need-more' ? (
               <>
                 <PrimaryButton
-                  label={phase === 'need-more' ? 'Watch one more video' : 'Watch & Continue'}
+                  label={phase === 'need-more' ? `Watch ${remaining}s more` : 'Watch & Continue'}
                   icon="play"
                   busy={busy}
                   busyLabel={phase === 'granting' ? 'Unlocking…' : 'Loading video…'}
