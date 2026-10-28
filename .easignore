@@ -1,33 +1,68 @@
-# Include everything from root .gitignore
-node_modules/
-.env*
-.DS_Store
-Thumbs.db
-*.log
-.vscode/
-.idea/
-.claude/
-.gemini/
-.expo/
-dist/
-web-build/
-ios/
-android/
-.supabase/
-graphify-out/
+# Dependencies and build output
+**/node_modules/
+**/.expo/
+**/dist/
+**/web-build/
+**/.metro-health-check*
+**/*.tsbuildinfo
+mobile/expo-env.d.ts
 
-# Non-mobile project folders
-admin/
+# Prebuild output — ANCHORED to the app directory (NEVER use bare ios/ or android/)
+mobile/ios/
+mobile/android/
+**/.kotlin/
+
+# Secrets and signing material
+**/.env*
+!**/.env*.example
+**/*.jks
+**/*.p8
+**/*.p12
+**/*.key
+**/*.pem
+**/*.mobileprovision
+
+# Non-mobile project folders & large archive artifacts
 backend/
-
-# Huge patch and dump files
+admin/
+__MACOSX/
+pdf_images/
+PlannPlate Inspired/
+*.zip
 diff.patch
 init.patch
-*.docx
-*.txt
-*.jsonl
+**/graphify-out/
+/*.png
+changelog.txt
 
-# Explicitly include mobile patches for patch-package
+# Explicitly keep mobile patches for patch-package
 !mobile/patches/
 !mobile/patches/**
 
+# Logs & temp files
+**/*.log
+**/npm-debug.*
+**/yarn-debug.*
+**/yarn-error.*
+mobile/decompressed_log.txt
+mobile/parsed_log.txt
+mobile/messages.txt
+mobile/eas_log*.txt
+mobile/eas_log*.jsonl
+mobile/eas_full_logs.txt
+mobile/error_summary*.txt
+mobile/final_error.txt
+mobile/last_build*.json
+mobile/plan-setup-preview.html
+mobile/welcome-preview.html
+
+# Tooling & editor
+**/.DS_Store
+**/Thumbs.db
+**/.vscode/
+**/.idea/
+**/.claude/
+**/.agents/
+**/.gemini/
+**/.playwright-mcp/
+**/.supabase/
