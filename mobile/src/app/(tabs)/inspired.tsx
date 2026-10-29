@@ -627,12 +627,13 @@ export default function CuratedMealPlanScreen() {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (q)
-      // Match on recipe name OR any ingredient name, so searching "chicken"
-      // or "basil" surfaces recipes that use it, not just ones named for it.
       return INSPIRED_RECIPES.filter(
         (r) =>
           r.name.toLowerCase().includes(q) ||
-          r.ingredients.some((ing) => ing.name.toLowerCase().includes(q)),
+          r.ingredients.some((ing) => ing.name.toLowerCase().includes(q)) ||
+          r.cuisine.toLowerCase().includes(q) ||
+          r.dietary.some((d) => d.toLowerCase().includes(q)) ||
+          r.healthGoals.some((g) => g.toLowerCase().includes(q)),
       );
     const mealTypes = new Set(
       categories.map(categoryMealType).filter((mt): mt is string => !!mt),
@@ -1122,7 +1123,7 @@ export default function CuratedMealPlanScreen() {
                 ref={searchInputRef}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholder="Search recipes..."
+                placeholder="Search by name, cuisine, diet, health goal..."
                 placeholderTextColor={colors.ink3}
                 style={{
                   flex: 1,
@@ -1132,9 +1133,9 @@ export default function CuratedMealPlanScreen() {
                   color: colors.ink,
                 }}
               />
-              {searchQuery.length > 0 && (
+              {searchExpanded && (
                 <Pressable
-                  onPress={() => setSearchQuery('')}
+                  onPress={handleToggleSearch}
                   style={{ paddingHorizontal: 16, height: '100%', justifyContent: 'center' }}
                 >
                   <X size={18} color={colors.ink3} strokeWidth={2} />

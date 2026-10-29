@@ -77,6 +77,29 @@ async function hasPremiumEntitlement(userId: string): Promise<boolean | null> {
 }
 
 /**
+ * A rewarded-ad unlock (migration 20261005120000) counts as Premium until
+ * `ad_unlock_until`. Any lookup failure reads as "no unlock" — the caller then
+ * falls through to the normal free allowance, so nobody is wrongly blocked.
+ */
+async function hasActiveAdUnlock(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('ad_unlock_until')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) {
+    console.error('[Entitlement] ad unlock lookup failed:', error);
+    return false;
+  }
+  const until = data?.ad_unlock_until;
+  return Boolean(until) && new Date(until).getTime() > Date.now();
+}
+
+/**
  * Resolve entitlement and, for a non-premium user, SPEND one import.
  *
  * The allowance is spent before extraction rather than after, so that two
@@ -93,6 +116,8 @@ export async function claimImportAllowance(
 
   if (premium === null) return { state: 'unknown', spent: false };
   if (premium) return { state: 'premium', spent: false };
+
+  if (await hasActiveAdUnlock(supabase, userId)) return { state: 'premium', spent: false };
 
   const { data, error } = await supabase.rpc('spend_import_allowance', {
     p_user_id: userId,

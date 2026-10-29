@@ -18,6 +18,9 @@ import {
   type AccountStatus,
 } from './database';
 import { track } from './analytics';
+import { useAdUnlockActive, useAdUnlockStore } from './ad-unlock-store';
+import { gateRoute } from './ad-unlock-logic';
+import { adUnlockAvailable } from './rewarded-ad';
 
 // DEV-ONLY premium override.
 //
@@ -52,6 +55,9 @@ export type PaywallTrigger =
   | 'generating-plan'
   | 'speak-grocery-limit'
   | 'collections'
+  // Opened from an ad sheet's "Go Premium" button — closing it must not loop
+  // back into the ad sheet.
+  | 'ad-sheet'
   | 'generic';
 
 interface SubscriptionStore {
@@ -114,6 +120,19 @@ export const useSubscriptionStore = create<SubscriptionStore>()((set, get) => ({
   paywallSheetTrigger: null,
 
   openPaywallSheet: (trigger: PaywallTrigger) => {
+    // (A) A premium-gated tap after a free ad week has ended gets the friendly
+    // renewal sheet instead of the hard paywall. Explicit upgrade entry points
+    // (Profile, onboarding, an ad sheet's Go Premium) always show the paywall.
+    const explicitUpgrade =
+      trigger === 'profile-banner' || trigger === 'onboarding' || trigger === 'ad-sheet';
+    if (!explicitUpgrade && !get().isPremium) {
+      const ad = useAdUnlockStore.getState();
+      if (gateRoute(ad, Date.now(), adUnlockAvailable()) === 'renewal') {
+        track('ad_unlock_prompt_shown', { mode: 'renewal', trigger });
+        ad.openSheet('renewal');
+        return;
+      }
+    }
     // Only count a genuine open (ignore re-sets to the same trigger while
     // already visible).
     if (get().paywallSheetTrigger !== trigger) {
@@ -470,6 +489,7 @@ export const useSubscriptionStore = create<SubscriptionStore>()((set, get) => ({
 }));
 
 // Selector hooks for optimized re-renders
+// Real subscription only (membership UI). For feature gating use useHasPremiumAccess.
 export const useIsPremium = () => useSubscriptionStore((s) => s.isPremium);
 export const useSubscriptionLoading = () => useSubscriptionStore((s) => s.isLoading);
 export const useAccountStatus = () => useSubscriptionStore((s) => s.accountStatus);
@@ -488,8 +508,9 @@ export const useIsPremiumResolved = () =>
 // re-sync) rather than gate a paying user.
 export const useCanGatePaywall = () => {
   const isPremium = useSubscriptionStore((s) => s.isPremium);
+  const adUnlocked = useAdUnlockActive();
   const resolved = useIsPremiumResolved();
-  return resolved && !isPremium;
+  return resolved && !isPremium && !adUnlocked;
 };
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -506,9 +527,15 @@ export const useCanGatePaywall = () => {
 
 /**
  * Canonical premium-access selector. Use this EVERYWHERE we gate AI /
- * premium features.
+ * premium features. True for a paying subscriber OR during a rewarded-ad
+ * unlock window. Membership UI (crown, "Manage membership") must keep using
+ * `useIsPremium`, which reflects the real subscription only.
  */
-export const useHasPremiumAccess = () => useSubscriptionStore((s) => s.isPremium);
+export const useHasPremiumAccess = () => {
+  const isPremium = useSubscriptionStore((s) => s.isPremium);
+  const adUnlocked = useAdUnlockActive();
+  return isPremium || adUnlocked;
+};
 
 // Alias kept for backward compatibility with existing call sites that
 // import `useHasAIAccess`.
@@ -530,7 +557,8 @@ export const useNeedsPaywallForPlanning = () => {
   const isLoading = useSubscriptionStore((s) => s.isLoading);
   const initializingUserId = useSubscriptionStore((s) => s._initializingUserId);
   const hasUsedFreeTrial = useMealPlanStore((s) => s.preferences.hasUsedFreeTrial ?? false);
-  if (isPremium) return false;
+  const adUnlocked = useAdUnlockActive();
+  if (isPremium || adUnlocked) return false;
   // Don't gate while subscription state is still resolving — the
   // `isPremium=false` default isn't trustworthy yet, and gating here
   // would briefly paywall a paying user on cold start.

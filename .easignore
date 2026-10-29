@@ -38,21 +38,12 @@
 mobile/expo-env.d.ts
 
 # ── Prebuild output ─────────────────────────────────────────────────────────
-# ANCHORED to the app directory, unlike the .gitignore patterns that caused
-# this. These must never match mobile/modules/*/ios or mobile/modules/*/android,
-# which are module SOURCE and are required for the pod to install.
+# ANCHORED to the app directory (NEVER use bare ios/ or android/)
 mobile/ios/
 mobile/android/
 **/.kotlin/
 
 # ── Secrets and signing material ────────────────────────────────────────────
-# All env files, not just *.local: the root .gitignore excluded `.env` and
-# `.env.production` outright, so they have never been uploaded. Build-time env
-# belongs in eas.json or EAS secrets.
-#
-# Every env file, including one-off ones like mobile/.env.image-pipeline (script
-# credentials that previously slipped through the explicit list). Only the
-# committed `.example` templates are allowed back in — they hold no values.
 **/.env*
 !**/.env*.example
 **/*.jks
@@ -62,7 +53,7 @@ mobile/android/
 **/*.pem
 **/*.mobileprovision
 
-# ── Other projects in this repo the app build does not need ─────────────────
+# ── Non-mobile project folders & large archive artifacts ────────────────────
 backend/
 admin/
 __MACOSX/
@@ -74,10 +65,12 @@ PlannPlate Inspired/
 diff.patch
 init.patch
 **/graphify-out/
-# Root-level design mockups ONLY. An unanchored `*.png` here would strip
-# mobile/assets and mobile/public — the app icon, splash and notification icon.
 /*.png
 changelog.txt
+
+# Explicitly keep mobile patches for patch-package
+!mobile/patches/
+!mobile/patches/**
 
 # ── Logs and debug leftovers ────────────────────────────────────────────────
 **/*.log

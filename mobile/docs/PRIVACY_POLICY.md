@@ -87,6 +87,7 @@ We use personal information to:
 - **Provide the Services** — create and manage your account, generate personalised meal plans, build grocery lists, save/import recipes, and sync your data across sessions.
 - **Personalise content** — apply your dietary, allergy, cuisine, time, budget, and household preferences so we don’t suggest meals that don’t fit you (including strictly excluding/flagging allergens).
 - **Operate subscriptions & limits** — manage free-tier limits, premium entitlements, and billing through the app stores.
+- **Show optional rewarded ads** — if you choose to watch ads to unlock Premium for 7 days, Google AdMob serves those ads. Ads are never shown unless you start them.
 - **Communicate with you** — respond to support requests, send service and account emails, and (if you opt in) send re-engagement/reminder push notifications.
 - **Improve and secure the Services** — diagnose problems, prevent fraud and abuse, and enhance features.
 - **Comply with legal obligations.**
@@ -122,6 +123,7 @@ We disclose personal information only to trusted service providers (“sub-proce
 | **RevenueCat** | Subscription and entitlement management | Purchase/subscription identifiers and status |
 | **Apple App Store / Google Play** | In-app purchases and billing | Transaction and subscription data |
 | **Pexels** | Recipe image search | Search terms only (no account data) |
+| **Google AdMob** | Rewarded video ads you choose to watch to unlock Premium | Device and app information, IP address, coarse location, ad interactions; the device advertising identifier (IDFA/AAID) only where you allow it (iOS asks first via App Tracking Transparency; EEA/UK users are asked for consent) |
 | **[Email provider, e.g. Resend]** | Transactional emails (verification, password reset) | Email address |
 | **[Push provider, e.g. Expo]** | Sending re-engagement/reminder push notifications (if enabled) | Push token, first name |
 
@@ -239,12 +241,13 @@ Use this to complete the store privacy forms consistently with the Policy above.
 - **Purchases:** purchase history → *App functionality.*
 - **Usage data:** product interaction → *Analytics / App functionality.*
 - **Diagnostics:** crash/performance data → *App functionality.*
-- **Tracking:** **No** — the App does not track users across other companies’ apps/sites (no ATT prompt required unless you later add tracking SDKs).
+- **Tracking:** **Yes, with permission** — Google AdMob (optional rewarded ads) may use the device advertising identifier for ads when the user allows it in the App Tracking Transparency prompt. Declare **Identifiers → Device ID** and **Usage data → Advertising data**, purpose *Third-Party Advertising*, used for tracking.
 - **Account deletion:** in-app account deletion is provided (Apple requirement).
 
 **Google Play “Data safety” — declare:**
 - Data **collected**: email, name, health info (dietary/allergies), app activity/usage, purchase history, audio (transient — transcribed then discarded), app info/performance, device identifiers.
 - Data **shared** with sub-processors listed in Section 6 for app functionality.
+- **Advertising ID** (Device or other IDs): collected and shared with Google AdMob for *Advertising or marketing* (optional rewarded ads). Answer **Yes** to the Play Console “Advertising ID” question and mark the app as **containing ads**.
 - Security practices: encrypted in transit; users can request deletion (provide **[DELETION REQUEST URL]**).
 - Data deletion: account deletion available in-app **and** via web request URL (Google requirement).
 

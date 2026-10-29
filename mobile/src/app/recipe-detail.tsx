@@ -118,6 +118,7 @@ export default function RecipeDetailScreen() {
   const [editingImageUrl, setEditingImageUrl] = useState<string | null>(null);
   // Tags draft, edited via the guided TagPicker in the Edit modal.
   const [editingTags, setEditingTags] = useState<string[]>([]);
+  const [editingName, setEditingName] = useState<string>('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // ── Additive UX-enhancement state (purely local, no store writes) ───────
@@ -495,6 +496,7 @@ export default function RecipeDetailScreen() {
   const handleEditPress = useCallback(() => {
     if (!recipe) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEditingName(recipe.name);
     setEditingIngredients([...recipe.ingredients]);
     setEditingInstructions([...recipe.instructions]);
     setEditingImageUrl(recipe.imageUrl);
@@ -503,20 +505,22 @@ export default function RecipeDetailScreen() {
   }, [recipe]);
 
   const handleSaveEdits = useCallback(() => {
-    if (!recipe || !editingIngredients || !editingInstructions) return;
+    const trimmedName = editingName.trim();
+    if (!recipe || !editingIngredients || !editingInstructions || !trimmedName) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     // De-duplicate the picked tags (trims any stray whitespace).
     const parsedTags = Array.from(
       new Set(editingTags.map((t) => t.trim()).filter(Boolean)),
     );
     updateRecipe(recipe.id, {
+      ...(trimmedName !== recipe.name ? { name: trimmedName } : {}),
       ingredients: editingIngredients,
       instructions: editingInstructions,
       tags: parsedTags,
       ...(editingImageUrl && editingImageUrl !== recipe.imageUrl ? { imageUrl: editingImageUrl } : {}),
     });
     setShowEditModal(false);
-  }, [recipe, editingIngredients, editingInstructions, editingImageUrl, editingTags, updateRecipe]);
+  }, [recipe, editingName, editingIngredients, editingInstructions, editingImageUrl, editingTags, updateRecipe]);
 
   const handlePickImage = useCallback(async () => {
     try {
@@ -1593,12 +1597,12 @@ export default function RecipeDetailScreen() {
               </Text>
               <Pressable
                 onPress={handleSaveEdits}
-                disabled={!editingIngredients || !editingInstructions}
+                disabled={!editingIngredients || !editingInstructions || !editingName.trim()}
                 style={{
                   paddingHorizontal: 16,
                   height: 36,
                   borderRadius: 18,
-                  backgroundColor: editingIngredients && editingInstructions
+                  backgroundColor: editingIngredients && editingInstructions && editingName.trim()
                     ? designTokens.colors.brand
                     : (isDark ? '#2a2a2a' : designTokens.colors.hair2),
                   alignItems: 'center',
@@ -1609,7 +1613,7 @@ export default function RecipeDetailScreen() {
                 <Text style={{
                   fontFamily: designTokens.font.semibold,
                   fontSize: 13.5,
-                  color: editingIngredients && editingInstructions
+                  color: editingIngredients && editingInstructions && editingName.trim()
                     ? designTokens.colors.cream
                     : (isDark ? '#666' : designTokens.colors.ink3),
                 }}>
@@ -1644,6 +1648,51 @@ export default function RecipeDetailScreen() {
                 }
               }}
             >
+              {/* Name */}
+              <View style={{ paddingHorizontal: 20, marginTop: 6, marginBottom: 18 }}>
+                <Text style={{
+                  fontFamily: designTokens.font.medium,
+                  fontSize: 11,
+                  letterSpacing: 0.55,
+                  textTransform: 'uppercase',
+                  color: isDark ? '#888' : designTokens.colors.ink3,
+                  marginBottom: 10,
+                }}>
+                  Recipe name
+                </Text>
+                <TextInput
+                  value={editingName}
+                  onChangeText={setEditingName}
+                  placeholder="Recipe name"
+                  placeholderTextColor={isDark ? '#666' : designTokens.colors.ink3}
+                  returnKeyType="done"
+                  maxLength={120}
+                  style={{
+                    fontFamily: designTokens.font.medium,
+                    fontSize: 16,
+                    color: isDark ? '#fff' : designTokens.colors.ink,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: editingName.trim()
+                      ? (isDark ? '#2a2a2a' : designTokens.colors.hair)
+                      : designTokens.colors.olive,
+                    backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF',
+                  }}
+                />
+                {!editingName.trim() && (
+                  <Text style={{
+                    fontFamily: designTokens.font.regular,
+                    fontSize: 12,
+                    color: designTokens.colors.olive,
+                    marginTop: 6,
+                  }}>
+                    Give your recipe a name to save it.
+                  </Text>
+                )}
+              </View>
+
               {/* Photo */}
               <View style={{ paddingHorizontal: 20, marginTop: 6 }}>
                 <Text style={{

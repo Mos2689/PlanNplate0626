@@ -19,9 +19,8 @@ import * as Linking from 'expo-linking';
 import { initializeCacheTable } from '@/lib/recipe-cache';
 import { PaywallSheet } from '@/components/PaywallSheet';
 import { ManageMembershipSheet } from '@/components/ManageMembershipSheet';
-import { AnnualOfferSheet } from '@/components/AnnualOfferSheet';
-import { LimitedTimeMonthlyOfferSheet } from '@/components/LimitedTimeMonthlyOfferSheet';
-import { useOfferFunnelStore } from '@/lib/offer-funnel-store';
+import { AdUnlockSheet } from '@/components/AdUnlockSheet';
+import { useAdUnlockStore } from '@/lib/ad-unlock-store';
 import { PostSignupWelcome } from '@/components/PostSignupWelcome';
 import { ReviewPromptModal } from '@/components/ReviewPromptModal';
 import {
@@ -208,19 +207,13 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     );
   }, [isAuthenticated, isAnonymous, currentUser?.id]);
 
-  // Offer funnel: hydrate per-user AsyncStorage state (also catches up any
-  // elapsed 24-hour window), and re-check the window whenever the app returns to
-  // the foreground so a live limited-time offer can surface.
+  // Rewarded-ad Premium unlock: restore this user's 7-day window (local first,
+  // then the server's value), and drop it when nobody is signed in.
   useEffect(() => {
     const uid = currentUser?.id;
-    if (uid) void useOfferFunnelStore.getState().hydrate(uid);
+    if (uid) void useAdUnlockStore.getState().hydrate(uid);
+    else useAdUnlockStore.getState().reset();
   }, [currentUser?.id]);
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') useOfferFunnelStore.getState().checkMonthlyWindow();
-    });
-    return () => sub.remove();
-  }, []);
 
   // AUTH-LAST: onboarding comes FIRST, before the meal-planning screen, for
   // every fresh user. We gate on the locally-persisted `hasCompletedOnboarding`
@@ -566,6 +559,11 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         />
         <Stack.Screen name="plan-meals" options={{ headerShown: false }} />
         <Stack.Screen name="privacy" options={{ headerShown: false }} />
+        <Stack.Screen name="tour" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="tour-player"
+          options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+        />
         <Stack.Screen name="help/index" options={{ headerShown: false }} />
         <Stack.Screen name="help/[threadId]" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
@@ -578,10 +576,10 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           membership entry points open this (via openManageMembership) instead
           of the sales paywall. */}
       <ManageMembershipSheet isDark={colorScheme === 'dark'} />
-      {/* Post-paywall offer funnel — the one-time annual offer and the later
-          24-hour $3.99 offer. Both self-gate via useOfferFunnelStore. */}
-      <AnnualOfferSheet isDark={colorScheme === 'dark'} />
-      <LimitedTimeMonthlyOfferSheet isDark={colorScheme === 'dark'} />
+      {/* Free-week ad offers: after the paywall closes, renewals after a free
+          week ends, the "ends tomorrow" extend, success prompts and the
+          confirmation. Self-gates via useAdUnlockStore.sheet. */}
+      <AdUnlockSheet />
       {/* Post-signup celebratory beat — fades in for ~1.2 s after a guest
           links their account, then auto-opens the onboarding paywall.
           Rendered AFTER the paywall so it stacks above during the cross-fade. */}

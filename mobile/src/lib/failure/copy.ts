@@ -149,8 +149,8 @@ export const FEATURE_COPY: Partial<Record<string, FailureCopy>> = {
     action: { kind: 'dismiss', label: 'Got it' },
   },
   'auth:auth-denied': {
-    title: 'That didn’t match',
-    body: 'Please check your email and password, then try once more.',
+    title: 'Email or password is incorrect',
+    body: 'Check for typos and try again. Forgot your password? Tap “Forgot it?” below to reset it.',
     action: { kind: 'retry', label: 'Try again' },
   },
   // Distinct feature key so the "already registered" case keeps its own

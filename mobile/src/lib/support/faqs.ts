@@ -70,6 +70,6 @@ export const FAQS: readonly Faq[] = [
     id: 'delete-account',
     question: 'How do I delete my account?',
     answer:
-      'Profile → Settings → Fresh Start removes your recipes, plans and preferences. Deleting the account itself removes everything permanently, including anything you have sent us.',
+      'Profile → scroll to the bottom → Delete account. This permanently removes your account and everything in it, including your recipes, plans, preferences and anything you have sent us. It can’t be undone.',
   },
 ] as const;

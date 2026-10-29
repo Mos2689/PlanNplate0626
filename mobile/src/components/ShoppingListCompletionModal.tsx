@@ -1,9 +1,9 @@
 // Shopping List Completion modal — PlannPlate design language.
-// Visual-only redesign: props, callbacks, haptics, and animations preserved verbatim.
+// Card fades in and out with the backdrop (no spring/zoom bounce).
 // One italic word per screen ("complete" in the title).
 import React, { useCallback } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { CheckCircle2 } from 'lucide-react-native';
 import { designTokens, serifItalicFontStyle } from '@/lib/design-tokens';
@@ -44,8 +44,8 @@ export const ShoppingListCompletionModal: React.FC<ShoppingListCompletionModalPr
 
       {/* Card */}
       <Animated.View
-        entering={ZoomIn.springify().damping(15)}
-        exiting={ZoomOut.springify()}
+        entering={FadeIn.duration(200)}
+        exiting={FadeOut.duration(150)}
         style={[
           styles.card,
           {

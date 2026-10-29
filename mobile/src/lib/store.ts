@@ -1077,25 +1077,6 @@ interface MealPlanStore {
 // Helper to generate unique IDs
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
-/**
- * Should an AUTOMATICALLY sourced photo be written onto this recipe?
- *
- * Onboarding dishes deliberately carry no image, and there are three places a
- * stock photo could still reach them long after onboarding — the two meal-plan
- * image jobs below, and the image backfill in `addRecipe`. All three run on a
- * recipe id returned by `addRecipe`, which UPSERTS: plan a week containing a
- * dish the user already named during onboarding and the ids are the same row.
- * Without this guard the placeholder would survive the first screen and then
- * silently turn into a Pexels photo days later, which is the inconsistency in
- * its most confusing form.
- *
- * Only automatic assignment is gated. Explicit `updateRecipe` calls from the
- * photo picker are untouched.
- */
-function acceptsAutoImage(recipes: Recipe[], recipeId: string): boolean {
-  const target = recipes.find((r) => r.id === recipeId);
-  return !target || !keepsPlaceholderImage(target);
-}
 
 // When a meal is removed from the calendar, other slots that DEPEND on it no
 // longer make sense and should be cleared alongside it. This returns the ids of
@@ -2292,28 +2273,10 @@ export const useMealPlanStore = create<MealPlanStore>()(
             };
             get().addMealToSlot(slot);
 
-            // Fire image gen in PARALLEL — non-blocking. Stock image
-            // shows immediately; AI image swaps in via updateRecipe
-            // when its promise resolves. Curated recipes already carry their
-            // real hero image, so we skip generation entirely for them.
-            if (!hasCuratedImage) {
-              const imageJob = generateRecipeImage(
-                recipe.name,
-                recipe.description,
-                recipe.ingredients,
-              )
-                .then((url) => {
-                  // Skip dishes the user named in onboarding — addRecipe may
-                  // have upserted this id onto one of their rows.
-                  if (url && acceptsAutoImage(get().recipes, recipeId)) {
-                    get().updateRecipe(recipeId, { imageUrl: url });
-                  }
-                })
-                .catch(() => {
-                  /* stock image stays — graceful degradation */
-                });
-              pendingImageJobs.push(imageJob);
-            }
+            // Curated recipes already carry their real hero image.
+            // All other Plan-My-Meals recipes keep the placeholder so
+            // the library looks consistent — the user can add their own
+            // photo via the edit flow.
 
             // Update banner state — bump per-day count, recompute the
             // total completed and the count of fully-completed days.
@@ -2613,21 +2576,8 @@ export const useMealPlanStore = create<MealPlanStore>()(
                   createdAt: new Date().toISOString(),
                 };
                 const recipeId = get().addRecipe(recipe);
-                if (!hasCuratedImage) {
-                  const job = generateRecipeImage(
-                    recipe.name,
-                    recipe.description,
-                    recipe.ingredients,
-                  )
-                    .then((url) => {
-                      // Same guard as the daily path above.
-                      if (url && acceptsAutoImage(get().recipes, recipeId)) {
-                        get().updateRecipe(recipeId, { imageUrl: url });
-                      }
-                    })
-                    .catch(() => {});
-                  pendingImageJobs.push(job);
-                }
+                // Curated recipes carry their own image; all others
+                // keep the placeholder (same policy as the daily path).
                 return recipeId;
               };
 

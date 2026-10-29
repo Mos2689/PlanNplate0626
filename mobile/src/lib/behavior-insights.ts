@@ -378,7 +378,7 @@ function computeCookingMomentum(
   }
 
   return {
-    cookedThisWeek,
+    cookedThisWeek: Math.min(cookedThisWeek, plannedThisWeek),
     plannedThisWeek,
     currentStreakDays,
     longestStreakDays,

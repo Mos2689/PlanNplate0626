@@ -102,6 +102,7 @@ import {
   classifyRecipeByContent,
 } from '@/lib/meal-type-validator';
 import type { Recipe } from '@/lib/store';
+import { useTourStore } from '@/lib/tour-store';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -1143,6 +1144,8 @@ export default function OnboardingScreen() {
         hasCompletedOnboarding: true,
         onboardingStep: TOTAL_STEPS,
       });
+
+      useTourStore.getState().arm();
 
       // Build the dishes the user named into full, saved library recipes in the
       // background (non-blocking) — they appear in Recipes shortly, editable.
