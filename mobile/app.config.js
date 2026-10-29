@@ -202,6 +202,9 @@ module.exports = function ({ config }) {
       },
     ]);
   }
+  if (!hasPlugin("./plugins/with-google-mobile-ads-gradle-fix")) {
+    config.plugins.push("./plugins/with-google-mobile-ads-gradle-fix");
+  }
 
   // 2. Meta SDK configuration plugin
   if (!hasPlugin("react-native-fbsdk-next")) {
