@@ -32,8 +32,8 @@ export function usePicksForYou({
   const weekKey = getCurrentWeekKey();
   const prefHash = hashPreferences(preferences);
 
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   return useQuery<Pick[]>({
-    // eslint-disable-next-line @tanstack/query/exhaustive-deps
     queryKey: ['picks-for-you', userId, weekKey, prefHash, recipes.length, mealSlots.length],
     queryFn: async () => {
       if (!userId) return [];
